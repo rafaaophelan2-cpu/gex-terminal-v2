@@ -99,7 +99,13 @@ function stopDriftRefresh() {
 async function loadLiveGamma() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-    const date = driftDateInput.value || todayInLima()
+    // LIVE GAMMA no usa el selector de fecha de NET DRIFT -- siempre
+    // resuelve sola la última sesión disponible (available-dates ya
+    // viene ordenado por más reciente, solo fechas con datos reales:
+    // cubre tanto "todavía no abrió hoy" como "ya cerró hoy" sin
+    // depender de qué fecha haya elegido el usuario en otra pestaña).
+    const dates = await fetchAvailableDates(symbol)
+    const date = dates[0] || todayInLima()
     const [heatmap, candles] = await Promise.all([
       fetchHeatmap(symbol, date),
       fetchCandles(symbol, date).catch(() => []),
@@ -328,7 +334,6 @@ backgammaPlayBtn.addEventListener('click', () => {
 
 driftDateInput.addEventListener('change', () => {
   if (driftRefreshTimer) loadNetDrift()
-  if (liveGammaRefreshTimer) loadLiveGamma()
 })
 
 applySymbolBtn.addEventListener('click', () => {

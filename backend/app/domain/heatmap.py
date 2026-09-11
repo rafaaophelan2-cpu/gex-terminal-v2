@@ -1,4 +1,15 @@
+import numpy as np
+from scipy.ndimage import gaussian_filter
+
 from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
+
+# Sigma del blur gaussiano (en unidades de índice de la matriz, no en
+# strikes/minutos reales): (eje strike, eje tiempo). Valores chicos a
+# propósito -- con strikes reales espaciados ~$1 (no la grilla sintética
+# fina de app.py), un sigma > ~0.6 ya empieza a mezclar visualmente un
+# strike con el de al lado. Da el efecto "glow" suave sin que el
+# difuminado de un nivel se monte sobre el nivel vecino.
+BLUR_SIGMA = (0.6, 0.6)
 
 
 def compute_heatmap_matrix(
@@ -12,8 +23,10 @@ def compute_heatmap_matrix(
     una grilla sintética de strikes finos con un doble `for` en Python
     puro), esto reusa el net_gex real ya calculado por cada snapshot, sin
     volver a tocar Black-Scholes. Mucho más barato en CPU -- relevante en
-    el free tier de 0.1 vCPU de Render -- y son datos reales, no una
-    reconstrucción suavizada con gaussiana."""
+    el free tier de 0.1 vCPU de Render -- y son datos reales, con un blur
+    gaussiano moderado encima (BLUR_SIGMA) solo para el efecto visual de
+    "glow" suave, igual intención que app.py pero con menos intensidad al
+    no tener una grilla sintética fina de por medio."""
     filtered = [s for s in snapshots if session_start <= s.get('time', '') <= session_end]
     if not filtered:
         return {"times": [], "strikes": [], "z": [], "spot": []}
@@ -27,11 +40,14 @@ def compute_heatmap_matrix(
 
     times = [snap.get('time', '') for snap in filtered]
     spots = [float(snap.get('spot', 0.0)) for snap in filtered]
-    z = [[0.0] * len(filtered) for _ in strikes_sorted]
+    z = np.zeros((len(strikes_sorted), len(filtered)))
 
     for t_idx, snap in enumerate(filtered):
         for item in snap.get('strikes', []):
             row = strike_idx[float(item['strike'])]
-            z[row][t_idx] = float(item.get('net_gex', 0.0))
+            z[row, t_idx] = float(item.get('net_gex', 0.0))
 
-    return {"times": times, "strikes": strikes_sorted, "z": z, "spot": spots}
+    if z.shape[0] > 1 and z.shape[1] > 1:
+        z = gaussian_filter(z, sigma=BLUR_SIGMA)
+
+    return {"times": times, "strikes": strikes_sorted, "z": z.tolist(), "spot": spots}

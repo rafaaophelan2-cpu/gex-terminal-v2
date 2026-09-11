@@ -35,7 +35,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
       z: heatmap.z,
       zmin: -maxAbs,
       zmax: maxAbs,
-      zsmooth: false,
+      zsmooth: 'best',
       colorscale: [
         [0.0, 'rgba(239, 68, 68, 0.55)'],
         [0.3, 'rgba(239, 68, 68, 0.10)'],
