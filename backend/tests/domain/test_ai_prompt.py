@@ -43,3 +43,21 @@ def test_build_system_prompt_embeds_key_numbers():
     assert "Escenario A" in prompt and "Escenario B" in prompt and "Escenario C" in prompt
     # La única aparición de "$$" debe ser la propia regla que la prohíbe.
     assert prompt.count("$$") == 1
+
+
+def test_build_system_prompt_includes_gamma_mechanics_and_conversational_mode():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    # Conocimiento base de mecánica de gamma/hedging de dealers.
+    assert "GAMMA EXPOSURE" in prompt
+    assert "ZERO GAMMA" in prompt or "GAMMA FLIP" in prompt
+    assert "CHARM" in prompt
+    assert "VANNA" in prompt
+    # No debe forzar el informe completo ante un saludo/conversación.
+    assert "conversacional" in prompt.lower()
+    # Order flow: debe aclarar que no hay datos en vivo, y pedir un
+    # checklist de confirmación, no afirmar que "ve" absorción.
+    assert "checklist" in prompt.lower()
+    assert "PROHIBIDO" in prompt

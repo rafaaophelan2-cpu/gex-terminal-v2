@@ -110,6 +110,11 @@ def test_post_chat_message_saves_both_messages_and_uses_groq(authed_client, monk
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
     monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
 
+    async def _fake_fetch_chat_history(username, limit=50):
+        return [{"role": "user", "content": "hola"}, {"role": "assistant", "content": "hola, en qué te ayudo?"}]
+
+    monkeypatch.setattr(routes_chat, "fetch_chat_history", _fake_fetch_chat_history)
+
     saved = []
 
     async def _fake_insert(username, role, content):
@@ -117,8 +122,9 @@ def test_post_chat_message_saves_both_messages_and_uses_groq(authed_client, monk
 
     monkeypatch.setattr(routes_chat, "insert_chat_message", _fake_insert)
 
-    async def _fake_query_groq(system_prompt, user_prompt):
+    async def _fake_query_groq(system_prompt, user_prompt, history=None):
         assert user_prompt == "¿dónde está el put wall?"
+        assert history == [{"role": "user", "content": "hola"}, {"role": "assistant", "content": "hola, en qué te ayudo?"}]
         return "El Put Wall más cercano está en 475."
 
     monkeypatch.setattr(routes_chat, "query_groq", _fake_query_groq)
@@ -138,12 +144,17 @@ def test_post_chat_message_falls_back_to_local_when_groq_unavailable(authed_clie
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
     monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
 
+    async def _fake_fetch_chat_history(username, limit=50):
+        return []
+
+    monkeypatch.setattr(routes_chat, "fetch_chat_history", _fake_fetch_chat_history)
+
     async def _fake_insert(username, role, content):
         pass
 
     monkeypatch.setattr(routes_chat, "insert_chat_message", _fake_insert)
 
-    async def _fake_query_groq_none(system_prompt, user_prompt):
+    async def _fake_query_groq_none(system_prompt, user_prompt, history=None):
         return None
 
     monkeypatch.setattr(routes_chat, "query_groq", _fake_query_groq_none)

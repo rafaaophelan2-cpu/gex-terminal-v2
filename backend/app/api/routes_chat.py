@@ -13,6 +13,11 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # Mismo factor que /market/ai-diagnosis -- ver comentario en routes_rest.py.
 NQ_QQQ_RATIO = 41.125
 
+# Turnos previos que se le pasan a Groq como memoria de la conversación
+# (12 mensajes = ~6 idas y vueltas) -- lo suficiente para continuidad
+# real sin disparar el consumo de tokens en cada mensaje nuevo.
+CHAT_HISTORY_TURNS = 12
+
 
 @router.get("/history", response_model=ChatHistoryResponse)
 async def get_chat_history(username: str = Depends(require_auth)):
@@ -53,6 +58,11 @@ async def post_chat_message(body: ChatMessageRequest, username: str = Depends(re
             detail=f"No hay datos en vivo para {body.symbol} todavía -- abre GEX INFO en ese símbolo primero.",
         )
 
+    # Leer el historial ANTES de insertar el mensaje nuevo (si no, el
+    # propio mensaje que se está por responder quedaría duplicado al
+    # final del historial que se le pasa a Groq).
+    history = await fetch_chat_history(username, limit=CHAT_HISTORY_TURNS)
+
     await insert_chat_message(username, "user", message)
 
     system_prompt = build_system_prompt(
@@ -64,7 +74,7 @@ async def post_chat_message(body: ChatMessageRequest, username: str = Depends(re
         conversion_ratio=NQ_QQQ_RATIO,
     )
 
-    ai_text = await query_groq(system_prompt, message)
+    ai_text = await query_groq(system_prompt, message, history=history)
     source = "groq"
     if not ai_text:
         ai_text = generate_local_diagnosis(body.symbol, ctx["spot"], ctx["metrics"], ctx["vix_val"], NQ_QQQ_RATIO)
