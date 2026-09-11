@@ -149,6 +149,26 @@
             </div>
           </section>
         </main>
+
+        <div id="chat-widget">
+          <button id="chat-toggle-btn" aria-label="Abrir asistente IA">💬</button>
+          <div id="chat-panel" hidden>
+            <div class="chat-panel-header">
+              <span>🤖 Asistente IA GEX</span>
+              <div class="chat-panel-actions">
+                <button id="chat-clear-btn" type="button" title="Limpiar historial">🗑️</button>
+                <button id="chat-close-btn" type="button" title="Cerrar">✕</button>
+              </div>
+            </div>
+            <div id="chat-messages" class="chat-messages">
+              <p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <input id="chat-input" type="text" placeholder="Escribe tu pregunta..." autocomplete="off" />
+              <button type="submit" id="chat-send-btn" aria-label="Enviar">➤</button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

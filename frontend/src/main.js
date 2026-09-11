@@ -1,6 +1,7 @@
 import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
+import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
 import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
@@ -37,6 +38,14 @@ const aiTipoSelect = document.getElementById('ai-tipo-select')
 const aiDiagnosisBtn = document.getElementById('ai-diagnosis-btn')
 const aiStatusEl = document.getElementById('ai-status')
 const aiResultEl = document.getElementById('ai-diagnosis-result')
+const chatToggleBtn = document.getElementById('chat-toggle-btn')
+const chatPanel = document.getElementById('chat-panel')
+const chatCloseBtn = document.getElementById('chat-close-btn')
+const chatClearBtn = document.getElementById('chat-clear-btn')
+const chatMessagesEl = document.getElementById('chat-messages')
+const chatForm = document.getElementById('chat-form')
+const chatInput = document.getElementById('chat-input')
+const chatSendBtn = document.getElementById('chat-send-btn')
 
 const dataMetricEls = {
   regime: document.getElementById('data-regime'),
@@ -69,6 +78,7 @@ const metricEls = {
 }
 
 let wsClient = null
+let chatHistoryLoaded = false
 let activeGreek = 'dex'
 let latestGreeksPayload = null
 let latestGexInfo = null
@@ -238,6 +248,9 @@ function showLogin() {
   loginView.hidden = false
   dashboardView.hidden = true
   wsClient?.close()
+  chatHistoryLoaded = false
+  chatMessagesEl.innerHTML = '<p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>'
+  closeChatPanel()
 }
 
 function setMetric(el, text, valueClass) {
@@ -432,6 +445,92 @@ greeksSubNavButtons.forEach((btn) => {
       renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
     }
   })
+})
+
+function scrollChatToBottom() {
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight
+}
+
+function clearChatPlaceholder() {
+  const placeholder = chatMessagesEl.querySelector('.chat-placeholder')
+  if (placeholder) placeholder.remove()
+}
+
+function appendChatMessage(role, content, { pending = false } = {}) {
+  clearChatPlaceholder()
+  const bubble = document.createElement('div')
+  bubble.className = `chat-msg chat-msg-${role}${pending ? ' chat-msg-pending' : ''}`
+  if (role === 'assistant') {
+    bubble.innerHTML = marked.parse(content)
+  } else {
+    bubble.textContent = content
+  }
+  chatMessagesEl.appendChild(bubble)
+  scrollChatToBottom()
+  return bubble
+}
+
+async function loadChatHistory() {
+  if (chatHistoryLoaded) return
+  chatHistoryLoaded = true
+  try {
+    const messages = await fetchChatHistory()
+    messages.forEach((m) => appendChatMessage(m.role, m.content))
+  } catch (err) {
+    console.error('Error cargando historial de chat:', err)
+  }
+}
+
+function openChatPanel() {
+  chatPanel.hidden = false
+  loadChatHistory()
+  chatInput.focus()
+}
+
+function closeChatPanel() {
+  chatPanel.hidden = true
+}
+
+chatToggleBtn.addEventListener('click', () => {
+  if (chatPanel.hidden) openChatPanel()
+  else closeChatPanel()
+})
+
+chatCloseBtn.addEventListener('click', closeChatPanel)
+
+chatClearBtn.addEventListener('click', async () => {
+  try {
+    await clearChatHistory()
+    chatMessagesEl.innerHTML = '<p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>'
+  } catch (err) {
+    console.error('Error limpiando historial de chat:', err)
+  }
+})
+
+chatForm.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const message = chatInput.value.trim()
+  if (!message) return
+
+  const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+  appendChatMessage('user', message)
+  chatInput.value = ''
+  chatInput.disabled = true
+  chatSendBtn.disabled = true
+  const pendingBubble = appendChatMessage('assistant', 'Pensando…', { pending: true })
+
+  try {
+    const result = await postChatMessage(symbol, message)
+    pendingBubble.remove()
+    appendChatMessage('assistant', result.content)
+  } catch (err) {
+    pendingBubble.remove()
+    appendChatMessage('assistant', `⚠ ${err.message || 'Error generando la respuesta.'}`)
+  } finally {
+    chatInput.disabled = false
+    chatSendBtn.disabled = false
+    chatInput.focus()
+  }
 })
 
 aiDiagnosisBtn.addEventListener('click', async () => {

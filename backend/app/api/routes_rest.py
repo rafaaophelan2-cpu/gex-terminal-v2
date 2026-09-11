@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -6,15 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
-from app.domain.ai_prompt import build_default_user_prompt, build_intraday_context, build_system_prompt
+from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt
 from app.domain.drift import compute_drift_series
 from app.domain.heatmap import compute_heatmap_matrix
-from app.domain.metrics import compute_metrics_for_dte
 from app.integrations.groq_client import query_groq
-from app.integrations.schwab_client import fetch_price_history, fetch_vix
+from app.integrations.schwab_client import fetch_price_history
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
-from app.services.market_feed import feed_registry
+from app.services.ai_context import NoActiveFeedError, build_ai_context
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -97,29 +95,20 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
     de trading que app.py y llama a Groq; si no hay API key o la llamada
     falla, cae a un diagnóstico local por plantilla en vez de dejar la
     pestaña vacía."""
-    feed = feed_registry.get(body.symbol)
-    if feed is None or feed.df.empty or feed.spot_price <= 0:
+    try:
+        ctx = await build_ai_context(body.symbol)
+    except NoActiveFeedError:
         raise HTTPException(
             status_code=409,
             detail=f"No hay datos en vivo para {body.symbol} todavía -- abre GEX INFO en ese símbolo primero.",
         )
 
-    exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
-    metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
-
-    today = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-    candles, vix_val = await asyncio.gather(
-        fetch_price_history(body.symbol, today),
-        fetch_vix(),
-    )
-    intraday_context = build_intraday_context(candles, feed.spot_price)
-
     system_prompt = build_system_prompt(
         ticker=body.symbol,
-        spot=feed.spot_price,
-        metrics=metrics,
-        vix_val=vix_val,
-        intraday_context=intraday_context,
+        spot=ctx["spot"],
+        metrics=ctx["metrics"],
+        vix_val=ctx["vix_val"],
+        intraday_context=ctx["intraday_context"],
         conversion_ratio=NQ_QQQ_RATIO,
     )
     user_prompt = build_default_user_prompt(body.tipo_analisis)
@@ -128,5 +117,5 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
     if ai_text:
         return AiDiagnosisResponse(text=ai_text, source="groq")
 
-    local_text = generate_local_diagnosis(body.symbol, feed.spot_price, metrics, vix_val, NQ_QQQ_RATIO)
+    local_text = generate_local_diagnosis(body.symbol, ctx["spot"], ctx["metrics"], ctx["vix_val"], NQ_QQQ_RATIO)
     return AiDiagnosisResponse(text=local_text, source="local")

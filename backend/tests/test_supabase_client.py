@@ -24,8 +24,25 @@ class _FakeQuery:
     def limit(self, n):
         return self
 
+    def order(self, *_args, **_kwargs):
+        return self
+
     def execute(self):
         return SimpleNamespace(data=self.existing_rows)
+
+
+class _FakeDelete:
+    def __init__(self, table):
+        self.table = table
+        self.filters = []
+
+    def eq(self, col, val):
+        self.filters.append(("eq", col, val))
+        return self
+
+    def execute(self):
+        self.table.deleted_filters = self.filters
+        return SimpleNamespace(data=[])
 
 
 class _FakeTable:
@@ -33,6 +50,7 @@ class _FakeTable:
         self.existing_rows = existing_rows
         self.inserted = []
         self.last_query = None
+        self.deleted_filters = None
 
     def select(self, *_args):
         self.last_query = _FakeQuery(self.existing_rows)
@@ -41,6 +59,9 @@ class _FakeTable:
     def insert(self, payload):
         self.inserted.append(payload)
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=[payload]))
+
+    def delete(self):
+        return _FakeDelete(self)
 
 
 class _FakeClient:
@@ -87,3 +108,37 @@ def test_insert_gex_snapshot_scopes_dedup_check_to_today_not_all_time(monkeypatc
     assert "created_at" in filter_cols
     ops_on_created_at = {f[0] for f in filters if f[1] == "created_at"}
     assert ops_on_created_at == {"gte", "lt"}
+
+
+def test_fetch_chat_history_scopes_by_username(monkeypatch):
+    fake_client = _FakeClient(existing_rows=[
+        {"role": "user", "content": "hola"},
+        {"role": "assistant", "content": "hola, en qué te ayudo?"},
+    ])
+    monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: fake_client)
+
+    rows = asyncio.run(supabase_client.fetch_chat_history("trader1"))
+
+    assert len(rows) == 2
+    filters = fake_client._table.last_query.filters
+    assert ("eq", "user_email", "trader1") in filters
+
+
+def test_insert_chat_message_tags_with_username(monkeypatch):
+    fake_client = _FakeClient(existing_rows=[])
+    monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: fake_client)
+
+    asyncio.run(supabase_client.insert_chat_message("trader1", "user", "hola"))
+
+    assert fake_client._table.inserted == [
+        {"role": "user", "content": "hola", "user_email": "trader1"}
+    ]
+
+
+def test_clear_chat_history_only_deletes_current_user(monkeypatch):
+    fake_client = _FakeClient(existing_rows=[])
+    monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: fake_client)
+
+    asyncio.run(supabase_client.clear_chat_history("trader1"))
+
+    assert fake_client._table.deleted_filters == [("eq", "user_email", "trader1")]

@@ -24,3 +24,23 @@ class AiDiagnosisRequest(BaseModel):
 class AiDiagnosisResponse(BaseModel):
     text: str
     source: str
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatHistoryResponse(BaseModel):
+    messages: list[ChatMessage]
+
+
+class ChatMessageRequest(BaseModel):
+    symbol: str = "QQQ"
+    message: str
+
+
+class ChatMessageResponse(BaseModel):
+    role: str = "assistant"
+    content: str
+    source: str

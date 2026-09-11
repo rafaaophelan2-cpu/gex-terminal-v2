@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 import app.api.routes_auth as routes_auth
 import app.api.routes_rest as routes_rest
+import app.services.ai_context as ai_context
 from app.main import app
 
 FAKE_USER = {
@@ -96,7 +97,7 @@ def test_ai_diagnosis_requires_auth():
 
 
 def test_ai_diagnosis_without_active_feed_returns_409(authed_client, monkeypatch):
-    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: None)
     resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ"})
     assert resp.status_code == 409
 
@@ -110,9 +111,9 @@ async def _fake_vix():
 
 
 def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
-    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
-    monkeypatch.setattr(routes_rest, "fetch_price_history", _fake_candles)
-    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
 
     async def _fake_query_groq(system_prompt, user_prompt):
         assert "481.23" in system_prompt
@@ -128,9 +129,9 @@ def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
 
 
 def test_ai_diagnosis_falls_back_to_local_when_groq_unavailable(authed_client, monkeypatch):
-    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
-    monkeypatch.setattr(routes_rest, "fetch_price_history", _fake_candles)
-    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
 
     async def _fake_query_groq_none(system_prompt, user_prompt):
         return None

@@ -167,3 +167,52 @@ async def insert_gex_snapshot(snapshot: dict) -> None:
         client.table("gex_intraday").insert(snapshot).execute()
 
     await asyncio.to_thread(_insert)
+
+
+# La columna se llama "user_email" en la tabla chat_messages ya existente
+# (creada para app.py) -- se reusa tal cual, pero el valor que se guarda
+# ahí es el username del JWT, no un email real: es solo la etiqueta de
+# identidad por usuario para scoping (historial de cada quien es privado).
+async def fetch_chat_history(username: str, limit: int = 50) -> list[dict]:
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    def _query():
+        res = (
+            client.table("chat_messages")
+            .select("role, content")
+            .eq("user_email", username)
+            .order("created_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return res.data or []
+
+    return await asyncio.to_thread(_query)
+
+
+async def insert_chat_message(username: str, role: str, content: str) -> None:
+    client = get_supabase_client()
+    if client is None:
+        return
+
+    def _insert():
+        client.table("chat_messages").insert({
+            "role": role,
+            "content": content,
+            "user_email": username,
+        }).execute()
+
+    await asyncio.to_thread(_insert)
+
+
+async def clear_chat_history(username: str) -> None:
+    client = get_supabase_client()
+    if client is None:
+        return
+
+    def _delete():
+        client.table("chat_messages").delete().eq("user_email", username).execute()
+
+    await asyncio.to_thread(_delete)
