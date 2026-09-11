@@ -8,6 +8,7 @@ venv/
 .env
 backend/.env
 **/schwab_token.json
+**/_schwab_token_bootstrap.json
 
 # Frontend
 frontend/node_modules/
