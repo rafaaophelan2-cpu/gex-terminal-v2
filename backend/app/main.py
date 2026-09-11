@@ -30,13 +30,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)
 
-# CORS: en Fase 0/1 se deja abierto a localhost para desarrollo. Antes de
-# desplegar el frontend en Cloudflare Pages, restringir allow_origins al
-# dominio exacto de Pages y activar allow_credentials para que la cookie
-# de sesión viaje en el handshake del WebSocket.
+# CORS: localhost para desarrollo + el dominio de Cloudflare Pages ya
+# desplegado (gex-terminal-8vb.pages.dev). allow_origin_regex además
+# cubre los deploys de preview de Cloudflare Pages (cada deploy nuevo
+# tiene un subdominio con hash distinto bajo el mismo proyecto, ej.
+# a56d6d69.gex-terminal-8vb.pages.dev) sin tener que listarlos a mano.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "https://gex-terminal-8vb.pages.dev"],
+    allow_origin_regex=r"https://[a-z0-9-]+\.gex-terminal-8vb\.pages\.dev",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
