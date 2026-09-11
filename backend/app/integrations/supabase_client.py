@@ -47,23 +47,27 @@ async def update_user_password_hash(username: str, new_hash: str) -> None:
     await asyncio.to_thread(_update)
 
 
-async def fetch_gex_history(symbol: str, limit: int = 500) -> list[dict]:
-    """Snapshots de gex_intraday para un símbolo, ordenados cronológicamente.
-    Port de fetch_supabase_gex_history en app.py (~línea 103) -- usado para
-    reconstruir NET DRIFT (y, más adelante, el heatmap de LIVE GAMMA)."""
+async def fetch_gex_history(
+    symbol: str,
+    start_utc: str | None = None,
+    end_utc: str | None = None,
+    limit: int = 1000,
+) -> list[dict]:
+    """Snapshots de gex_intraday para un símbolo, ordenados cronológicamente,
+    opcionalmente acotados a un rango de created_at (ISO 8601 UTC) -- usado
+    para filtrar por día calendario de mercado (ver routes_rest.py). Port
+    de fetch_supabase_gex_history en app.py (~línea 103)."""
     client = get_supabase_client()
     if client is None:
         return []
 
     def _query():
-        res = (
-            client.table("gex_intraday")
-            .select("*")
-            .eq("symbol", symbol)
-            .order("created_at", desc=False)
-            .limit(limit)
-            .execute()
-        )
+        q = client.table("gex_intraday").select("*").eq("symbol", symbol)
+        if start_utc:
+            q = q.gte("created_at", start_utc)
+        if end_utc:
+            q = q.lt("created_at", end_utc)
+        res = q.order("created_at", desc=False).limit(limit).execute()
         return res.data or []
 
     return await asyncio.to_thread(_query)

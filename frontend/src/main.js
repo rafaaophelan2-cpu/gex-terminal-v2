@@ -21,6 +21,7 @@ const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
 const greeksChartEl = document.getElementById('greeks-chart')
 const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
 const netDriftChartEl = document.getElementById('net-drift-chart')
+const driftDateInput = document.getElementById('drift-date-input')
 
 const greeksMetricEls = {
   dex: document.getElementById('greeks-dex'),
@@ -50,9 +51,17 @@ function isGreeksTabActive() {
   return document.getElementById('tab-greeks').classList.contains('active')
 }
 
+function todayInLima() {
+  // Lima (UTC-5) no observa horario de verano, así que un formateo con
+  // Intl alcanza sin necesitar una librería de fechas.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
+}
+
 async function loadNetDrift() {
   try {
-    const series = await fetchDrift(symbolInput.value.trim().toUpperCase() || 'QQQ')
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const date = driftDateInput.value || todayInLima()
+    const series = await fetchDrift(symbol, date)
     renderNetDriftChart(netDriftChartEl, series)
   } catch (err) {
     console.error('Error cargando NET DRIFT:', err)
@@ -88,6 +97,7 @@ function showDashboard(username) {
   userBadge.textContent = `👤 ${username}`
   resetGexInfoChart()
   resetGreeksChart()
+  if (!driftDateInput.value) driftDateInput.value = todayInLima()
   connectMarketFeed()
 }
 
@@ -178,6 +188,10 @@ logoutBtn.addEventListener('click', async () => {
   stopDriftRefresh()
   await logout()
   showLogin()
+})
+
+driftDateInput.addEventListener('change', () => {
+  loadNetDrift()
 })
 
 applySymbolBtn.addEventListener('click', () => {

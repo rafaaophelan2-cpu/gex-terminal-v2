@@ -399,6 +399,33 @@ main {
   min-width: 90px;
 }
 
+.drift-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.drift-toolbar label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #8b949e;
+  text-transform: uppercase;
+}
+
+.drift-toolbar input[type='date'] {
+  background: #0e131f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #f0f6fc;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color-scheme: dark;
+}
+
 .coming-soon {
   background: rgba(13, 17, 26, 0.85);
   border: 1px dashed rgba(255, 255, 255, 0.12);

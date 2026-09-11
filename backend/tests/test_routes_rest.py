@@ -44,7 +44,7 @@ def test_drift_requires_auth():
 
 
 def test_drift_returns_series_for_authed_user(authed_client, monkeypatch):
-    async def _fake_history(symbol, limit=500):
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
         assert symbol == "QQQ"
         return FAKE_SNAPSHOTS
 
