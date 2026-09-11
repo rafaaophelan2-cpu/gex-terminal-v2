@@ -182,5 +182,12 @@ class FeedRegistry:
                 feed.stop()
                 del self._feeds[symbol]
 
+    def active_feeds(self) -> list[SymbolFeed]:
+        """Snapshot de los feeds con al menos un subscriptor ahora mismo --
+        usado por snapshot_writer/quantower_pusher, que no dependen de
+        ninguna conexión WS en particular (deben seguir funcionando aunque
+        cambie qué símbolo mira cada usuario)."""
+        return list(self._feeds.values())
+
 
 feed_registry = FeedRegistry()

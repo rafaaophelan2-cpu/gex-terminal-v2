@@ -45,3 +45,28 @@ async def update_user_password_hash(username: str, new_hash: str) -> None:
         client.table("app_users").update({"password_hash": new_hash}).eq("username", username).execute()
 
     await asyncio.to_thread(_update)
+
+
+async def insert_gex_snapshot(snapshot: dict) -> None:
+    """Guarda un snapshot en gex_intraday, con el mismo dedup por
+    symbol+time que push_to_supabase_bg en app.py (~línea 2598): con
+    varias conexiones guardando cada ~60s de forma independiente, dos
+    pueden caer casi en el mismo minuto y duplicar la fila."""
+    client = get_supabase_client()
+    if client is None:
+        return
+
+    def _insert():
+        existing = (
+            client.table("gex_intraday")
+            .select("id")
+            .eq("symbol", snapshot["symbol"])
+            .eq("time", snapshot["time"])
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            return
+        client.table("gex_intraday").insert(snapshot).execute()
+
+    await asyncio.to_thread(_insert)

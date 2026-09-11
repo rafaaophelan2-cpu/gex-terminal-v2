@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,19 +7,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_auth import router as auth_router
 from app.api.ws_market import router as ws_router
 from app.config import get_settings
+from app.services.snapshot_writer import snapshot_writer_loop
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Fase 1+: acá se arrancan como background tasks el FeedManager por
-    # símbolo, snapshot_writer (Supabase/Firebase cada 60s) y
-    # quantower_pusher (Firebase /live_levels cada 8s) — deben correr
-    # SIEMPRE, con o sin conexiones WS activas (ver plan: Quantower depende
-    # de /live_levels independientemente de si alguien mira el dashboard).
+    # snapshot_writer corre siempre (con o sin conexiones WS activas) --
+    # dentro solo actúa sobre símbolos con al menos un subscriptor, así
+    # que en la práctica no hace nada hasta que alguien se conecta, pero
+    # no depende de ninguna conexión en particular (mismo criterio que
+    # quantower_pusher, que se suma en Fase 3 cuando se conecte Firebase).
+    snapshot_task = asyncio.create_task(snapshot_writer_loop())
     yield
-    # Fase 1+: cancelar/cerrar limpiamente esas tasks y los clientes HTTP.
+    snapshot_task.cancel()
 
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)

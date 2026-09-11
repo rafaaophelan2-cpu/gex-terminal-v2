@@ -21,6 +21,11 @@ function baseLayout(title) {
     title: { text: title, font: { color: '#F0F6FC', size: 15 } },
     xaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)' },
     yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' },
+    hoverlabel: {
+      font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },
+      bgcolor: '#0E131F',
+      bordercolor: 'rgba(255,255,255,0.15)',
+    },
     margin: { l: 70, r: 30, t: 50, b: 50 },
     height: 560,
     showlegend: false,

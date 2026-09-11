@@ -69,6 +69,11 @@ function showLogin() {
   wsClient?.close()
 }
 
+function setMetric(el, text, valueClass) {
+  el.textContent = text
+  el.className = valueClass ? `metric-value ${valueClass}` : 'metric-value'
+}
+
 function setWsStatus(status) {
   const labels = {
     connecting: 'conectando…',
@@ -85,12 +90,12 @@ function handleMarketMessage(data) {
 
   if (data.type === 'chain_full' || data.type === 'tick') {
     metricEls.symbol.textContent = data.symbol
-    metricEls.spot.textContent = data.spot ? `$${data.spot.toFixed(2)}` : '--'
+    setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
-    metricEls.netGex.textContent = fmtMoney(info.net_gex_total)
-    metricEls.cw1.textContent = info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--'
-    metricEls.pw1.textContent = info.walls?.pw1 ? `$${info.walls.pw1.toFixed(0)}` : '--'
-    metricEls.zg.textContent = info.flip_level ? `$${info.flip_level.toFixed(2)}` : '--'
+    setMetric(metricEls.netGex, fmtMoney(info.net_gex_total), info.net_gex_total >= 0 ? 'val-positive' : 'val-negative')
+    setMetric(metricEls.cw1, info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
+    setMetric(metricEls.pw1, info.walls?.pw1 ? `$${info.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
+    setMetric(metricEls.zg, info.flip_level ? `$${info.flip_level.toFixed(2)}` : '--', 'val-zero-gamma')
 
     if (info.by_strike && info.by_strike.length > 0) {
       if (data.type === 'chain_full') {
@@ -103,11 +108,12 @@ function handleMarketMessage(data) {
     if (data.greeks) {
       latestGreeksPayload = data.greeks
       const t = data.greeks.totals
-      greeksMetricEls.dex.textContent = `${t.dex.toFixed(2)}M`
-      greeksMetricEls.tex.textContent = fmtMoney(t.tex)
-      greeksMetricEls.vex.textContent = fmtMoney(t.vex)
-      greeksMetricEls.chex.textContent = `${t.chex.toFixed(2)}M`
-      greeksMetricEls.vanna.textContent = `${t.vanna.toFixed(2)}M`
+      const signClass = (v) => (v >= 0 ? 'val-positive' : 'val-negative')
+      setMetric(greeksMetricEls.dex, `${t.dex.toFixed(2)}M`, signClass(t.dex))
+      setMetric(greeksMetricEls.tex, fmtMoney(t.tex), signClass(t.tex))
+      setMetric(greeksMetricEls.vex, fmtMoney(t.vex), signClass(t.vex))
+      setMetric(greeksMetricEls.chex, `${t.chex.toFixed(2)}M`, signClass(t.chex))
+      setMetric(greeksMetricEls.vanna, `${t.vanna.toFixed(2)}M`, signClass(t.vanna))
 
       if (isGreeksTabActive()) {
         renderGreeksChart(greeksChartEl, activeGreek, data.greeks, data.type === 'chain_full')
