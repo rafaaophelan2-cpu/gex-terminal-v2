@@ -83,16 +83,40 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
   }
 
   const shapes = []
+  const annotations = []
   if (walls) {
+    // Orden = "dominancia": CW1/PW1 es el nivel con mayor Net GEX neto
+    // (calls contra puts ya netos, no el tamaño bruto de cada lado) --
+    // eso es justo lo que ya calcula compute_call_put_walls en el
+    // backend, así que el ranking de las etiquetas es el mismo que ya
+    // se usa para las líneas: un nivel con mucho open interest en calls
+    // Y en puts que casi se cancelan pesa menos que uno más chico pero
+    // mayormente de un solo lado.
     const levels = [
-      [walls.cw1, '#10B981', 'solid'], [walls.cw2, '#10B981', 'dash'], [walls.cw3, '#10B981', 'dot'],
-      [walls.pw1, '#EF4444', 'solid'], [walls.pw2, '#EF4444', 'dash'], [walls.pw3, '#EF4444', 'dot'],
+      [walls.cw1, '#10B981', 'solid', 'CW1'], [walls.cw2, '#10B981', 'dash', 'CW2'], [walls.cw3, '#10B981', 'dot', 'CW3'],
+      [walls.pw1, '#EF4444', 'solid', 'PW1'], [walls.pw2, '#EF4444', 'dash', 'PW2'], [walls.pw3, '#EF4444', 'dot', 'PW3'],
     ]
-    levels.forEach(([y, color, dash]) => {
+    levels.forEach(([y, color, dash, label]) => {
       if (y) {
         shapes.push({
           type: 'line', x0: 0, x1: 1, xref: 'paper', y0: y, y1: y,
           line: { color, width: 1, dash },
+        })
+        // Ancladas al viewport (xref: 'paper', no a un instante real) --
+        // así quedan siempre visibles en el borde izquierdo sin importar
+        // cuánto se haga pan/zoom sobre el eje de tiempo. El eje de
+        // strike está a la derecha (side: 'right'), por eso el label va
+        // a la izquierda en vez de competir con esos ticks.
+        annotations.push({
+          x: 0.01, xref: 'paper', xanchor: 'left',
+          y, yref: 'y', yanchor: 'middle',
+          text: `<b>${label}</b>`,
+          showarrow: false,
+          font: { color, size: 10, family: 'JetBrains Mono, monospace' },
+          bgcolor: 'rgba(6, 8, 13, 0.75)',
+          bordercolor: color,
+          borderwidth: 1,
+          borderpad: 2,
         })
       }
     })
@@ -112,6 +136,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
       ...(prevYRange ? { range: prevYRange, autorange: false } : {}),
     },
     shapes,
+    annotations,
     hoverlabel: {
       font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },
       bgcolor: '#0E131F',
