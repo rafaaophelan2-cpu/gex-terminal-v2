@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.ws_market import router as ws_router
 from app.config import get_settings
 
 settings = get_settings()
@@ -21,10 +22,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)
 
-# CORS: en Fase 0 se deja abierto a localhost para desarrollo. Antes de
-# desplegar a Fly con el frontend en Cloudflare Pages, restringir
-# allow_origins al dominio exacto de Pages y activar allow_credentials para
-# que la cookie de sesión viaje en el handshake del WebSocket.
+# CORS: en Fase 0/1 se deja abierto a localhost para desarrollo. Antes de
+# desplegar el frontend en Cloudflare Pages, restringir allow_origins al
+# dominio exacto de Pages y activar allow_credentials para que la cookie
+# de sesión viaje en el handshake del WebSocket.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -34,8 +35,11 @@ app.add_middleware(
 )
 
 
+app.include_router(ws_router)
+
+
 @app.get("/health")
 async def health():
-    """Usado por Fly.io (fly.toml health check) y por la prueba de 1h de
-    Fase 0 que confirma que la máquina no se duerme."""
+    """Usado por el health check del servicio en Back4app y por las
+    pruebas que confirman que el host no duerme/se pausa inesperadamente."""
     return {"status": "ok", "environment": settings.environment}
