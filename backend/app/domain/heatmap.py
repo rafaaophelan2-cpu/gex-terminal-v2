@@ -11,17 +11,30 @@ from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
 # separados por más de 2*BAND_HALF_WIDTH quedan con una franja vacía
 # (transparente) entre ambos: áreas pequeñas y separadas, no un bloque
 # continuo pegado al de al lado.
-BAND_HALF_WIDTH = 0.2
-# Margen mínimo justo afuera de la banda, con valor 0 -- fuerza el borde
-# de la banda a ser nítido en vez de que Plotly interpole el límite de
-# la celda hasta la mitad de camino al próximo punto del eje Y.
+BAND_HALF_WIDTH = 0.1
+# Margen mínimo justo afuera de la banda, con peso 0 -- fuerza el borde
+# exterior a ser nítido en vez de que Plotly interpole el límite de la
+# celda hasta la mitad de camino al próximo punto del eje Y.
 EDGE_MARGIN = 0.02
 
-# El eje Y ahora es irregular (pocos puntos por strike, no una grilla
-# fina uniforme) para no inflar el payload -- un sigma en "unidades de
-# índice" no correspondería a una distancia de precio consistente ahí.
-# El suavizado se aplica solo en el eje tiempo (columnas, sí uniforme),
-# dejando cada banda con bordes nítidos y su ancho exacto en precio.
+# Perfil de pesos (offset relativo al strike -> peso 0-1) que define la
+# FORMA de cada nivel: sube y baja gradualmente en vez de un bloque
+# rectangular con bordes duros (peso 1 de golpe) -- así el nivel se ve
+# como una forma suave (tipo campana achatada) en vez de un rectángulo,
+# sin depender de un blur sobre un eje irregular (que sería inconsistente
+# entre niveles con distinto espaciado a su vecino).
+_BAND_PROFILE = [
+    (-BAND_HALF_WIDTH - EDGE_MARGIN, 0.0),
+    (-BAND_HALF_WIDTH, 0.12),
+    (-BAND_HALF_WIDTH * 0.5, 0.55),
+    (0.0, 1.0),
+    (BAND_HALF_WIDTH * 0.5, 0.55),
+    (BAND_HALF_WIDTH, 0.12),
+    (BAND_HALF_WIDTH + EDGE_MARGIN, 0.0),
+]
+
+# Suavizado adicional solo en el eje tiempo (columnas, sí uniforme) --
+# glow horizontal suave sin afectar el ancho/forma exacta de la banda.
 TIME_SIGMA = 0.6
 
 
@@ -50,23 +63,22 @@ def compute_heatmap_matrix(
 
     real_strikes = sorted(strikes_set)
 
-    # Eje Y combinado: 4 puntos por strike real (borde exterior en 0,
-    # borde de la banda, y los dos bordes simétricos del lado opuesto),
-    # deduplicados y ordenados. band_rows_by_strike guarda, para cada
-    # strike, qué índices de ese eje caen DENTRO de su banda (reciben el
-    # valor real) -- todo lo demás queda en 0 (transparente).
+    # Eje Y combinado: los puntos del _BAND_PROFILE de cada strike real,
+    # deduplicados y ordenados. band_weights_by_strike guarda, para cada
+    # strike, qué fila de ese eje recibe qué fracción (peso) del valor
+    # real -- todo lo demás queda en 0 (transparente).
     y_points: set[float] = set()
     for s in real_strikes:
-        y_points.add(round(s - BAND_HALF_WIDTH - EDGE_MARGIN, 4))
-        y_points.add(round(s - BAND_HALF_WIDTH, 4))
-        y_points.add(round(s + BAND_HALF_WIDTH, 4))
-        y_points.add(round(s + BAND_HALF_WIDTH + EDGE_MARGIN, 4))
+        for offset, _weight in _BAND_PROFILE:
+            y_points.add(round(s + offset, 4))
     y_axis = sorted(y_points)
+    y_index = {y: i for i, y in enumerate(y_axis)}
 
-    band_rows_by_strike: dict[float, list[int]] = {}
+    band_weights_by_strike: dict[float, dict[int, float]] = {}
     for s in real_strikes:
-        lo, hi = s - BAND_HALF_WIDTH - 1e-9, s + BAND_HALF_WIDTH + 1e-9
-        band_rows_by_strike[s] = [i for i, y in enumerate(y_axis) if lo <= y <= hi]
+        band_weights_by_strike[s] = {
+            y_index[round(s + offset, 4)]: weight for offset, weight in _BAND_PROFILE
+        }
 
     times = [snap.get('time', '') for snap in filtered]
     spots = [float(snap.get('spot', 0.0)) for snap in filtered]
@@ -76,8 +88,8 @@ def compute_heatmap_matrix(
         for item in snap.get('strikes', []):
             strike = float(item['strike'])
             value = float(item.get('net_gex', 0.0))
-            for row in band_rows_by_strike.get(strike, ()):
-                z[row, t_idx] = value
+            for row, weight in band_weights_by_strike.get(strike, {}).items():
+                z[row, t_idx] = value * weight
 
     if z.shape[1] > 1:
         z = gaussian_filter1d(z, sigma=TIME_SIGMA, axis=1)

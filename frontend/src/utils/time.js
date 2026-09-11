@@ -22,3 +22,17 @@ export function nyWallClockToUtcSeconds(dateStr, timeStr) {
 export function nyWallClockToDate(dateStr, timeStr) {
   return new Date(nyWallClockToUtcSeconds(dateStr, timeStr) * 1000)
 }
+
+/** Para ejes 'date' de Plotly específicamente: pasarle un objeto Date de
+ * JS (nyWallClockToDate) terminaba reinterpretándose en la zona horaria
+ * LOCAL del navegador al renderizar, no en UTC -- confirmado en vivo con
+ * un usuario en Lima (UTC-5): "11:00 NY" aparecía en pantalla como
+ * "06:00". Un string de fecha/hora SIN timezone, en cambio, Plotly lo
+ * trata como literal (no lo reinterpreta con el offset del navegador) --
+ * lo que se pinta en el eje son estos mismos dígitos sin importar en qué
+ * zona horaria esté quien mira la web. Lightweight Charts (NET DRIFT) no
+ * tiene este problema -- usa nyWallClockToUtcSeconds tal cual, un número
+ * de segundos UTC sin ambigüedad posible. */
+export function nyWallClockToPlotlyString(dateStr, timeStr) {
+  return `${dateStr} ${timeStr}:00`
+}

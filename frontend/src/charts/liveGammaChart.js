@@ -1,6 +1,6 @@
 import Plotly from 'plotly.js-dist-min'
 import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
-import { nyWallClockToDate } from '../utils/time.js'
+import { nyWallClockToPlotlyString } from '../utils/time.js'
 
 /** LIVE GAMMA llega por REST (igual que NET DRIFT), cada render es un
  * redibujado completo -- no hay distinción react/restyle acá.
@@ -20,12 +20,20 @@ import { nyWallClockToDate } from '../utils/time.js'
 export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
   if (!heatmap.times || heatmap.times.length === 0) return
 
+  // Preservar el zoom/pan actual entre refrescos periódicos (ver
+  // LIVE_GAMMA_REFRESH_MS en main.js, ~cada 30s) -- sin esto, cada
+  // Plotly.react volvía a autorange y el zoom que el usuario acababa de
+  // aplicar se "reseteaba" solo a los pocos segundos. el.layout lo deja
+  // Plotly ya pegado al elemento del DOM tras el primer render.
+  const prevXRange = el.layout?.xaxis?.range
+  const prevYRange = el.layout?.yaxis?.range
+
   const maxAbs = heatmap.z.reduce(
     (acc, row) => Math.max(acc, ...row.map((v) => Math.abs(v))),
     1,
   )
 
-  const heatmapX = heatmap.times.map((t) => nyWallClockToDate(dateStr, t))
+  const heatmapX = heatmap.times.map((t) => nyWallClockToPlotlyString(dateStr, t))
 
   const traces = [
     {
@@ -35,11 +43,10 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
       z: heatmap.z,
       zmin: -maxAbs,
       zmax: maxAbs,
-      // 'best' (bilineal) interpolaba encima del blur gaussiano que ya
-      // aplica el backend, mezclando strikes vecinos en un solo bloque
-      // continuo de color -- con zsmooth apagado, cada strike queda
-      // como su propia banda horizontal (con el glow del blur real
-      // encima, pero sin la interpolación extra de Plotly).
+      // 'best' (bilineal) interpolaba entre bandas vecinas, mezclándolas
+      // en un solo bloque continuo de color -- con zsmooth apagado, cada
+      // banda queda con el ancho exacto que ya define el backend
+      // (heatmap.py: BAND_HALF_WIDTH + perfil de suavizado explícito).
       zsmooth: false,
       colorscale: [
         [0.0, 'rgba(239, 68, 68, 0.55)'],
@@ -54,7 +61,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
   ]
 
   if (candles && candles.length > 0) {
-    const candlesX = candles.map((c) => nyWallClockToDate(dateStr, c.time))
+    const candlesX = candles.map((c) => nyWallClockToPlotlyString(dateStr, c.time))
     traces.push({
       type: 'candlestick',
       name: 'Spot',
@@ -98,8 +105,12 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
     xaxis: {
       title: 'Hora', gridcolor: 'rgba(255,255,255,0.05)',
       type: 'date', tickformat: '%H:%M', rangeslider: { visible: false },
+      ...(prevXRange ? { range: prevXRange, autorange: false } : {}),
     },
-    yaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right' },
+    yaxis: {
+      title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right',
+      ...(prevYRange ? { range: prevYRange, autorange: false } : {}),
+    },
     shapes,
     hoverlabel: {
       font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },
@@ -107,7 +118,10 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
       bordercolor: 'rgba(255,255,255,0.15)',
     },
     showlegend: false,
-    dragmode: 'zoom',
+    // 'pan' por defecto -- con 'zoom' (default de Plotly), el primer
+    // click-y-arrastre del usuario recortaba/hacía zoom sin querer en
+    // vez de simplemente mover la vista.
+    dragmode: 'pan',
     margin: { l: 80, r: 60, t: 30, b: 50 },
     height: 650,
   }
