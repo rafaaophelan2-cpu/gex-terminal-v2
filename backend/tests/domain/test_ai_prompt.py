@@ -6,6 +6,7 @@ METRICS = {
     "net_dex_val": 152300.0, "net_tex_val": -88400.0, "net_vex_val": 231000.0,
     "net_chex_val": -1200.0, "net_vanna_val": 8700.0,
     "regime_str": "negative regime", "condition_str": "Negative – dealers short gamma",
+    "iv_str": "22.50%", "iv_rank_str": "64th percentile",
 }
 
 
@@ -43,6 +44,8 @@ def test_build_system_prompt_embeds_key_numbers():
     assert "Escenario A" in prompt and "Escenario B" in prompt and "Escenario C" in prompt
     # La única aparición de "$$" debe ser la propia regla que la prohíbe.
     assert prompt.count("$$") == 1
+    assert "22.50%" in prompt
+    assert "64th percentile" in prompt
 
 
 def test_build_system_prompt_includes_gamma_mechanics_and_conversational_mode():

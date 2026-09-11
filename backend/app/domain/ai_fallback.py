@@ -27,7 +27,7 @@ def generate_local_diagnosis(ticker: str, spot: float, metrics: dict, vix_val: f
     nivel_cercano = "Call Wall 1" if dist_cw1 <= dist_pw1 else "Put Wall 1"
 
     return f"""**1. Estado Actual y Contexto Intradía**
-Régimen de gamma: {metrics['regime_str']} ({metrics['condition_str']}). VIX en {vix_val:.2f} ({vix_status} - {vix_desc}). {comportamiento}
+Régimen de gamma: {metrics['regime_str']} ({metrics['condition_str']}). VIX en {vix_val:.2f} ({vix_status} - {vix_desc}). IV ATM {metrics['iv_str']} (percentil {metrics['iv_rank_str']}). {comportamiento}
 
 **2. Niveles Operativos Relevantes para Scalping**
 - Zero Gamma (flip): {metrics['zero_gamma']:.2f} USD

@@ -117,6 +117,7 @@ def build_system_prompt(
     - Call Walls (Resistencias): CW1={metrics['cw1']:.0f} USD, CW2={metrics['cw2']:.0f} USD, CW3={metrics['cw3']:.0f} USD
     - Put Walls (Soportes): PW1={metrics['pw1']:.0f} USD, PW2={metrics['pw2']:.0f} USD, PW3={metrics['pw3']:.0f} USD
     - Zero Gamma Level (Flip): {metrics['zero_gamma']:.2f} USD
+    - Volatilidad Implícita ATM: {metrics['iv_str']} (percentil de IV: {metrics['iv_rank_str']}) -- un percentil alto sugiere IV cara respecto a su propio rango reciente (favorece vender prima/spreads de crédito), uno bajo sugiere IV barata (favorece comprar opciones directas si el catalizador es fuerte).
     - Delta Exposure (DEX): {metrics['net_dex_val']:.2f}M USD | Theta Exposure (TEX): {metrics['net_tex_val']:,.0f} USD/día
     - Vega Exposure (VEX): {metrics['net_vex_val']:,.0f} USD/1% IV | Charm Exposure (CHEX): {metrics['net_chex_val']:.2f}M USD/día | Vanna: {metrics['net_vanna_val']:.2f}M USD
 

@@ -4,7 +4,7 @@ import time
 import pandas as pd
 
 from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
-from app.domain.metrics import get_nearest_dte_subset
+from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
 from app.integrations.schwab_client import fetch_option_chain
 from app.domain.parsing import parse_schwab_chain
 
@@ -32,6 +32,14 @@ class SymbolFeed:
         self.schwab_online: bool = False
         self.last_update: float = 0.0
         self.nearest_exp_key: str | None = None
+        # IV ATM / percentile: se recalculan UNA vez por tick acá (no por
+        # conexión en gex_info_payload) porque no varían con el
+        # strike_range de cada usuario -- son una lectura de mercado
+        # global, igual que el VIX. Mismo cálculo que compute_metrics_for_dte
+        # usa para el prompt de la IA, para que la barra de métricas y el
+        # análisis de la IA vean exactamente el mismo número.
+        self.iv_str: str = "--"
+        self.iv_rank_str: str = "N/A"
 
         self._task: asyncio.Task | None = None
         self._subscriber_count = 0
@@ -83,14 +91,20 @@ class SymbolFeed:
         self.schwab_online = True
         self.last_update = time.time()
 
+        metrics = compute_metrics_for_dte(df, [exp0] if exp0 else [], spot)
+        self.iv_str = metrics['iv_str']
+        self.iv_rank_str = metrics['iv_rank_str']
+
     def gex_info_payload(self, min_strike: float | None = None, max_strike: float | None = None) -> dict:
         """Slice ya agrupado/filtrado listo para mandar por WS: nearest-DTE
         por defecto, opcionalmente recortado a [min_strike, max_strike]."""
         if self.df.empty:
             return {
-                "net_gex_total": 0.0, "flip_level": self.spot_price,
+                "net_gex_total": 0.0, "call_gex_total": 0.0, "put_gex_total": 0.0,
+                "flip_level": self.spot_price,
                 "walls": {"cw1": self.spot_price, "cw2": self.spot_price, "cw3": self.spot_price,
                           "pw1": self.spot_price, "pw2": self.spot_price, "pw3": self.spot_price},
+                "iv_str": "--", "iv_rank_str": "N/A",
                 "by_strike": [],
             }
 
@@ -105,8 +119,11 @@ class SymbolFeed:
 
         return {
             "net_gex_total": float(by_strike['net_gex'].sum()),
+            "call_gex_total": float(by_strike['call_gex'].sum()),
+            "put_gex_total": float(by_strike['put_gex'].sum()),
             "flip_level": zero_gamma,
             "walls": {"cw1": cw1, "cw2": cw2, "cw3": cw3, "pw1": pw1, "pw2": pw2, "pw3": pw3},
+            "iv_str": self.iv_str, "iv_rank_str": self.iv_rank_str,
             "by_strike": [
                 {"strike": float(r.strike), "net_gex": float(r.net_gex), "call_gex": float(r.call_gex), "put_gex": float(r.put_gex)}
                 for r in by_strike.itertuples()

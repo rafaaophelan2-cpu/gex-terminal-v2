@@ -58,6 +58,8 @@ const dataMetricEls = {
   vex: document.getElementById('data-vex'),
   chex: document.getElementById('data-chex'),
   vanna: document.getElementById('data-vanna'),
+  iv: document.getElementById('data-iv'),
+  ivRank: document.getElementById('data-iv-rank'),
 }
 
 const greeksMetricEls = {
@@ -72,6 +74,8 @@ const metricEls = {
   symbol: document.getElementById('metric-symbol'),
   spot: document.getElementById('metric-spot'),
   netGex: document.getElementById('metric-net-gex'),
+  callGex: document.getElementById('metric-call-gex'),
+  putGex: document.getElementById('metric-put-gex'),
   cw1: document.getElementById('metric-cw1'),
   pw1: document.getElementById('metric-pw1'),
   zg: document.getElementById('metric-zg'),
@@ -332,6 +336,8 @@ function updateDataSummary() {
   setMetric(dataMetricEls.zg, latestGexInfo.flip_level ? `$${latestGexInfo.flip_level.toFixed(2)}` : '--', 'val-zero-gamma')
   setMetric(dataMetricEls.cw1, latestGexInfo.walls?.cw1 ? `$${latestGexInfo.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
   setMetric(dataMetricEls.pw1, latestGexInfo.walls?.pw1 ? `$${latestGexInfo.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
+  setMetric(dataMetricEls.iv, latestGexInfo.iv_str || '--', null)
+  dataMetricEls.ivRank.textContent = latestGexInfo.iv_rank_str || ''
 
   if (latestGreeksPayload) {
     const t = latestGreeksPayload.totals
@@ -353,6 +359,8 @@ function handleMarketMessage(data) {
     latestGexInfo = info
     latestWalls = info.walls
     setMetric(metricEls.netGex, fmtMoney(info.net_gex_total), info.net_gex_total >= 0 ? 'val-positive' : 'val-negative')
+    setMetric(metricEls.callGex, fmtMoney(info.call_gex_total), info.call_gex_total >= 0 ? 'val-positive' : 'val-negative')
+    setMetric(metricEls.putGex, fmtMoney(info.put_gex_total), info.put_gex_total >= 0 ? 'val-positive' : 'val-negative')
     setMetric(metricEls.cw1, info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
     setMetric(metricEls.pw1, info.walls?.pw1 ? `$${info.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
     setMetric(metricEls.zg, info.flip_level ? `$${info.flip_level.toFixed(2)}` : '--', 'val-zero-gamma')
