@@ -1,5 +1,6 @@
 import { createChart, LineSeries } from 'lightweight-charts'
 import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
+import { nyWallClockToUtcSeconds } from '../utils/time.js'
 
 const COLOR_NET = '#F59E0B'
 
@@ -20,20 +21,6 @@ let putsSeries = null
 let netSeries = null
 let spotSeries = null
 let resizeObserver = null
-
-/** Convierte una fecha+hora en hora de Nueva York (STORAGE_TZ del
- * backend) a segundos UTC -- Lightweight Charts necesita timestamps
- * reales para el eje de tiempo, no strings "HH:MM" sueltos. Usa el
- * truco estándar de comparar cómo el mismo instante se imprime en NY vs
- * UTC para derivar el offset (maneja EDT/EST solo con Intl, sin
- * librería de fechas). */
-function nyWallClockToUtcSeconds(dateStr, timeStr) {
-  const naive = new Date(`${dateStr}T${timeStr}:00`)
-  const nyString = naive.toLocaleString('en-US', { timeZone: 'America/New_York' })
-  const utcString = naive.toLocaleString('en-US', { timeZone: 'UTC' })
-  const offsetMs = new Date(utcString).getTime() - new Date(nyString).getTime()
-  return Math.floor((naive.getTime() + offsetMs) / 1000)
-}
 
 function ensureChart(el) {
   if (chart) return

@@ -104,7 +104,7 @@ async function loadLiveGamma() {
       fetchHeatmap(symbol, date),
       fetchCandles(symbol, date).catch(() => []),
     ])
-    renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles)
+    renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles, date)
   } catch (err) {
     console.error('Error cargando LIVE GAMMA:', err)
   }
@@ -183,13 +183,29 @@ function fmtMoney(val) {
   return `${sign}$${val.toFixed(1)}`
 }
 
+async function setDefaultDriftDate() {
+  if (driftDateInput.value) return
+  try {
+    // La "última sesión" real no es necesariamente "hoy": si todavía no
+    // abrió el mercado (ej. la 1am), hoy no tiene datos de horario de
+    // mercado todavía. available-dates ya está ordenado por más reciente
+    // primero y solo incluye días con datos guardados de verdad, así que
+    // usar el primero cubre ambos casos sin adivinar con el reloj.
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const dates = await fetchAvailableDates(symbol)
+    driftDateInput.value = dates[0] || todayInLima()
+  } catch {
+    driftDateInput.value = todayInLima()
+  }
+}
+
 function showDashboard(username) {
   loginView.hidden = true
   dashboardView.hidden = false
   userBadge.textContent = `👤 ${username}`
   resetGexInfoChart()
   resetGreeksChart()
-  if (!driftDateInput.value) driftDateInput.value = todayInLima()
+  setDefaultDriftDate()
   connectMarketFeed()
 }
 
