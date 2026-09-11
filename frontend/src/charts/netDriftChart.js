@@ -23,6 +23,27 @@ let spotSeries = null
 let netWaveSeries = null
 let resizeObserver = null
 
+// getVisibleRange() está documentado como "IRange<number> | null" -- puede
+// devolver null (typings.d.ts: "or null if the range is not set"), y no
+// hay garantía de que sea null en el mismo momento para 'right' que para
+// 'left'. Cuando eso pasa a mitad de un zoom/pan, el código anterior
+// simplemente no hacía nada para ese eje ese frame (`if (!baseRange)
+// return`), lo cual coincide con el síntoma reportado: un eje se mueve y
+// el otro se queda pegado. Estos dos guardan, calculados directo de los
+// datos reales cada vez que renderNetDriftChart trae una serie nueva, un
+// rango de respaldo SIEMPRE disponible para no depender de que la
+// librería devuelva algo utilizable en el momento exacto del gesto.
+let lastRightDataRange = null
+let lastLeftDataRange = null
+
+function rangeFromValues(values, paddingFraction = 0.1) {
+  if (!values || values.length === 0) return null
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const pad = (max - min) * paddingFraction || Math.abs(max) * paddingFraction || 1
+  return { from: min - pad, to: max + pad }
+}
+
 function ensureChart(el) {
   if (chart) return
 
@@ -138,8 +159,10 @@ function applyZoomFromBaseRange(priceScale, baseRange, factor) {
   priceScale.setVisibleRange({ from: center - halfSpan, to: center + halfSpan })
 }
 
-function zoomPriceScale(priceScale, zoomFactor) {
-  applyZoomFromBaseRange(priceScale, priceScale.getVisibleRange(), zoomFactor)
+function zoomPriceScale(priceScale, zoomFactor, fallbackRange, label) {
+  const range = priceScale.getVisibleRange()
+  if (!range) console.debug(`[NET DRIFT] wheel-zoom: getVisibleRange() null en '${label}', usando fallback`, fallbackRange)
+  applyZoomFromBaseRange(priceScale, range ?? fallbackRange, zoomFactor)
 }
 
 /** Lightweight Charts deja hacer zoom vertical arrastrando el eje de
@@ -188,8 +211,8 @@ function attachRightAxisWheelZoom(el) {
 
       // Scroll hacia arriba (deltaY < 0) acerca (achica el rango visible).
       const zoomFactor = event.deltaY < 0 ? 0.9 : 1 / 0.9
-      zoomPriceScale(rightScale, zoomFactor)
-      zoomPriceScale(chart.priceScale('left'), zoomFactor)
+      zoomPriceScale(rightScale, zoomFactor, lastRightDataRange, 'right')
+      zoomPriceScale(chart.priceScale('left'), zoomFactor, lastLeftDataRange, 'left')
     },
     { capture: true, passive: false },
   )
@@ -219,9 +242,12 @@ function isOverPriceAxis(el, clientX) {
  * exactamente ese síntoma). Leyendo el rango ACTUAL en cada mousemove en
  * vez de uno capturado, un fallo puntual de un frame no arruina el resto
  * del gesto -- el siguiente movimiento vuelve a leerlo bien. */
-function panPriceScaleByPixels(priceScale, deltaYpx, heightPx) {
-  const range = priceScale.getVisibleRange()
-  if (!range) return
+function panPriceScaleByPixels(priceScale, deltaYpx, heightPx, fallbackRange, label) {
+  const range = priceScale.getVisibleRange() ?? fallbackRange
+  if (!range) {
+    console.debug(`[NET DRIFT] pan: sin rango disponible (ni la librería ni el fallback) en '${label}'`)
+    return
+  }
   const span = range.to - range.from
   const priceDelta = (deltaYpx / heightPx) * span
   priceScale.setAutoScale(false)
@@ -265,6 +291,13 @@ function attachSyncedAxisDrag(el) {
       dragging = true
       lastY = event.clientY
       heightPx = el.getBoundingClientRect().height
+      console.debug('[NET DRIFT] drag iniciado', {
+        clientX: event.clientX,
+        rightWidth: chart.priceScale('right').width(),
+        leftWidth: chart.priceScale('left').width(),
+        rightRangeAlEmpezar: chart.priceScale('right').getVisibleRange(),
+        leftRangeAlEmpezar: chart.priceScale('left').getVisibleRange(),
+      })
       event.preventDefault()
       event.stopPropagation()
       event.stopImmediatePropagation()
@@ -300,8 +333,8 @@ function attachSyncedAxisDrag(el) {
       lastY = event.clientY
       if (deltaY === 0) return
 
-      panPriceScaleByPixels(chart.priceScale('right'), deltaY, heightPx)
-      panPriceScaleByPixels(chart.priceScale('left'), deltaY, heightPx)
+      panPriceScaleByPixels(chart.priceScale('right'), deltaY, heightPx, lastRightDataRange, 'right')
+      panPriceScaleByPixels(chart.priceScale('left'), deltaY, heightPx, lastLeftDataRange, 'left')
     },
     { capture: true, passive: false },
   )
@@ -329,12 +362,19 @@ export function renderNetDriftChart(el, series, dateStr) {
   ensureChart(el)
 
   const times = series.time.map((t) => nyWallClockToUtcSeconds(dateStr, t))
+  const callsValues = series.call_gex.map((v) => Math.abs(v))
+  const putsValues = series.put_gex.map((v) => Math.abs(v))
 
-  callsSeries.setData(times.map((time, i) => ({ time, value: Math.abs(series.call_gex[i]) })))
-  putsSeries.setData(times.map((time, i) => ({ time, value: Math.abs(series.put_gex[i]) })))
+  callsSeries.setData(times.map((time, i) => ({ time, value: callsValues[i] })))
+  putsSeries.setData(times.map((time, i) => ({ time, value: putsValues[i] })))
   netSeries.setData(times.map((time, i) => ({ time, value: series.net_gex[i] })))
   spotSeries.setData(times.map((time, i) => ({ time, value: series.spot[i] })))
   netWaveSeries.setData(times.map((time, i) => ({ time, value: series.net_gex[i] })))
+
+  // Rango de respaldo para 'right' (Calls/Puts/Net comparten escala) y
+  // 'left' (Spot) -- ver el comentario junto a lastRightDataRange arriba.
+  lastRightDataRange = rangeFromValues([...callsValues, ...putsValues, ...series.net_gex])
+  lastLeftDataRange = rangeFromValues(series.spot)
 
   chart.timeScale().fitContent()
 }
