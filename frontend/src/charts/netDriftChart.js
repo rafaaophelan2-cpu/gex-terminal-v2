@@ -40,6 +40,15 @@ function ensureChart(el) {
     rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
     leftPriceScale: { visible: true, borderColor: 'rgba(255,255,255,0.1)' },
     crosshair: { mode: 0 },
+    // Explícito aunque ya sea el default de la librería: arrastrar
+    // (click sostenido) sobre cualquiera de los dos ejes de precio hace
+    // zoom vertical de ESE eje -- doble click lo resetea a autoScale.
+    handleScale: {
+      axisPressedMouseMove: { time: true, price: true },
+      axisDoubleClickReset: { time: true, price: true },
+      mouseWheel: true,
+      pinch: true,
+    },
   })
 
   // priceLineVisible/lastValueVisible en false: por defecto cada serie
@@ -60,6 +69,48 @@ function ensureChart(el) {
     if (width > 0 && height > 0) chart.resize(width, height)
   })
   resizeObserver.observe(el)
+
+  attachRightAxisWheelZoom(el)
+}
+
+/** Lightweight Charts deja hacer zoom vertical arrastrando el eje de
+ * precio con el mouse (axisPressedMouseMove.price, prendido por
+ * defecto), pero la rueda del mouse SOLO controla el eje de tiempo --
+ * no hay forma nativa de usar scroll para zoom vertical, que es el
+ * gesto que se espera viniendo de TradingView. Esto lo agrega a mano
+ * sobre el eje derecho (Calls/Puts/Net) específicamente: al desactivar
+ * el autoScale con setAutoScale(false), el rango manual sobrevive a los
+ * refrescos periódicos (cada renderNetDriftChart vuelve a llamar
+ * setData, que no pisa un autoScale ya en false) -- doble click sobre
+ * el eje lo resetea (axisDoubleClickReset.price, también por defecto). */
+function attachRightAxisWheelZoom(el) {
+  el.addEventListener(
+    'wheel',
+    (event) => {
+      if (!chart) return
+      const priceScale = chart.priceScale('right')
+      const scaleWidth = priceScale.width()
+      if (scaleWidth <= 0) return
+
+      const rect = el.getBoundingClientRect()
+      const overRightAxis = event.clientX - rect.left >= rect.width - scaleWidth
+      if (!overRightAxis) return
+
+      event.preventDefault()
+      const range = priceScale.getVisibleRange()
+      if (!range) return
+
+      const center = (range.from + range.to) / 2
+      const halfSpan = (range.to - range.from) / 2
+      // Scroll hacia arriba (deltaY < 0) acerca (achica el rango visible).
+      const zoomFactor = event.deltaY < 0 ? 0.9 : 1 / 0.9
+      const newHalfSpan = halfSpan * zoomFactor
+
+      priceScale.setAutoScale(false)
+      priceScale.setVisibleRange({ from: center - newHalfSpan, to: center + newHalfSpan })
+    },
+    { passive: false },
+  )
 }
 
 /** dateStr: la fecha (YYYY-MM-DD) seleccionada en el picker -- necesaria
