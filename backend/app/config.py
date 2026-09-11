@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Equivalente a st.secrets del app.py de Streamlit. Se llenan vía
-    variables de entorno (`fly secrets set ...` en producción, `.env` local
-    para desarrollo — nunca commitear ese `.env`)."""
+    variables de entorno (panel del servicio en Back4app en producción,
+    `.env` local para desarrollo — nunca commitear ese `.env`)."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -22,9 +22,8 @@ class Settings(BaseSettings):
     # Firebase Realtime Database
     firebase_db_url: str = ""
 
-    # IA
+    # IA (solo Groq; Gemini no se usa)
     groq_api_key: str = ""
-    gemini_api_key: str = ""
 
     # Auth
     jwt_secret: str = ""
