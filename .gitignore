@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secretos / tokens (equivalentes a .streamlit/secrets.toml del proyecto viejo)
+.env
+backend/.env
+**/schwab_token.json
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
