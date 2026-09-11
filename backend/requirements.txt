@@ -3,9 +3,9 @@ uvicorn[standard]==0.34.0
 pydantic-settings==2.7.1
 websockets==14.1
 httpx==0.28.1
-pandas==3.0.5
-numpy==2.5.3
-scipy==1.18.1
+pandas>=2.2,<4
+numpy>=1.26,<3
+scipy>=1.13,<2
 python-jose[cryptography]==3.3.0
 argon2-cffi==23.1.0
 schwab-py==1.5.0
