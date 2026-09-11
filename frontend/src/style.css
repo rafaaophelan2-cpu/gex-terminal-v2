@@ -1072,3 +1072,18 @@ main {
   font-weight: 800;
   border-top: 2px solid rgba(255, 255, 255, 0.15);
 }
+
+#surface3d-sub-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+#surface3d-sub-nav .tab-btn {
+  min-width: 150px;
+}
+
+.surface3d-chart {
+  height: 650px;
+}

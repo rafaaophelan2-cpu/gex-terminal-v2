@@ -2,15 +2,17 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchGammaGrid, fetchHeatmap, fetchVix, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchVix, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
+import { renderGammaSurfaceChart } from './charts/gammaSurfaceChart.js'
 import { renderGammaVolumeProfile } from './charts/gammaVolumeProfile.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderLiveGammaChart } from './charts/liveGammaChart.js'
 import { renderNetDriftChart } from './charts/netDriftChart.js'
+import { renderVolSurfaceChart } from './charts/volSurfaceChart.js'
 import { fmtMoney } from './utils/format.js'
 
 const loginView = document.getElementById('login-view')
@@ -57,6 +59,14 @@ const gridDteApplyBtn = document.getElementById('grid-dte-apply-btn')
 const gridStatusEl = document.getElementById('grid-status')
 const gammaGridTableEl = document.getElementById('gamma-grid-table')
 const gammaVolumeProfileEl = document.getElementById('gamma-volume-profile')
+const surface3dDteBtn = document.getElementById('surface3d-dte-btn')
+const surface3dDteCount = document.getElementById('surface3d-dte-count')
+const surface3dDtePanel = document.getElementById('surface3d-dte-panel')
+const surface3dDteList = document.getElementById('surface3d-dte-list')
+const surface3dDteApplyBtn = document.getElementById('surface3d-dte-apply-btn')
+const surface3dStatusEl = document.getElementById('surface3d-status')
+const surface3dSubNavButtons = document.querySelectorAll('#surface3d-sub-nav .tab-btn')
+const surface3dChartEl = document.getElementById('surface3d-chart')
 
 const dataMetricEls = {
   regime: document.getElementById('data-regime'),
@@ -109,11 +119,23 @@ let backgammaPlayTimer = null
 let gridExpirations = []
 let gridSelectedExpKeys = null
 let gridRefreshTimer = null
+let surface3dExpirations = []
+let surface3dSelectedExpKeys = null
+let surface3dRefreshTimer = null
+let surface3dActiveView = 'gamma' // 'gamma' | 'vol'
+let latestGammaSurface = null
+let latestVolSurface = null
 
 const DRIFT_REFRESH_MS = 30000
 const LIVE_GAMMA_REFRESH_MS = 30000
 const VIX_REFRESH_MS = 30000
 const GRID_REFRESH_MS = 15000
+const SURFACE3D_REFRESH_MS = 20000
+// 3D SURFACE/VOL SURFACE preseleccionan más expiraciones por defecto que
+// el GRID (mismo criterio que DEFAULT_SURFACE_EXPIRATION_COUNT en
+// routes_rest.py) -- una malla 3D necesita más puntos en el eje DTE para
+// verse como superficie continua en vez de un par de cortes aislados.
+const SURFACE3D_DEFAULT_DTE_COUNT = 10
 
 function isGreeksTabActive() {
   return document.getElementById('tab-greeks').classList.contains('active')
@@ -306,6 +328,100 @@ function stopGridRefresh() {
   }
 }
 
+function renderSurface3dDteChecklist() {
+  if (surface3dExpirations.length === 0) {
+    surface3dDteList.innerHTML = '<p class="dte-list-placeholder">Sin expiraciones disponibles -- abre GEX INFO primero.</p>'
+    return
+  }
+  const checkedKeys = surface3dSelectedExpKeys
+    ?? surface3dExpirations.slice(0, SURFACE3D_DEFAULT_DTE_COUNT).map((e) => e.exp_key)
+  surface3dDteList.innerHTML = surface3dExpirations
+    .map((exp) => {
+      const checked = checkedKeys.includes(exp.exp_key) ? 'checked' : ''
+      return `<label class="dte-item"><input type="checkbox" value="${exp.exp_key}" ${checked} /> ${exp.exp_date} · ${exp.dte} DTE</label>`
+    })
+    .join('')
+}
+
+async function loadSurface3dExpirations() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    surface3dExpirations = await fetchExpirations(symbol)
+    renderSurface3dDteChecklist()
+  } catch (err) {
+    console.error('Error cargando expiraciones del 3D:', err)
+  }
+}
+
+function openSurface3dDtePanel() {
+  surface3dDtePanel.hidden = false
+  if (surface3dExpirations.length === 0) loadSurface3dExpirations()
+}
+
+function closeSurface3dDtePanel() {
+  surface3dDtePanel.hidden = true
+}
+
+function applySurface3dDteSelection() {
+  const checked = Array.from(surface3dDteList.querySelectorAll('input[type="checkbox"]:checked'))
+  surface3dSelectedExpKeys = checked.map((cb) => cb.value)
+  surface3dDteCount.textContent = surface3dSelectedExpKeys.length > 0 ? `(${surface3dSelectedExpKeys.length})` : ''
+  closeSurface3dDtePanel()
+  loadSurface3d()
+}
+
+/** Ambas subpestañas comparten un solo contenedor Plotly (igual que
+ * GREEKS reusa #greeks-chart para cada Griega) -- evita duplicar el
+ * layout de la escena 3D y, al ser el mismo trace 'surface' en ambos
+ * casos, Plotly.react puede redibujar sin problema. */
+function renderActiveSurface3d() {
+  if (surface3dActiveView === 'gamma' && latestGammaSurface) {
+    renderGammaSurfaceChart(surface3dChartEl, latestGammaSurface)
+  } else if (surface3dActiveView === 'vol' && latestVolSurface) {
+    renderVolSurfaceChart(surface3dChartEl, latestVolSurface)
+  }
+}
+
+async function loadSurface3d() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    surface3dStatusEl.textContent = 'Actualizando…'
+    const [gammaSurface, volSurface] = await Promise.all([
+      fetchGammaSurface(symbol, surface3dSelectedExpKeys),
+      fetchVolSurface(symbol, surface3dSelectedExpKeys),
+    ])
+    latestGammaSurface = gammaSurface
+    latestVolSurface = volSurface
+
+    // Igual que GRID: mientras no haya selección manual, adopta las
+    // columnas que el backend eligió por defecto para que el selector de
+    // DTEs, al abrirse, muestre marcado justo lo que ya se está viendo.
+    if (surface3dSelectedExpKeys === null && gammaSurface.columns) {
+      surface3dSelectedExpKeys = gammaSurface.columns.map((c) => c.exp_key)
+      surface3dDteCount.textContent = `(${surface3dSelectedExpKeys.length})`
+    }
+
+    renderActiveSurface3d()
+    surface3dStatusEl.textContent = `Actualizado ${new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+  } catch (err) {
+    surface3dStatusEl.textContent = err.message || 'Error cargando el 3D.'
+    console.error('Error cargando superficies 3D:', err)
+  }
+}
+
+function startSurface3dRefresh() {
+  stopSurface3dRefresh()
+  loadSurface3d()
+  surface3dRefreshTimer = setInterval(loadSurface3d, SURFACE3D_REFRESH_MS)
+}
+
+function stopSurface3dRefresh() {
+  if (surface3dRefreshTimer) {
+    clearInterval(surface3dRefreshTimer)
+    surface3dRefreshTimer = null
+  }
+}
+
 function renderBackgammaAtIndex(index) {
   if (!backgammaHeatmap || !backgammaHeatmap.times.length) return
   const i = Math.min(Math.max(index, 0), backgammaHeatmap.times.length - 1)
@@ -398,8 +514,13 @@ function showLogin() {
   stopLiveGammaRefresh()
   stopBackgammaPlay()
   stopGridRefresh()
+  stopSurface3dRefresh()
   gridExpirations = []
   gridSelectedExpKeys = null
+  surface3dExpirations = []
+  surface3dSelectedExpKeys = null
+  latestGammaSurface = null
+  latestVolSurface = null
   chatHistoryLoaded = false
   chatMessagesEl.innerHTML = '<p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>'
   closeChatPanel()
@@ -558,11 +679,17 @@ applySymbolBtn.addEventListener('click', () => {
   resetGexInfoChart()
   wsClient?.subscribe(symbol, strikeRange)
 
-  // Las expiraciones/selección del GRID son por símbolo -- al cambiar de
-  // símbolo se descartan para que la próxima carga pida las del nuevo.
+  // Las expiraciones/selección del GRID y del 3D son por símbolo -- al
+  // cambiar de símbolo se descartan para que la próxima carga pida las
+  // del nuevo.
   gridExpirations = []
   gridSelectedExpKeys = null
   gridDteCount.textContent = ''
+  surface3dExpirations = []
+  surface3dSelectedExpKeys = null
+  surface3dDteCount.textContent = ''
+  latestGammaSurface = null
+  latestVolSurface = null
 })
 
 tabButtons.forEach((btn) => {
@@ -603,6 +730,13 @@ tabButtons.forEach((btn) => {
       stopGridRefresh()
       closeGridDtePanel()
     }
+
+    if (btn.dataset.tab === 'surface3d') {
+      startSurface3dRefresh()
+    } else {
+      stopSurface3dRefresh()
+      closeSurface3dDtePanel()
+    }
   })
 })
 
@@ -613,9 +747,28 @@ gridDteBtn.addEventListener('click', () => {
 
 gridDteApplyBtn.addEventListener('click', applyGridDteSelection)
 
+surface3dDteBtn.addEventListener('click', () => {
+  if (surface3dDtePanel.hidden) openSurface3dDtePanel()
+  else closeSurface3dDtePanel()
+})
+
+surface3dDteApplyBtn.addEventListener('click', applySurface3dDteSelection)
+
+surface3dSubNavButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    surface3dSubNavButtons.forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    surface3dActiveView = btn.dataset.surface
+    renderActiveSurface3d()
+  })
+})
+
 document.addEventListener('click', (event) => {
   if (!gridDtePanel.hidden && !event.target.closest('.dte-selector')) {
     closeGridDtePanel()
+  }
+  if (!surface3dDtePanel.hidden && !event.target.closest('.dte-selector')) {
+    closeSurface3dDtePanel()
   }
 })
 

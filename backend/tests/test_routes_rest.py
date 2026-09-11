@@ -223,3 +223,87 @@ def test_gamma_grid_respects_explicit_exp_keys(authed_client, monkeypatch):
     body = resp.json()
     assert [c["exp_key"] for c in body["columns"]] == ["2026-09-11:0", "2026-10-01:20"]
     assert body["values"][0] == [10_000_000.0, 1_000_000.0]
+
+
+def test_gamma_surface_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/gamma-surface?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_gamma_surface_without_active_feed_returns_409(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/gamma-surface?symbol=QQQ")
+    assert resp.status_code == 409
+
+
+def test_gamma_surface_defaults_to_nearest_expirations_when_none_selected(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeMultiExpFeed())
+    resp = authed_client.get("/market/gamma-surface?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    # Mismo fixture que GRID: solo 3 expiraciones disponibles, todas caen
+    # dentro de DEFAULT_SURFACE_EXPIRATION_COUNT (10) igual que del GRID (6).
+    assert [c["exp_key"] for c in body["columns"]] == ["2026-09-11:0", "2026-09-21:10", "2026-10-01:20"]
+
+
+class _FakeManyExpFeed:
+    """>6 expiraciones -- para distinguir el default de SURFACE (10) del
+    default de GRID (6) sin ambigüedad."""
+
+    def __init__(self):
+        self.spot_price = 480.0
+        rows = [
+            {"strike": 480.0, "exp_key": f"exp{i}", "exp_date": f"2026-09-{11 + i:02d}", "dte": i, "net_gex": float(i)}
+            for i in range(8)
+        ]
+        self.df = pd.DataFrame(rows)
+
+
+def test_gamma_surface_default_count_differs_from_grid_default(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeManyExpFeed())
+
+    grid_resp = authed_client.get("/market/gamma-grid?symbol=QQQ")
+    surface_resp = authed_client.get("/market/gamma-surface?symbol=QQQ")
+
+    assert len(grid_resp.json()["columns"]) == 6
+    assert len(surface_resp.json()["columns"]) == 8  # las 8 disponibles, tope real es 10
+
+
+def test_gamma_surface_respects_explicit_exp_keys(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeMultiExpFeed())
+    resp = authed_client.get("/market/gamma-surface?symbol=QQQ&exp_keys=2026-09-11:0,2026-10-01:20")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [c["exp_key"] for c in body["columns"]] == ["2026-09-11:0", "2026-10-01:20"]
+
+
+class _FakeVolSurfaceFeed:
+    def __init__(self):
+        self.spot_price = 100.0
+        self.df = pd.DataFrame([
+            {"strike": 95.0, "exp_key": "2026-09-11:0", "exp_date": "2026-09-11", "dte": 0, "iv_c": 0.30, "iv_p": 0.35},
+            {"strike": 105.0, "exp_key": "2026-09-11:0", "exp_date": "2026-09-11", "dte": 0, "iv_c": 0.28, "iv_p": 0.40},
+        ])
+
+
+def test_vol_surface_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/vol-surface?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_vol_surface_without_active_feed_returns_409(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/vol-surface?symbol=QQQ")
+    assert resp.status_code == 409
+
+
+def test_vol_surface_returns_iv_grid_with_otm_convention(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeVolSurfaceFeed())
+    resp = authed_client.get("/market/vol-surface?symbol=QQQ&exp_keys=2026-09-11:0")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["strikes"] == [95.0, 105.0]
+    assert body["values"][body["strikes"].index(95.0)] == pytest.approx([35.0])
+    assert body["values"][body["strikes"].index(105.0)] == pytest.approx([28.0])

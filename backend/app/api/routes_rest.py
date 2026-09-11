@@ -9,6 +9,7 @@ from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt,
 from app.domain.drift import compute_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
 from app.domain.heatmap import compute_heatmap_matrix
+from app.domain.vol_surface import compute_vol_surface
 from app.integrations.groq_client import query_groq
 from app.integrations.schwab_client import fetch_price_history, fetch_vix
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
@@ -19,6 +20,12 @@ from app.services.market_feed import feed_registry
 # Cuántas expiraciones (de la más cercana en adelante) se preseleccionan
 # en el GRID cuando el usuario no eligió ninguna DTE todavía.
 DEFAULT_GRID_EXPIRATION_COUNT = 6
+
+# 3D SURFACE / 3D VOL SURFACE parten de más expiraciones por defecto que
+# el GRID: una tabla con 10+ columnas es ilegible, pero una malla 3D
+# necesita más puntos en el eje DTE para verse como una superficie
+# continua en vez de un par de cortes aislados.
+DEFAULT_SURFACE_EXPIRATION_COUNT = 10
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -169,3 +176,43 @@ async def get_gamma_grid(symbol: str = "QQQ", exp_keys: str = "", _username: str
         selected = [e["exp_key"] for e in all_exps[:DEFAULT_GRID_EXPIRATION_COUNT]]
 
     return compute_gamma_grid(feed.df, selected)
+
+
+@router.get("/gamma-surface")
+async def get_gamma_surface(symbol: str = "QQQ", exp_keys: str = "", _username: str = Depends(require_auth)):
+    """3D SURFACE: mismo Net GEX real por strike x expiración que el GRID
+    (ver domain/gamma_grid.py) -- reusa compute_gamma_grid, solo cambia
+    cuántas expiraciones se preseleccionan por defecto (más, para una
+    malla 3D más completa) sin tocar el default del GRID tabular."""
+    feed = feed_registry.get(symbol)
+    if feed is None or feed.df.empty:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No hay datos en vivo para {symbol} todavía -- abre GEX INFO en ese símbolo primero.",
+        )
+
+    selected = [k for k in exp_keys.split(",") if k]
+    if not selected:
+        all_exps = list_expirations(feed.df)
+        selected = [e["exp_key"] for e in all_exps[:DEFAULT_SURFACE_EXPIRATION_COUNT]]
+
+    return compute_gamma_grid(feed.df, selected)
+
+
+@router.get("/vol-surface")
+async def get_vol_surface(symbol: str = "QQQ", exp_keys: str = "", _username: str = Depends(require_auth)):
+    """3D VOL SURFACE: IV% (convención OTM) por strike x expiración -- ver
+    domain/vol_surface.py."""
+    feed = feed_registry.get(symbol)
+    if feed is None or feed.df.empty:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No hay datos en vivo para {symbol} todavía -- abre GEX INFO en ese símbolo primero.",
+        )
+
+    selected = [k for k in exp_keys.split(",") if k]
+    if not selected:
+        all_exps = list_expirations(feed.df)
+        selected = [e["exp_key"] for e in all_exps[:DEFAULT_SURFACE_EXPIRATION_COUNT]]
+
+    return compute_vol_surface(feed.df, selected, feed.spot_price)

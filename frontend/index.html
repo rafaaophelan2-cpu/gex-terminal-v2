@@ -72,6 +72,7 @@
             <button class="tab-btn" data-tab="greeks">GREEKS</button>
             <button class="tab-btn" data-tab="backgamma">BACKGAMMA</button>
             <button class="tab-btn" data-tab="grid">GRID</button>
+            <button class="tab-btn" data-tab="surface3d">3D</button>
             <button class="tab-btn" data-tab="data">DATA</button>
           </nav>
 
@@ -150,6 +151,28 @@
               </div>
               <div id="gamma-volume-profile" class="gamma-volume-profile"></div>
             </div>
+          </section>
+
+          <section id="tab-surface3d" class="tab-panel">
+            <div class="grid-toolbar">
+              <div class="dte-selector">
+                <button id="surface3d-dte-btn" type="button">📅 DTEs <span id="surface3d-dte-count"></span></button>
+                <div id="surface3d-dte-panel" class="dte-panel" hidden>
+                  <div id="surface3d-dte-list" class="dte-list">
+                    <p class="dte-list-placeholder">Cargando expiraciones…</p>
+                  </div>
+                  <div class="dte-panel-actions">
+                    <button id="surface3d-dte-apply-btn" type="button">Aplicar</button>
+                  </div>
+                </div>
+              </div>
+              <span id="surface3d-status" class="grid-status"></span>
+            </div>
+            <nav id="surface3d-sub-nav">
+              <button class="tab-btn active" data-surface="gamma">3D SURFACE</button>
+              <button class="tab-btn" data-surface="vol">3D VOL SURFACE</button>
+            </nav>
+            <div id="surface3d-chart" class="chart-container surface3d-chart"></div>
           </section>
 
           <section id="tab-data" class="tab-panel">

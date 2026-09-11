@@ -55,6 +55,28 @@ export async function fetchGammaGrid(symbol, expKeys) {
   return resp.json()
 }
 
+export async function fetchGammaSurface(symbol, expKeys) {
+  const params = new URLSearchParams({ symbol })
+  if (expKeys && expKeys.length > 0) params.set('exp_keys', expKeys.join(','))
+  const resp = await apiFetch(`/market/gamma-surface?${params.toString()}`)
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}))
+    throw new Error(detail.detail || `Error ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function fetchVolSurface(symbol, expKeys) {
+  const params = new URLSearchParams({ symbol })
+  if (expKeys && expKeys.length > 0) params.set('exp_keys', expKeys.join(','))
+  const resp = await apiFetch(`/market/vol-surface?${params.toString()}`)
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}))
+    throw new Error(detail.detail || `Error ${resp.status}`)
+  }
+  return resp.json()
+}
+
 export async function postAiDiagnosis(symbol, tipoAnalisis) {
   const resp = await apiFetch('/market/ai-diagnosis', {
     method: 'POST',
