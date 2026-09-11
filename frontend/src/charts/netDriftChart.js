@@ -206,13 +206,15 @@ function isOverPriceAxis(el, clientX) {
   return (rightWidth > 0 && x >= rect.width - rightWidth) || (leftWidth > 0 && x <= leftWidth)
 }
 
-// Cuánto cambia el rango visible por pixel de arrastre vertical sobre el
-// eje de precio (factor = exp(deltaY * SENSITIVITY)). Negativo: arrastrar
-// hacia ABAJO (deltaY > 0, la Y de pantalla crece hacia abajo) achica el
-// rango -- zoom in, como en TradingView -- y arrastrar hacia ARRIBA lo
-// agranda -- zoom out. Si en la práctica se siente al revés, alcanza con
-// invertir el signo.
-const DRAG_ZOOM_SENSITIVITY = -0.004
+/** Corre 'baseRange' verticalmente por 'priceDelta' (mismo ancho/span, solo
+ * cambia la posición) -- a diferencia de applyZoomFromBaseRange (que
+ * estira/achica el rango), esto es un PAN: el usuario aclaró que el
+ * arrastre no debe "zoomear", debe simplemente mover la vista. */
+function applyPanFromBaseRange(priceScale, baseRange, priceDelta) {
+  if (!baseRange) return
+  priceScale.setAutoScale(false)
+  priceScale.setVisibleRange({ from: baseRange.from + priceDelta, to: baseRange.to + priceDelta })
+}
 
 /** El pedido explícito del usuario: el arrastre del eje de precio SIEMPRE
  * debe poder mover el gráfico (no bloquearlo, como un intento anterior
@@ -221,15 +223,35 @@ const DRAG_ZOOM_SENSITIVITY = -0.004
  * arrastre arrancó sobre el eje derecho o el izquierdo. La librería no
  * tiene esto de fábrica (cada priceScale se arrastra de forma
  * independiente, ver handleScale en ensureChart), así que se reimplementa
- * a mano: en vez de dejar que Lightweight Charts procese el drag, se mide
- * el desplazamiento del mouse desde el mousedown y se aplica el MISMO
- * factor de zoom a 'right' y 'left' a la vez, contra el rango que cada
- * uno tenía al EMPEZAR el arrastre (no incremental por frame). La "ola"
- * de abajo (netWaveSeries, su propia escala 'netWave') nunca se toca acá
- * -- se queda fija como pidió el usuario. */
+ * a mano: se mide el desplazamiento del mouse desde el mousedown y se
+ * corre (PAN, no zoom -- ver applyPanFromBaseRange) el rango de 'right' y
+ * 'left' por la misma proporción a la vez, contra el rango que cada uno
+ * tenía al EMPEZAR el arrastre (no incremental por frame, para que no se
+ * acumule de forma no lineal). El zoom (estirar/achicar el rango) sigue
+ * siendo solo cosa de la rueda del mouse (attachRightAxisWheelZoom) -- el
+ * usuario aclaró que "arrastrar" debe mover la vista, no escalarla. La
+ * "ola" de abajo (netWaveSeries, su propia escala 'netWave') nunca se
+ * toca acá -- se queda fija como pidió el usuario.
+ *
+ * Confirmado en la práctica (no solo en teoría): handleScale.
+ * axisPressedMouseMove.price:false NO alcanza por sí solo para
+ * desactivar el arrastre nativo de la librería una vez que ya se llamó
+ * setAutoScale(false) alguna vez (con el wheel-zoom, por ejemplo) -- la
+ * librería lo sigue procesando igual. Mientras tanto siga recibiendo
+ * estos eventos, sigue reescalando por su cuenta el eje que se esté
+ * agarrando con el mouse, pisando visualmente el zoom sincronizado de
+ * acá abajo (por eso "solo se movía Spot/QQQ": la librería reescalaba
+ * nomás el eje bajo el mouse en cada mousemove, mientras este código
+ * trataba de mover los dos a la vez). Por eso mousedown Y mousemove se
+ * cortan en fase de CAPTURA antes de que le lleguen al canvas interno
+ * -- la librería nunca se entera de que hubo un drag, así que no tiene
+ * forma de reaccionar por su cuenta. El doble click para resetear (ver
+ * más abajo) no depende de que la librería reciba estos eventos -- es
+ * el evento 'dblclick' nativo del navegador, independiente de esto. */
 function attachSyncedAxisDrag(el) {
   let dragging = false
   let dragStartY = 0
+  let dragStartHeightPx = 0
   let dragStartRightRange = null
   let dragStartLeftRange = null
 
@@ -239,29 +261,56 @@ function attachSyncedAxisDrag(el) {
       if (!isOverPriceAxis(el, event.clientX)) return
       dragging = true
       dragStartY = event.clientY
+      dragStartHeightPx = el.getBoundingClientRect().height
       dragStartRightRange = chart.priceScale('right').getVisibleRange()
       dragStartLeftRange = chart.priceScale('left').getVisibleRange()
-      // Evita que el navegador dispare una selección de texto mientras
-      // se arrastra -- no hace falta frenar la propagación hacia la
-      // librería para esto: axisPressedMouseMove.price ya está en false,
-      // así que Lightweight Charts no va a reaccionar a este mousedown
-      // de todas formas.
       event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
     },
     { capture: true },
   )
 
-  window.addEventListener('mousemove', (event) => {
-    if (!dragging || !chart) return
-    if (event.buttons === 0) {
-      dragging = false
-      return
-    }
-    const deltaY = event.clientY - dragStartY
-    const factor = Math.exp(deltaY * DRAG_ZOOM_SENSITIVITY)
-    applyZoomFromBaseRange(chart.priceScale('right'), dragStartRightRange, factor)
-    applyZoomFromBaseRange(chart.priceScale('left'), dragStartLeftRange, factor)
-  })
+  // En window (no en 'el'): así el arrastre sigue funcionando aunque el
+  // mouse se salga del área del gráfico durante el gesto, y al estar en
+  // fase de CAPTURA sobre el nodo más alto de todos, este handler corre
+  // ANTES que cualquier listener interno de la librería cuando el mouse
+  // sí está sobre el chart -- stopPropagation ahí corta el evento antes
+  // de que baje hasta el canvas.
+  window.addEventListener(
+    'mousemove',
+    (event) => {
+      if (!dragging || !chart) return
+      if (event.buttons === 0) {
+        dragging = false
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+
+      if (dragStartHeightPx <= 0) return
+      const deltaY = event.clientY - dragStartY
+      // Un mismo desplazamiento en pixeles representa una cantidad de
+      // PRECIO distinta en cada eje (Calls/Puts/Net están en millones,
+      // Spot en dólares) -- por eso el delta se calcula por separado
+      // para cada uno, como fracción de su propio span (rango visible al
+      // empezar el arrastre) sobre el alto del panel, no un valor fijo
+      // en dólares/millones. Arrastrar hacia abajo (deltaY > 0) sube el
+      // techo del rango visible (revela valores más altos, como al
+      // arrastrar una regla larga hacia abajo con el dedo); si se siente
+      // invertido en la práctica, alcanza con invertir el signo acá.
+      if (dragStartRightRange) {
+        const spanRight = dragStartRightRange.to - dragStartRightRange.from
+        applyPanFromBaseRange(chart.priceScale('right'), dragStartRightRange, (deltaY / dragStartHeightPx) * spanRight)
+      }
+      if (dragStartLeftRange) {
+        const spanLeft = dragStartLeftRange.to - dragStartLeftRange.from
+        applyPanFromBaseRange(chart.priceScale('left'), dragStartLeftRange, (deltaY / dragStartHeightPx) * spanLeft)
+      }
+    },
+    { capture: true, passive: false },
+  )
 
   window.addEventListener('mouseup', () => {
     dragging = false
