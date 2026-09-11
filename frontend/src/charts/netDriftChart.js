@@ -144,13 +144,26 @@ function attachRightAxisWheelZoom(el) {
       const overRightAxis = event.clientX - rect.left >= rect.width - scaleWidth
       if (!overRightAxis) return
 
+      // Lightweight Charts maneja el scroll con SU PROPIO listener sobre
+      // un canvas interno (para su zoom de tiempo por defecto,
+      // handleScale.mouseWheel) -- en fase de burbuja normal, ese
+      // listener interno corre ANTES de llegar hasta acá, así que el
+      // scroll sobre el eje terminaba haciendo zoom horizontal en vez
+      // de vertical (los dos zooms competían, y el de la librería
+      // ganaba visualmente). Escuchando en fase de CAPTURA (capture:
+      // true) este handler corre primero, y stopPropagation/
+      // stopImmediatePropagation evita que el evento llegue al listener
+      // interno de la librería una vez que ya lo procesamos acá.
       event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+
       // Scroll hacia arriba (deltaY < 0) acerca (achica el rango visible).
       const zoomFactor = event.deltaY < 0 ? 0.9 : 1 / 0.9
       zoomPriceScale(rightScale, zoomFactor)
       zoomPriceScale(chart.priceScale('left'), zoomFactor)
     },
-    { passive: false },
+    { capture: true, passive: false },
   )
 }
 
