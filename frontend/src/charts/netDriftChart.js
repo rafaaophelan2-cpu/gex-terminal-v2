@@ -55,17 +55,18 @@ function ensureChart(el) {
       visible: true, borderColor: 'rgba(255,255,255,0.1)', scaleMargins: { top: 0.05, bottom: 0.25 },
     },
     crosshair: { mode: 0 },
-    // price: false -- el arrastre nativo de la librería solo escala UN
-    // eje de precio a la vez (el que se esté arrastrando), así que
-    // arrastrando el derecho movía Calls/Puts/Net pero no Spot (su
-    // propia escala izquierda), quedando "desincronizado" igual que
-    // pasaba antes con la rueda del mouse. El scroll (ver
-    // attachRightAxisWheelZoom más abajo) ya hace zoom vertical
-    // sincronizado en ambos ejes a la vez, así que el arrastre del eje
-    // se desactiva del todo en vez de dejar ese camino roto.
+    // price: false en AMBOS -- el arrastre y el doble-click-reset
+    // nativos de la librería solo tocan UN eje de precio a la vez (el
+    // que esté bajo el mouse), así que arrastrando el derecho se movía
+    // Calls/Puts/Net pero no Spot (su propia escala izquierda), y lo
+    // mismo con el doble click. Se desactivan los dos acá y se
+    // reimplementan a mano en attachSyncedAxisDrag (más abajo) aplicando
+    // siempre el mismo cambio a 'right' y 'left' juntos, sin importar
+    // desde qué eje arrancó el gesto -- así las 4 líneas (Calls/Puts/Net
+    // arriba, Spot abajo) se mueven siempre en conjunto.
     handleScale: {
       axisPressedMouseMove: { time: true, price: false },
-      axisDoubleClickReset: { time: true, price: true },
+      axisDoubleClickReset: { time: true, price: false },
       mouseWheel: true,
       pinch: true,
     },
@@ -116,16 +117,29 @@ function ensureChart(el) {
   resizeObserver.observe(el)
 
   attachRightAxisWheelZoom(el)
-  attachAxisDragBlock(el)
+  attachSyncedAxisDrag(el)
+}
+
+/** Aplica un zoom relativo a 'baseRange' (no al rango ACTUAL del
+ * priceScale) -- se pasa explícito en vez de leerlo con
+ * getVisibleRange() adentro porque attachSyncedAxisDrag necesita que el
+ * factor de cada movimiento del mouse se calcule siempre contra el
+ * rango que había al EMPEZAR el arrastre, no contra el del frame
+ * anterior (si no, el zoom se acumularía de forma no lineal y quedaría
+ * carreado/tembloroso). El wheel handler, en cambio, sí quiere
+ * incremental por cada "tick" de scroll -- por eso zoomPriceScale sigue
+ * existiendo como un caso particular de esto con baseRange = rango
+ * actual. */
+function applyZoomFromBaseRange(priceScale, baseRange, factor) {
+  if (!baseRange) return
+  const center = (baseRange.from + baseRange.to) / 2
+  const halfSpan = ((baseRange.to - baseRange.from) / 2) * factor
+  priceScale.setAutoScale(false)
+  priceScale.setVisibleRange({ from: center - halfSpan, to: center + halfSpan })
 }
 
 function zoomPriceScale(priceScale, zoomFactor) {
-  const range = priceScale.getVisibleRange()
-  if (!range) return
-  const center = (range.from + range.to) / 2
-  const halfSpan = ((range.to - range.from) / 2) * zoomFactor
-  priceScale.setAutoScale(false)
-  priceScale.setVisibleRange({ from: center - halfSpan, to: center + halfSpan })
+  applyZoomFromBaseRange(priceScale, priceScale.getVisibleRange(), zoomFactor)
 }
 
 /** Lightweight Charts deja hacer zoom vertical arrastrando el eje de
@@ -181,63 +195,87 @@ function attachRightAxisWheelZoom(el) {
   )
 }
 
-/** handleScale.axisPressedMouseMove.price: false (en ensureChart) debería
- * bastar para desactivar el arrastre del eje de precio -- pero en la
- * práctica, apenas zoomPriceScale() llama a setAutoScale(false) por
- * primera vez (el "zoom más ligero" que sea), la librería vuelve a
- * permitir arrastrar ese eje con el mouse como si la opción nunca se
- * hubiera aplicado. En vez de depender de esa opción interna, se
- * bloquea el gesto a mano: cualquier mousemove con el botón presionado
- * que haya EMPEZADO sobre la franja de un eje de precio (izquierdo o
- * derecho) se cancela en fase de CAPTURA antes de llegarle a la
- * librería, así el arrastre nunca mueve el rango.
- *
- * A propósito NO se bloquea el mousedown en sí (a diferencia de un
- * primer intento de este fix): axisDoubleClickReset.price (también en
- * ensureChart) necesita que los dos mousedown de un doble click SÍ le
- * lleguen a la librería para poder detectar el gesto y resetear el
- * zoom -- bloquearlos de raíz dejaba al usuario sin forma de deshacer
- * un zoom manual que termina recortando una de las cuatro líneas fuera
- * del rango visible. */
-function attachAxisDragBlock(el) {
-  let draggingAxis = false
+function isOverPriceAxis(el, clientX) {
+  if (!chart) return false
+  const rightWidth = chart.priceScale('right').width()
+  const leftWidth = chart.priceScale('left').width()
+  if (rightWidth <= 0 && leftWidth <= 0) return false
 
-  function isOverAxis(clientX) {
-    if (!chart) return false
-    const rightWidth = chart.priceScale('right').width()
-    const leftWidth = chart.priceScale('left').width()
-    if (rightWidth <= 0 && leftWidth <= 0) return false
+  const rect = el.getBoundingClientRect()
+  const x = clientX - rect.left
+  return (rightWidth > 0 && x >= rect.width - rightWidth) || (leftWidth > 0 && x <= leftWidth)
+}
 
-    const rect = el.getBoundingClientRect()
-    const x = clientX - rect.left
-    return (rightWidth > 0 && x >= rect.width - rightWidth) || (leftWidth > 0 && x <= leftWidth)
-  }
+// Cuánto cambia el rango visible por pixel de arrastre vertical sobre el
+// eje de precio (factor = exp(deltaY * SENSITIVITY)). Negativo: arrastrar
+// hacia ABAJO (deltaY > 0, la Y de pantalla crece hacia abajo) achica el
+// rango -- zoom in, como en TradingView -- y arrastrar hacia ARRIBA lo
+// agranda -- zoom out. Si en la práctica se siente al revés, alcanza con
+// invertir el signo.
+const DRAG_ZOOM_SENSITIVITY = -0.004
+
+/** El pedido explícito del usuario: el arrastre del eje de precio SIEMPRE
+ * debe poder mover el gráfico (no bloquearlo, como un intento anterior
+ * de este fix hacía) -- pero moviendo las 4 líneas (Calls/Puts/Net en
+ * 'right', Spot en 'left') exactamente igual, sin importar si el
+ * arrastre arrancó sobre el eje derecho o el izquierdo. La librería no
+ * tiene esto de fábrica (cada priceScale se arrastra de forma
+ * independiente, ver handleScale en ensureChart), así que se reimplementa
+ * a mano: en vez de dejar que Lightweight Charts procese el drag, se mide
+ * el desplazamiento del mouse desde el mousedown y se aplica el MISMO
+ * factor de zoom a 'right' y 'left' a la vez, contra el rango que cada
+ * uno tenía al EMPEZAR el arrastre (no incremental por frame). La "ola"
+ * de abajo (netWaveSeries, su propia escala 'netWave') nunca se toca acá
+ * -- se queda fija como pidió el usuario. */
+function attachSyncedAxisDrag(el) {
+  let dragging = false
+  let dragStartY = 0
+  let dragStartRightRange = null
+  let dragStartLeftRange = null
 
   el.addEventListener(
     'mousedown',
     (event) => {
-      draggingAxis = isOverAxis(event.clientX)
+      if (!isOverPriceAxis(el, event.clientX)) return
+      dragging = true
+      dragStartY = event.clientY
+      dragStartRightRange = chart.priceScale('right').getVisibleRange()
+      dragStartLeftRange = chart.priceScale('left').getVisibleRange()
+      // Evita que el navegador dispare una selección de texto mientras
+      // se arrastra -- no hace falta frenar la propagación hacia la
+      // librería para esto: axisPressedMouseMove.price ya está en false,
+      // así que Lightweight Charts no va a reaccionar a este mousedown
+      // de todas formas.
+      event.preventDefault()
     },
-    { capture: true, passive: true },
+    { capture: true },
   )
 
-  el.addEventListener(
-    'mousemove',
-    (event) => {
-      if (!draggingAxis) return
-      if (event.buttons === 0) {
-        draggingAxis = false
-        return
-      }
-      event.preventDefault()
-      event.stopPropagation()
-      event.stopImmediatePropagation()
-    },
-    { capture: true, passive: false },
-  )
+  window.addEventListener('mousemove', (event) => {
+    if (!dragging || !chart) return
+    if (event.buttons === 0) {
+      dragging = false
+      return
+    }
+    const deltaY = event.clientY - dragStartY
+    const factor = Math.exp(deltaY * DRAG_ZOOM_SENSITIVITY)
+    applyZoomFromBaseRange(chart.priceScale('right'), dragStartRightRange, factor)
+    applyZoomFromBaseRange(chart.priceScale('left'), dragStartLeftRange, factor)
+  })
 
   window.addEventListener('mouseup', () => {
-    draggingAxis = false
+    dragging = false
+  })
+
+  // Reemplaza axisDoubleClickReset.price (desactivado en ensureChart): el
+  // reset nativo solo resetea el eje bajo el mouse, dejando al otro
+  // todavía con zoom manual -- otra vía más de desincronización. Acá el
+  // doble click sobre cualquiera de los dos ejes resetea AMBOS al
+  // autoScale a la vez.
+  el.addEventListener('dblclick', (event) => {
+    if (!chart || !isOverPriceAxis(el, event.clientX)) return
+    chart.priceScale('right').applyOptions({ autoScale: true })
+    chart.priceScale('left').applyOptions({ autoScale: true })
   })
 }
 
