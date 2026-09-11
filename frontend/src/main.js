@@ -1,9 +1,10 @@
 import './style.css'
 import { login, logout, me } from './api/auth.js'
-import { fetchDrift } from './api/rest.js'
+import { fetchDrift, fetchHeatmap } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
+import { renderLiveGammaChart } from './charts/liveGammaChart.js'
 import { renderNetDriftChart } from './charts/netDriftChart.js'
 
 const loginView = document.getElementById('login-view')
@@ -22,6 +23,7 @@ const greeksChartEl = document.getElementById('greeks-chart')
 const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
 const netDriftChartEl = document.getElementById('net-drift-chart')
 const driftDateInput = document.getElementById('drift-date-input')
+const liveGammaChartEl = document.getElementById('live-gamma-chart')
 
 const greeksMetricEls = {
   dex: document.getElementById('greeks-dex'),
@@ -43,9 +45,12 @@ const metricEls = {
 let wsClient = null
 let activeGreek = 'dex'
 let latestGreeksPayload = null
+let latestWalls = null
 let driftRefreshTimer = null
+let liveGammaRefreshTimer = null
 
 const DRIFT_REFRESH_MS = 30000
+const LIVE_GAMMA_REFRESH_MS = 30000
 
 function isGreeksTabActive() {
   return document.getElementById('tab-greeks').classList.contains('active')
@@ -78,6 +83,30 @@ function stopDriftRefresh() {
   if (driftRefreshTimer) {
     clearInterval(driftRefreshTimer)
     driftRefreshTimer = null
+  }
+}
+
+async function loadLiveGamma() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const date = driftDateInput.value || todayInLima()
+    const heatmap = await fetchHeatmap(symbol, date)
+    renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls)
+  } catch (err) {
+    console.error('Error cargando LIVE GAMMA:', err)
+  }
+}
+
+function startLiveGammaRefresh() {
+  stopLiveGammaRefresh()
+  loadLiveGamma()
+  liveGammaRefreshTimer = setInterval(loadLiveGamma, LIVE_GAMMA_REFRESH_MS)
+}
+
+function stopLiveGammaRefresh() {
+  if (liveGammaRefreshTimer) {
+    clearInterval(liveGammaRefreshTimer)
+    liveGammaRefreshTimer = null
   }
 }
 
@@ -130,6 +159,7 @@ function handleMarketMessage(data) {
     metricEls.symbol.textContent = data.symbol
     setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
+    latestWalls = info.walls
     setMetric(metricEls.netGex, fmtMoney(info.net_gex_total), info.net_gex_total >= 0 ? 'val-positive' : 'val-negative')
     setMetric(metricEls.cw1, info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
     setMetric(metricEls.pw1, info.walls?.pw1 ? `$${info.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
@@ -186,12 +216,14 @@ loginForm.addEventListener('submit', async (event) => {
 
 logoutBtn.addEventListener('click', async () => {
   stopDriftRefresh()
+  stopLiveGammaRefresh()
   await logout()
   showLogin()
 })
 
 driftDateInput.addEventListener('change', () => {
-  loadNetDrift()
+  if (driftRefreshTimer) loadNetDrift()
+  if (liveGammaRefreshTimer) loadLiveGamma()
 })
 
 applySymbolBtn.addEventListener('click', () => {
@@ -221,6 +253,12 @@ tabButtons.forEach((btn) => {
       startDriftRefresh()
     } else {
       stopDriftRefresh()
+    }
+
+    if (btn.dataset.tab === 'live-gamma') {
+      startLiveGammaRefresh()
+    } else {
+      stopLiveGammaRefresh()
     }
   })
 })

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import require_auth
 from app.domain.drift import compute_drift_series
+from app.domain.heatmap import compute_heatmap_matrix
 from app.integrations.supabase_client import fetch_gex_history
 
 router = APIRouter(prefix="/market", tags=["market"])
@@ -15,12 +16,7 @@ router = APIRouter(prefix="/market", tags=["market"])
 NY_TZ = ZoneInfo("America/New_York")
 
 
-@router.get("/drift")
-async def get_drift(symbol: str = "QQQ", date: str | None = None, _username: str = Depends(require_auth)):
-    """Serie de NET DRIFT (horario de mercado, 09:30-16:00 NY) para
-    'symbol' en el día calendario 'date' (YYYY-MM-DD, por defecto hoy en
-    NY). Es REST (no WebSocket) porque no necesita empujarse en tiempo
-    real tick a tick -- el frontend la vuelve a pedir cada tanto."""
+async def _fetch_day_snapshots(symbol: str, date: str | None) -> list[dict]:
     if date:
         try:
             day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=NY_TZ)
@@ -31,10 +27,27 @@ async def get_drift(symbol: str = "QQQ", date: str | None = None, _username: str
 
     day_end = day_start + timedelta(days=1)
 
-    snapshots = await fetch_gex_history(
+    return await fetch_gex_history(
         symbol,
         start_utc=day_start.isoformat(),
         end_utc=day_end.isoformat(),
         limit=1000,
     )
+
+
+@router.get("/drift")
+async def get_drift(symbol: str = "QQQ", date: str | None = None, _username: str = Depends(require_auth)):
+    """Serie de NET DRIFT (horario de mercado, 09:30-16:00 NY) para
+    'symbol' en el día calendario 'date' (YYYY-MM-DD, por defecto hoy en
+    NY). Es REST (no WebSocket) porque no necesita empujarse en tiempo
+    real tick a tick -- el frontend la vuelve a pedir cada tanto."""
+    snapshots = await _fetch_day_snapshots(symbol, date)
     return compute_drift_series(snapshots)
+
+
+@router.get("/heatmap")
+async def get_heatmap(symbol: str = "QQQ", date: str | None = None, _username: str = Depends(require_auth)):
+    """Matriz strike x tiempo de net_gex real para LIVE GAMMA, construida
+    de los mismos snapshots que /drift -- ver domain/heatmap.py."""
+    snapshots = await _fetch_day_snapshots(symbol, date)
+    return compute_heatmap_matrix(snapshots)
