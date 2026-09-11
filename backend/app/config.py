@@ -29,10 +29,14 @@ class Settings(BaseSettings):
     # IA (solo Groq; Gemini no se usa)
     groq_api_key: str = ""
 
-    # Auth
+    # Auth -- 720 min (12h) cubre una sesión de mercado completa sin
+    # desloguear al usuario a mitad de uso. Antes eran 20 min sin ningún
+    # refresh silencioso: cualquier request después de esos 20 min (ej.
+    # cambiar los DTEs del GRID) fallaba con 401 "No autenticado" en
+    # plena sesión activa -- bug real reportado en vivo.
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
-    jwt_access_ttl_minutes: int = 20
+    jwt_access_ttl_minutes: int = 720
 
     # Entorno
     environment: str = "development"

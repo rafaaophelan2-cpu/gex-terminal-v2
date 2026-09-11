@@ -1,16 +1,15 @@
-import { API_BASE } from '../config.js'
+import { apiFetch } from './http.js'
 
 export async function fetchChatHistory() {
-  const resp = await fetch(`${API_BASE}/chat/history`, { credentials: 'include' })
+  const resp = await apiFetch('/chat/history')
   if (!resp.ok) throw new Error(`Error ${resp.status}`)
   const data = await resp.json()
   return data.messages
 }
 
 export async function postChatMessage(symbol, message) {
-  const resp = await fetch(`${API_BASE}/chat/message`, {
+  const resp = await apiFetch('/chat/message', {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ symbol, message }),
   })
@@ -22,9 +21,6 @@ export async function postChatMessage(symbol, message) {
 }
 
 export async function clearChatHistory() {
-  const resp = await fetch(`${API_BASE}/chat/history`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
+  const resp = await apiFetch('/chat/history', { method: 'DELETE' })
   if (!resp.ok) throw new Error(`Error ${resp.status}`)
 }

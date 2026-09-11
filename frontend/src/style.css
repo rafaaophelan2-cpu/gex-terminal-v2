@@ -977,12 +977,41 @@ main {
   color: #8b949e;
 }
 
+.grid-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
 .gamma-grid-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: auto;
   max-height: 72vh;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
+}
+
+.gamma-volume-profile {
+  flex: 0 0 360px;
+  height: 72vh;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .grid-layout {
+    flex-direction: column;
+  }
+
+  .gamma-volume-profile {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 420px;
+  }
 }
 
 .grid-placeholder {

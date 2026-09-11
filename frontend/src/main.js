@@ -6,6 +6,7 @@ import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchG
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
+import { renderGammaVolumeProfile } from './charts/gammaVolumeProfile.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderLiveGammaChart } from './charts/liveGammaChart.js'
@@ -55,6 +56,7 @@ const gridDteList = document.getElementById('grid-dte-list')
 const gridDteApplyBtn = document.getElementById('grid-dte-apply-btn')
 const gridStatusEl = document.getElementById('grid-status')
 const gammaGridTableEl = document.getElementById('gamma-grid-table')
+const gammaVolumeProfileEl = document.getElementById('gamma-volume-profile')
 
 const dataMetricEls = {
   regime: document.getElementById('data-regime'),
@@ -275,6 +277,7 @@ async function loadGammaGrid() {
     gridStatusEl.textContent = 'Actualizando…'
     const grid = await fetchGammaGrid(symbol, gridSelectedExpKeys)
     renderGammaGridTable(gammaGridTableEl, grid)
+    renderGammaVolumeProfile(gammaVolumeProfileEl, grid)
 
     // Si todavía no hubo selección manual, adopta las columnas que el
     // backend eligió por defecto -- así el selector de DTEs, al abrirse,
@@ -372,6 +375,7 @@ async function setDefaultDriftDate() {
 function showDashboard(username) {
   loginView.hidden = true
   dashboardView.hidden = false
+  sessionExpiredHandled = false
   userBadge.textContent = `👤 ${username}`
   resetGexInfoChart()
   resetGreeksChart()
@@ -384,7 +388,18 @@ function showLogin() {
   loginView.hidden = false
   dashboardView.hidden = true
   wsClient?.close()
+  // Se detienen TODOS los refrescos periódicos sin importar en qué
+  // pestaña estaba el usuario -- antes solo el cambio de pestaña los
+  // paraba, así que si la sesión expiraba (ver 'session-expired' más
+  // abajo) mientras, por ejemplo, LIVE GAMMA seguía activo, ese timer
+  // quedaba reintentando en un loop de errores 401 indefinidamente.
   stopVixRefresh()
+  stopDriftRefresh()
+  stopLiveGammaRefresh()
+  stopBackgammaPlay()
+  stopGridRefresh()
+  gridExpirations = []
+  gridSelectedExpKeys = null
   chatHistoryLoaded = false
   chatMessagesEl.innerHTML = '<p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>'
   closeChatPanel()
@@ -498,12 +513,6 @@ loginForm.addEventListener('submit', async (event) => {
 })
 
 logoutBtn.addEventListener('click', async () => {
-  stopDriftRefresh()
-  stopLiveGammaRefresh()
-  stopBackgammaPlay()
-  stopGridRefresh()
-  gridExpirations = []
-  gridSelectedExpKeys = null
   await logout()
   showLogin()
 })
@@ -726,6 +735,19 @@ aiDiagnosisBtn.addEventListener('click', async () => {
   } finally {
     aiDiagnosisBtn.disabled = false
   }
+})
+
+let sessionExpiredHandled = false
+
+// Cualquier llamada a la API que reciba 401 (ver api/http.js) dispara
+// esto -- una sola vez por expiración, ya que varias llamadas en vuelo
+// al momento de expirar podrían disparar el evento varias veces.
+window.addEventListener('session-expired', () => {
+  if (sessionExpiredHandled) return
+  sessionExpiredHandled = true
+  showLogin()
+  loginError.textContent = 'Tu sesión expiró -- inicia sesión de nuevo.'
+  loginError.hidden = false
 })
 
 async function init() {
