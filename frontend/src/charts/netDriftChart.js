@@ -55,11 +55,16 @@ function ensureChart(el) {
       visible: true, borderColor: 'rgba(255,255,255,0.1)', scaleMargins: { top: 0.05, bottom: 0.25 },
     },
     crosshair: { mode: 0 },
-    // Explícito aunque ya sea el default de la librería: arrastrar
-    // (click sostenido) sobre cualquiera de los dos ejes de precio hace
-    // zoom vertical de ESE eje -- doble click lo resetea a autoScale.
+    // price: false -- el arrastre nativo de la librería solo escala UN
+    // eje de precio a la vez (el que se esté arrastrando), así que
+    // arrastrando el derecho movía Calls/Puts/Net pero no Spot (su
+    // propia escala izquierda), quedando "desincronizado" igual que
+    // pasaba antes con la rueda del mouse. El scroll (ver
+    // attachRightAxisWheelZoom más abajo) ya hace zoom vertical
+    // sincronizado en ambos ejes a la vez, así que el arrastre del eje
+    // se desactiva del todo en vez de dejar ese camino roto.
     handleScale: {
-      axisPressedMouseMove: { time: true, price: true },
+      axisPressedMouseMove: { time: true, price: false },
       axisDoubleClickReset: { time: true, price: true },
       mouseWheel: true,
       pinch: true,
