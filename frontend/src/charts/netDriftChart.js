@@ -52,14 +52,16 @@ function computeSpotTransform(spotValues, rightRange) {
   const spotSpan = (spotMax - spotMin) || Math.abs(spotMax) || 1
   const rightSpan = (rightRange.to - rightRange.from) || 1
 
-  // Banda destino para Spot: el 45% inmediatamente debajo del mínimo de
-  // Calls/Puts/Net, con un respiro del 5% -- ocupa su propio espacio
-  // visual sin superponerse con las otras tres líneas, aproximando cómo
-  // se veía antes con el eje izquierdo separado.
-  const targetMax = rightRange.from - rightSpan * 0.05
-  const targetMin = targetMax - rightSpan * 0.45
-  const scale = (targetMax - targetMin) / spotSpan
-  const offset = targetMin - spotMin * scale
+  // Spot se reescala al MISMO rango completo que Calls/Puts/Net (no a
+  // una banda propia más abajo, como una primera versión de esto hacía)
+  // -- una referencia real de "Net Drift" (gráfico de Premium, con
+  // Calls/Puts/subyacente) muestra las tres líneas entrelazadas en el
+  // mismo espacio visual, cruzándose entre sí con normalidad; separarlas
+  // en bandas horizontales distintas (lo que hacía la versión anterior)
+  // es lo que se veía "raro" -- cada línea igual de lejos e indiferente
+  // de las demás en vez de reaccionar junto al resto del mercado.
+  const scale = rightSpan / spotSpan
+  const offset = rightRange.from - spotMin * scale
   return { scale, offset }
 }
 
