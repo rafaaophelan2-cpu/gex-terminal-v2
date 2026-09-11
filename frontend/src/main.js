@@ -453,7 +453,10 @@ function handleMarketMessage(data) {
     setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
     latestGexInfo = info
-    latestWalls = info.walls
+    // zero_gamma se agrega acá (no viene dentro de info.walls) para que
+    // LIVE GAMMA pueda dibujar también la línea de Gamma Flip con el
+    // mismo objeto que ya usa para Call/Put Walls.
+    latestWalls = { ...info.walls, zero_gamma: info.flip_level }
     setMetric(metricEls.netGex, fmtMoney(info.net_gex_total), info.net_gex_total >= 0 ? 'val-positive' : 'val-negative')
     setMetric(metricEls.callGex, fmtMoney(info.call_gex_total), info.call_gex_total >= 0 ? 'val-positive' : 'val-negative')
     setMetric(metricEls.putGex, fmtMoney(info.put_gex_total), info.put_gex_total >= 0 ? 'val-positive' : 'val-negative')

@@ -95,6 +95,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
     const levels = [
       [walls.cw1, '#10B981', 'solid', 'CW1'], [walls.cw2, '#10B981', 'dash', 'CW2'], [walls.cw3, '#10B981', 'dot', 'CW3'],
       [walls.pw1, '#EF4444', 'solid', 'PW1'], [walls.pw2, '#EF4444', 'dash', 'PW2'], [walls.pw3, '#EF4444', 'dot', 'PW3'],
+      [walls.zero_gamma, COLOR_ACCENT, 'dash', 'Gamma Flip'],
     ]
     levels.forEach(([y, color, dash, label]) => {
       if (y) {
