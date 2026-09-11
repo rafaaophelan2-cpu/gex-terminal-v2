@@ -37,7 +37,15 @@ function ensureChart(el) {
       vertLines: { color: 'rgba(255,255,255,0.05)' },
       horzLines: { color: 'rgba(255,255,255,0.05)' },
     },
-    timeScale: { timeVisible: true, secondsVisible: false, borderColor: 'rgba(255,255,255,0.1)' },
+    timeScale: {
+      timeVisible: true, secondsVisible: false, borderColor: 'rgba(255,255,255,0.1)',
+      // Deja un margen en blanco a la derecha del último dato -- sin
+      // esto, fitContent() (llamado en cada refresh) pegaba el punto
+      // más reciente justo contra el eje de precio, y con el zoom por
+      // defecto el usuario tenía que arrastrar para ver dónde está
+      // "ahora" en vez de verlo de entrada.
+      rightOffset: 8,
+    },
     // scaleMargins deja el 22% inferior del panel libre para la "ola" de
     // Net GEX (netWaveSeries, ver abajo) -- sin este margen, Calls/Puts/
     // Net/Spot ocupan todo el alto y la ola quedaría tapada debajo de
