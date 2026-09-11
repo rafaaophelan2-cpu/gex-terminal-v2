@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 import pandas as pd
@@ -16,6 +17,8 @@ TICK_INTERVAL_SECONDS = 2
 # Griegas/paneles -- no bloquea tener GEX INFO funcionando en vivo.
 DEFAULT_IV = 0.20
 DEFAULT_T_EXP = 1 / 365
+
+logger = logging.getLogger(__name__)
 
 
 class SymbolFeed:
@@ -69,8 +72,16 @@ class SymbolFeed:
             try:
                 await self._tick_once()
             except Exception:
-                # Fase 4: loggear a console_logs (Supabase), igual que
-                # log_to_console en app.py. Por ahora no tumbar el loop.
+                # Esto se tragaba en silencio, sin loggear nada -- cuando
+                # _tick_once falla de forma sostenida (ej. problema con el
+                # token de Schwab), el único síntoma visible para el
+                # usuario es "EN VIVO" prendido pero ningún dato llega
+                # nunca, sin ningún indicio de por qué en ningún lado. Se
+                # loggea acá (Render lo captura en sus logs) para poder
+                # diagnosticar la causa real la próxima vez que pase, en
+                # vez de tener que reproducirlo a ciegas.
+                # TODO Fase 4: además, loggear a console_logs (Supabase).
+                logger.exception("Error en el tick de %s -- schwab_online=False hasta el próximo intento.", self.symbol)
                 self.schwab_online = False
             await asyncio.sleep(TICK_INTERVAL_SECONDS)
 

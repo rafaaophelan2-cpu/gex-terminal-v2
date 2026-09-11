@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 
@@ -105,3 +107,30 @@ def test_compute_squeeze_screener_gamma_regime_zero_when_positive():
     result = compute_squeeze_screener(positive_df, SPOT, WALLS, net_dex_total=0.0)
     regime_factor = next(f for f in result["factors"] if f["label"] == "Gamma Regime")
     assert regime_factor["score"] == 0
+
+
+def test_compute_signals_is_json_serializable():
+    # Regresión real: 'level'/'pct_from_spot' de Magnet y Resistance salían
+    # de un valor de pandas (numpy.float64) sin pasar por float() -- una
+    # comparación == contra un float nativo en un test (ej. `level == 716.0`)
+    # pasa igual sin importar el tipo real, así que ese bug NO lo agarraba
+    # ningún assert de valor, solo se vio en producción: json.dumps (lo que
+    # usa websocket.send_json) tira TypeError con numpy.float64, matando el
+    # _tick_sender en silencio para siempre. Este test falla si vuelve a
+    # colarse un tipo no nativo en cualquier campo.
+    signals = compute_signals(BY_STRIKE, SPOT, WALLS)
+    assert len(signals) > 0
+    json.dumps(signals)
+    for signal in signals:
+        assert isinstance(signal["level"], float)
+        assert isinstance(signal["pct_from_spot"], float)
+
+
+def test_compute_squeeze_screener_is_json_serializable():
+    result = compute_squeeze_screener(BY_STRIKE, SPOT, WALLS, net_dex_total=80_000.0)
+    json.dumps(result)
+    assert isinstance(result["probability"], int)
+    for factor in result["factors"]:
+        assert isinstance(factor["score"], int)
+    for value in result["key_levels"].values():
+        assert isinstance(value, float)

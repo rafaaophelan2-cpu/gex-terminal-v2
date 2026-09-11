@@ -85,19 +85,21 @@ def compute_signals(by_strike: pd.DataFrame, spot: float, walls: dict) -> list[d
     ]
     if not near.empty:
         magnet = near.loc[near['net_gex'].abs().idxmax()]
+        magnet_strike = float(magnet['strike'])
         signals.append({
-            "type": "magnet", "title": "Magnet", "badge": _classify_strength(abs(magnet['net_gex']), max_abs_gex),
+            "type": "magnet", "title": "Magnet", "badge": _classify_strength(abs(float(magnet['net_gex'])), max_abs_gex),
             "description": "El precio tiende a gravitar hacia este nivel",
-            "level": float(magnet['strike']), "pct_from_spot": _pct_from_spot(magnet['strike'], spot),
+            "level": magnet_strike, "pct_from_spot": _pct_from_spot(magnet_strike, spot),
         })
 
     # 3. Resistance: próximo strike positivo por encima del spot.
     resistance = _nearest_resistance_above(by_strike, spot)
     if resistance is not None:
+        resistance_strike = float(resistance['strike'])
         signals.append({
-            "type": "resistance", "title": "Resistance", "badge": _classify_strength(abs(resistance['net_gex']), max_abs_gex),
+            "type": "resistance", "title": "Resistance", "badge": _classify_strength(abs(float(resistance['net_gex'])), max_abs_gex),
             "description": "La dinámica de mercado cambia significativamente si se rompe este nivel",
-            "level": float(resistance['strike']), "pct_from_spot": _pct_from_spot(resistance['strike'], spot),
+            "level": resistance_strike, "pct_from_spot": _pct_from_spot(resistance_strike, spot),
         })
 
     # 4. Volatility (por debajo): put wall o zero gamma, el que esté más
@@ -154,8 +156,9 @@ def compute_squeeze_screener(by_strike: pd.DataFrame, spot: float, walls: dict, 
     # volumen propio contra el cual comparar.
     near_cw = by_strike[(by_strike['strike'] >= cw1 * 0.98) & (by_strike['strike'] <= cw1 * 1.02)]
     oi_near_cw = float(near_cw['openInterest_c'].sum()) if 'openInterest_c' in near_cw.columns else 0.0
+    volume_near_cw = float(near_cw['volume_c'].sum()) if 'volume_c' in near_cw.columns else 0.0
     if not near_cw.empty and oi_near_cw > 0:
-        vol_oi_ratio = float(near_cw['volume_c'].sum()) / oi_near_cw
+        vol_oi_ratio = volume_near_cw / oi_near_cw
         volume_score = 20.0 * _clamp(vol_oi_ratio / VOLUME_OI_RATIO_REF)
     else:
         volume_score = 0.0

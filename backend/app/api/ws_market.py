@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -7,6 +8,7 @@ from app.core.security import decode_access_token
 from app.services.market_feed import SymbolFeed, feed_registry
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/ws/diag")
@@ -140,16 +142,28 @@ async def _tick_sender(websocket: WebSocket, state: ConnectionState) -> None:
             is_first_send = state._last_sent_update == 0.0
             min_strike, max_strike = state.strike_window()
 
-            await websocket.send_json({
-                "type": "chain_full" if is_first_send else "tick",
-                "symbol": feed.symbol,
-                "ts": feed.last_update,
-                "spot": feed.spot_price,
-                "schwab_online": feed.schwab_online,
-                "gex_info": feed.gex_info_payload(min_strike, max_strike),
-                "greeks": feed.greeks_payload(min_strike, max_strike),
-                "signals": feed.signals_payload(),
-            })
-            state._last_sent_update = feed.last_update
+            # Un error al construir o mandar UN payload (ej. un valor no
+            # serializable a JSON escapado de algún cálculo de dominio) no
+            # debe tumbar esta task para siempre -- sin este try/except, una
+            # excepción acá mata _tick_sender en silencio (asyncio no la
+            # propaga a ningún lado visible) y el usuario se queda con
+            # "EN VIVO" prendido pero SIN un solo dato más, sin ningún
+            # indicio de qué pasó (justo lo que pasó con un bug real de
+            # signals_payload). Loggeamos y reintentamos en el próximo tick
+            # en vez de dejar el feed muerto sin explicación.
+            try:
+                await websocket.send_json({
+                    "type": "chain_full" if is_first_send else "tick",
+                    "symbol": feed.symbol,
+                    "ts": feed.last_update,
+                    "spot": feed.spot_price,
+                    "schwab_online": feed.schwab_online,
+                    "gex_info": feed.gex_info_payload(min_strike, max_strike),
+                    "greeks": feed.greeks_payload(min_strike, max_strike),
+                    "signals": feed.signals_payload(),
+                })
+                state._last_sent_update = feed.last_update
+            except Exception:
+                logger.exception("Error armando/mandando el tick de %s -- se reintenta en el próximo ciclo.", feed.symbol)
 
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
