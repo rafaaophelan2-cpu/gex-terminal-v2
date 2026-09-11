@@ -186,34 +186,59 @@ function attachRightAxisWheelZoom(el) {
  * práctica, apenas zoomPriceScale() llama a setAutoScale(false) por
  * primera vez (el "zoom más ligero" que sea), la librería vuelve a
  * permitir arrastrar ese eje con el mouse como si la opción nunca se
- * hubiera aplicado. En vez de depender de esa opción interna (que este
- * comportamiento demuestra que no es confiable una vez el rango pasa a
- * manual), acá se bloquea el gesto a mano: en fase de CAPTURA, antes de
- * que el mousedown le llegue a la librería, si el click arrancó sobre la
- * franja de cualquiera de los dos ejes de precio (izquierdo o derecho)
- * se cancela del todo -- así el arrastre nunca puede empezar, sin
- * importar qué haga la librería puertas adentro. */
+ * hubiera aplicado. En vez de depender de esa opción interna, se
+ * bloquea el gesto a mano: cualquier mousemove con el botón presionado
+ * que haya EMPEZADO sobre la franja de un eje de precio (izquierdo o
+ * derecho) se cancela en fase de CAPTURA antes de llegarle a la
+ * librería, así el arrastre nunca mueve el rango.
+ *
+ * A propósito NO se bloquea el mousedown en sí (a diferencia de un
+ * primer intento de este fix): axisDoubleClickReset.price (también en
+ * ensureChart) necesita que los dos mousedown de un doble click SÍ le
+ * lleguen a la librería para poder detectar el gesto y resetear el
+ * zoom -- bloquearlos de raíz dejaba al usuario sin forma de deshacer
+ * un zoom manual que termina recortando una de las cuatro líneas fuera
+ * del rango visible. */
 function attachAxisDragBlock(el) {
+  let draggingAxis = false
+
+  function isOverAxis(clientX) {
+    if (!chart) return false
+    const rightWidth = chart.priceScale('right').width()
+    const leftWidth = chart.priceScale('left').width()
+    if (rightWidth <= 0 && leftWidth <= 0) return false
+
+    const rect = el.getBoundingClientRect()
+    const x = clientX - rect.left
+    return (rightWidth > 0 && x >= rect.width - rightWidth) || (leftWidth > 0 && x <= leftWidth)
+  }
+
   el.addEventListener(
     'mousedown',
     (event) => {
-      if (!chart) return
-      const rightWidth = chart.priceScale('right').width()
-      const leftWidth = chart.priceScale('left').width()
-      if (rightWidth <= 0 && leftWidth <= 0) return
+      draggingAxis = isOverAxis(event.clientX)
+    },
+    { capture: true, passive: true },
+  )
 
-      const rect = el.getBoundingClientRect()
-      const x = event.clientX - rect.left
-      const overRightAxis = rightWidth > 0 && x >= rect.width - rightWidth
-      const overLeftAxis = leftWidth > 0 && x <= leftWidth
-      if (!overRightAxis && !overLeftAxis) return
-
+  el.addEventListener(
+    'mousemove',
+    (event) => {
+      if (!draggingAxis) return
+      if (event.buttons === 0) {
+        draggingAxis = false
+        return
+      }
       event.preventDefault()
       event.stopPropagation()
       event.stopImmediatePropagation()
     },
-    { capture: true },
+    { capture: true, passive: false },
   )
+
+  window.addEventListener('mouseup', () => {
+    draggingAxis = false
+  })
 }
 
 /** dateStr: la fecha (YYYY-MM-DD) seleccionada en el picker -- necesaria
