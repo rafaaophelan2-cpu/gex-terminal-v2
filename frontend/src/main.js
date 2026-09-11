@@ -1,6 +1,6 @@
 import './style.css'
 import { login, logout, me } from './api/auth.js'
-import { fetchAvailableDates, fetchDrift, fetchHeatmap } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
@@ -77,7 +77,7 @@ async function loadNetDrift() {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const date = driftDateInput.value || todayInLima()
     const series = await fetchDrift(symbol, date)
-    renderNetDriftChart(netDriftChartEl, series)
+    renderNetDriftChart(netDriftChartEl, series, date)
   } catch (err) {
     console.error('Error cargando NET DRIFT:', err)
   }
@@ -100,8 +100,11 @@ async function loadLiveGamma() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const date = driftDateInput.value || todayInLima()
-    const heatmap = await fetchHeatmap(symbol, date)
-    renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls)
+    const [heatmap, candles] = await Promise.all([
+      fetchHeatmap(symbol, date),
+      fetchCandles(symbol, date).catch(() => []),
+    ])
+    renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles)
   } catch (err) {
     console.error('Error cargando LIVE GAMMA:', err)
   }

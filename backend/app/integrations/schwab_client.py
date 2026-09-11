@@ -121,6 +121,42 @@ async def fetch_option_chain(symbol: str, strikes_count: int) -> dict:
     return await call_with_fallback(f"chain:{symbol}:{strikes_count}", {}, _do_fetch)
 
 
+async def fetch_price_history(symbol: str, day: datetime) -> list[dict]:
+    """Velas reales de 1 minuto para el día de mercado 'day' (debe venir
+    con tzinfo=MARKET_TZ, medianoche NY de ese día) -- port de
+    fetch_history_schwab en app.py, usado para superponer velas japonas
+    reales sobre el heatmap de LIVE GAMMA en vez de una línea simple de
+    spot. Devuelve [{time, open, high, low, close}, ...] en hora NY."""
+    client = get_schwab_client()
+    if client is None:
+        return []
+
+    async def _do_fetch():
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        resp = await client.get_price_history(
+            symbol,
+            start_datetime=day_start,
+            frequency_type=client.PriceHistory.FrequencyType.MINUTE,
+            frequency=client.PriceHistory.Frequency.EVERY_MINUTE,
+            need_extended_hours_data=False,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        candles = data.get("candles", []) if isinstance(data, dict) else []
+        out = []
+        for c in candles:
+            dt = datetime.fromtimestamp(c["datetime"] / 1000, tz=MARKET_TZ)
+            out.append({
+                "time": dt.strftime("%H:%M"),
+                "open": float(c["open"]), "high": float(c["high"]),
+                "low": float(c["low"]), "close": float(c["close"]),
+            })
+        return out
+
+    return await call_with_fallback(f"candles:{symbol}:{day.strftime('%Y-%m-%d')}", [], _do_fetch)
+
+
 async def fetch_quote(symbol: str) -> dict:
     client = get_schwab_client()
     if client is None:

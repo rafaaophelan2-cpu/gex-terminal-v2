@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import require_auth
 from app.domain.drift import compute_drift_series
 from app.domain.heatmap import compute_heatmap_matrix
+from app.integrations.schwab_client import fetch_price_history
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
 
 router = APIRouter(prefix="/market", tags=["market"])
@@ -16,15 +17,17 @@ router = APIRouter(prefix="/market", tags=["market"])
 NY_TZ = ZoneInfo("America/New_York")
 
 
-async def _fetch_day_snapshots(symbol: str, date: str | None) -> list[dict]:
+def _parse_day(date: str | None) -> datetime:
     if date:
         try:
-            day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=NY_TZ)
+            return datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=NY_TZ)
         except ValueError:
             raise HTTPException(status_code=400, detail="Formato de fecha inválido, usar YYYY-MM-DD.")
-    else:
-        day_start = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    return datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
 
+
+async def _fetch_day_snapshots(symbol: str, date: str | None) -> list[dict]:
+    day_start = _parse_day(date)
     day_end = day_start + timedelta(days=1)
 
     return await fetch_gex_history(
@@ -53,6 +56,15 @@ async def get_heatmap(symbol: str = "QQQ", date: str | None = None, _username: s
     de tiempo, spot[i] + la columna z[:, i] contra 'strikes'."""
     snapshots = await _fetch_day_snapshots(symbol, date)
     return compute_heatmap_matrix(snapshots)
+
+
+@router.get("/candles")
+async def get_candles(symbol: str = "QQQ", date: str | None = None, _username: str = Depends(require_auth)):
+    """Velas reales de 1 minuto (Schwab) para superponer sobre el heatmap
+    de LIVE GAMMA -- reemplaza la línea simple de spot por velas
+    japonesas de verdad, igual que hacía app.py con fetch_history_schwab."""
+    day = _parse_day(date)
+    return await fetch_price_history(symbol, day)
 
 
 @router.get("/available-dates")

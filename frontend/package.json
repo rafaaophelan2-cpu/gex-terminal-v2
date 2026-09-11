@@ -12,6 +12,7 @@
     "vite": "^7.0.0"
   },
   "dependencies": {
+    "lightweight-charts": "^5.2.1",
     "plotly.js-dist-min": "^2.35.0"
   }
 }

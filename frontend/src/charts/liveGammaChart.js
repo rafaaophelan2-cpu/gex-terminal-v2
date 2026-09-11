@@ -1,9 +1,14 @@
 import Plotly from 'plotly.js-dist-min'
-import { COLOR_ACCENT, COLOR_BG } from '../theme.js'
+import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
 
 /** LIVE GAMMA llega por REST (igual que NET DRIFT), cada render es un
- * redibujado completo -- no hay distinción react/restyle acá. */
-export function renderLiveGammaChart(el, heatmap, walls) {
+ * redibujado completo -- no hay distinción react/restyle acá.
+ * 'candles' (opcional): velas reales de 1 minuto de Schwab
+ * ({time, open, high, low, close}[]) para superponer sobre el heatmap en
+ * vez de una simple línea de spot -- Lightweight Charts no puede hacer
+ * el heatmap (no tiene ese tipo de serie), así que las velas van acá
+ * mismo, dentro de Plotly, junto al heatmap. */
+export function renderLiveGammaChart(el, heatmap, walls, candles) {
   if (!heatmap.times || heatmap.times.length === 0) return
 
   const maxAbs = heatmap.z.reduce(
@@ -30,11 +35,28 @@ export function renderLiveGammaChart(el, heatmap, walls) {
       hovertemplate: 'Hora: %{x}<br>Strike: $%{y}<br>Net GEX: %{z:,.0f}<extra></extra>',
       colorbar: { title: { text: 'Net GEX', side: 'top' }, x: -0.08 },
     },
-    {
+  ]
+
+  if (candles && candles.length > 0) {
+    traces.push({
+      type: 'candlestick',
+      name: 'Spot',
+      x: candles.map((c) => c.time),
+      open: candles.map((c) => c.open),
+      high: candles.map((c) => c.high),
+      low: candles.map((c) => c.low),
+      close: candles.map((c) => c.close),
+      increasing: { line: { color: COLOR_POSITIVE }, fillcolor: COLOR_POSITIVE },
+      decreasing: { line: { color: COLOR_NEGATIVE }, fillcolor: COLOR_NEGATIVE },
+    })
+  } else {
+    // Fallback: sin velas de Schwab disponibles, al menos la línea de
+    // spot que ya viene en los snapshots guardados.
+    traces.push({
       type: 'scatter', mode: 'lines', name: 'Spot', x: heatmap.times, y: heatmap.spot,
       line: { color: COLOR_ACCENT, width: 2 },
-    },
-  ]
+    })
+  }
 
   const shapes = []
   if (walls) {
@@ -56,7 +78,10 @@ export function renderLiveGammaChart(el, heatmap, walls) {
     plot_bgcolor: COLOR_BG,
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
-    xaxis: { title: 'Hora', gridcolor: 'rgba(255,255,255,0.05)' },
+    xaxis: {
+      title: 'Hora', gridcolor: 'rgba(255,255,255,0.05)',
+      type: 'category', categoryorder: 'category ascending', rangeslider: { visible: false },
+    },
     yaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right' },
     shapes,
     hoverlabel: {
