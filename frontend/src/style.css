@@ -21,6 +21,14 @@ body {
   padding: 16px;
 }
 
+/* [hidden] tiene que ganarle a los display:flex de arriba -- si no, el
+   atributo hidden que usa main.js para mostrar/ocultar login vs
+   dashboard no tiene efecto y quedan las dos vistas visibles a la vez. */
+#login-view[hidden],
+#dashboard-view[hidden] {
+  display: none;
+}
+
 .login-card {
   width: 100%;
   max-width: 380px;
@@ -99,43 +107,98 @@ body {
 }
 
 #dashboard-view {
-  padding: 16px clamp(16px, 3vw, 32px) 32px;
-}
-
-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 16px;
+  min-height: 100vh;
+  align-items: stretch;
 }
 
-header h1 {
-  font-size: 1.2rem;
+#sidebar {
+  width: 220px;
+  flex: 0 0 220px;
+  background: linear-gradient(180deg, #090d16 0%, #05070b 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebar-header h1 {
+  font-size: 1rem;
   font-weight: 800;
   margin: 0;
   background: linear-gradient(90deg, #f0f6fc 0%, #8b949e 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  display: inline;
-}
-
-.header-left {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
 }
 
 #user-badge {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: #60a5fa;
 }
 
-.header-right {
+.sidebar-field {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-field label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #8b949e;
+  text-transform: uppercase;
+}
+
+.sidebar-field input {
+  background: #0e131f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #f0f6fc;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+#apply-symbol-btn,
+#logout-btn {
+  background: linear-gradient(135deg, #1e2640 0%, #0f172a 100%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  color: #60a5fa;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.6px;
+  padding: 9px 12px;
+  cursor: pointer;
+  width: 100%;
+}
+
+#apply-symbol-btn:hover,
+#logout-btn:hover {
+  border-color: #60a5fa;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+}
+
+#logout-btn {
+  margin-top: auto;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #8b949e;
+}
+
+.sidebar-status {
+  display: flex;
+  justify-content: center;
+}
+
+main {
+  flex: 1;
+  min-width: 0;
+  padding: 16px clamp(16px, 3vw, 32px) 32px;
 }
 
 .status-pill {
@@ -208,9 +271,84 @@ header h1 {
   color: #f0f6fc;
 }
 
+#tab-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: #0b0e17;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 5px;
+  margin-bottom: 16px;
+}
+
+.tab-btn {
+  flex: 1 1 auto;
+  min-width: 100px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #8b949e;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #1e293b;
+  color: #60a5fa;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.coming-soon {
+  background: rgba(13, 17, 26, 0.85);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 60px 20px;
+  text-align: center;
+  color: #6e7681;
+  font-size: 0.85rem;
+}
+
 .chart-container {
   background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 12px;
+}
+
+@media (max-width: 720px) {
+  #dashboard-view {
+    flex-direction: column;
+  }
+
+  #sidebar {
+    width: auto;
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .sidebar-field,
+  #apply-symbol-btn,
+  #logout-btn {
+    width: auto;
+    flex: 1 1 140px;
+  }
+
+  #logout-btn {
+    margin-top: 0;
+  }
 }

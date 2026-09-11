@@ -11,6 +11,10 @@ const userBadge = document.getElementById('user-badge')
 const wsStatusEl = document.getElementById('ws-status')
 const logoutBtn = document.getElementById('logout-btn')
 const chartEl = document.getElementById('gex-info-chart')
+const symbolInput = document.getElementById('symbol-input')
+const strikeRangeInput = document.getElementById('strike-range-input')
+const applySymbolBtn = document.getElementById('apply-symbol-btn')
+const tabButtons = document.querySelectorAll('.tab-btn')
 
 const metricEls = {
   symbol: document.getElementById('metric-symbol'),
@@ -107,6 +111,24 @@ loginForm.addEventListener('submit', async (event) => {
 logoutBtn.addEventListener('click', async () => {
   await logout()
   showLogin()
+})
+
+applySymbolBtn.addEventListener('click', () => {
+  const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+  const strikeRange = Math.min(Math.max(parseInt(strikeRangeInput.value, 10) || 20, 5), 80)
+  symbolInput.value = symbol
+  strikeRangeInput.value = strikeRange
+  resetGexInfoChart()
+  wsClient?.subscribe(symbol, strikeRange)
+})
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    tabButtons.forEach((b) => b.classList.remove('active'))
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'))
+    btn.classList.add('active')
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active')
+  })
 })
 
 async function init() {
