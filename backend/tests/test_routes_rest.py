@@ -56,3 +56,21 @@ def test_drift_returns_series_for_authed_user(authed_client, monkeypatch):
     assert body["time"] == ["09:30"]
     assert body["call_gex"] == [3.0]
     assert body["put_gex"] == [-5.0]
+
+
+def test_available_dates_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/available-dates?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_available_dates_returns_list(authed_client, monkeypatch):
+    async def _fake_available_dates(symbol, tz):
+        assert symbol == "QQQ"
+        return ["2026-09-11", "2026-09-10"]
+
+    monkeypatch.setattr(routes_rest, "fetch_available_dates", _fake_available_dates)
+
+    resp = authed_client.get("/market/available-dates?symbol=QQQ")
+    assert resp.status_code == 200
+    assert resp.json() == {"dates": ["2026-09-11", "2026-09-10"]}

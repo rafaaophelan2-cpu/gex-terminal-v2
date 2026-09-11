@@ -102,7 +102,21 @@
           </section>
 
           <section id="tab-backgamma" class="tab-panel">
-            <div class="coming-soon">🚧 Próximamente — backtest de días anteriores</div>
+            <div class="backgamma-toolbar">
+              <label for="backgamma-date-select">Fecha</label>
+              <select id="backgamma-date-select"></select>
+              <button id="backgamma-play-btn">▶ Reproducir</button>
+              <select id="backgamma-speed-select">
+                <option value="2000">2000ms</option>
+                <option value="1000" selected>1000ms</option>
+                <option value="500">500ms</option>
+                <option value="250">250ms</option>
+              </select>
+              <span id="backgamma-caption" class="backgamma-caption"></span>
+            </div>
+            <input id="backgamma-scrubber" type="range" min="0" max="0" value="0" class="backgamma-scrubber" />
+            <div id="backgamma-spot-chart" class="chart-container backgamma-spot"></div>
+            <div id="backgamma-strike-chart" class="chart-container"></div>
           </section>
 
           <section id="tab-data" class="tab-panel">

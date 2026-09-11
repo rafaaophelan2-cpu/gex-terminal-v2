@@ -73,6 +73,42 @@ async def fetch_gex_history(
     return await asyncio.to_thread(_query)
 
 
+async def fetch_available_dates(symbol: str, tz) -> list[str]:
+    """Fechas calendario (YYYY-MM-DD, en la zona horaria 'tz') que tienen
+    al menos un snapshot guardado para 'symbol', más recientes primero --
+    usado para el selector de BACKGAMMA. Trae solo la columna created_at
+    (liviano) y deriva las fechas en Python; con el volumen actual de
+    datos (recién arrancado) esto alcanza sin paginar."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    def _query():
+        res = (
+            client.table("gex_intraday")
+            .select("created_at")
+            .eq("symbol", symbol)
+            .order("created_at", desc=True)
+            .limit(5000)
+            .execute()
+        )
+        return res.data or []
+
+    rows = await asyncio.to_thread(_query)
+
+    from datetime import datetime
+
+    dates: list[str] = []
+    seen = set()
+    for row in rows:
+        dt = datetime.fromisoformat(row["created_at"]).astimezone(tz)
+        date_str = dt.strftime("%Y-%m-%d")
+        if date_str not in seen:
+            seen.add(date_str)
+            dates.append(date_str)
+    return dates
+
+
 async def insert_gex_snapshot(snapshot: dict) -> None:
     """Guarda un snapshot en gex_intraday, con el mismo dedup por
     symbol+time que push_to_supabase_bg en app.py (~línea 2598): con

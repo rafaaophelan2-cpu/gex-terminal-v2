@@ -1,7 +1,8 @@
 import './style.css'
 import { login, logout, me } from './api/auth.js'
-import { fetchDrift, fetchHeatmap } from './api/rest.js'
+import { fetchAvailableDates, fetchDrift, fetchHeatmap } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
+import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderLiveGammaChart } from './charts/liveGammaChart.js'
@@ -24,6 +25,13 @@ const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn'
 const netDriftChartEl = document.getElementById('net-drift-chart')
 const driftDateInput = document.getElementById('drift-date-input')
 const liveGammaChartEl = document.getElementById('live-gamma-chart')
+const backgammaDateSelect = document.getElementById('backgamma-date-select')
+const backgammaPlayBtn = document.getElementById('backgamma-play-btn')
+const backgammaSpeedSelect = document.getElementById('backgamma-speed-select')
+const backgammaScrubber = document.getElementById('backgamma-scrubber')
+const backgammaCaption = document.getElementById('backgamma-caption')
+const backgammaSpotChartEl = document.getElementById('backgamma-spot-chart')
+const backgammaStrikeChartEl = document.getElementById('backgamma-strike-chart')
 
 const greeksMetricEls = {
   dex: document.getElementById('greeks-dex'),
@@ -48,6 +56,8 @@ let latestGreeksPayload = null
 let latestWalls = null
 let driftRefreshTimer = null
 let liveGammaRefreshTimer = null
+let backgammaHeatmap = null
+let backgammaPlayTimer = null
 
 const DRIFT_REFRESH_MS = 30000
 const LIVE_GAMMA_REFRESH_MS = 30000
@@ -108,6 +118,56 @@ function stopLiveGammaRefresh() {
     clearInterval(liveGammaRefreshTimer)
     liveGammaRefreshTimer = null
   }
+}
+
+function renderBackgammaAtIndex(index) {
+  if (!backgammaHeatmap || !backgammaHeatmap.times.length) return
+  const i = Math.min(Math.max(index, 0), backgammaHeatmap.times.length - 1)
+  renderBackgammaSpotChart(backgammaSpotChartEl, backgammaHeatmap, i)
+  renderBackgammaStrikeChart(backgammaStrikeChartEl, backgammaHeatmap, i)
+  backgammaCaption.textContent = `${backgammaDateSelect.value}  ${backgammaHeatmap.times[i]}  ·  paso ${i + 1}/${backgammaHeatmap.times.length}`
+}
+
+async function loadBackgammaDates() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const dates = await fetchAvailableDates(symbol)
+    backgammaDateSelect.innerHTML = ''
+    dates.forEach((d) => {
+      const opt = document.createElement('option')
+      opt.value = d
+      opt.textContent = d
+      backgammaDateSelect.appendChild(opt)
+    })
+    if (dates.length > 0) {
+      await loadBackgammaDay(dates[0])
+    }
+  } catch (err) {
+    console.error('Error cargando fechas de BACKGAMMA:', err)
+  }
+}
+
+async function loadBackgammaDay(date) {
+  try {
+    stopBackgammaPlay()
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    backgammaHeatmap = await fetchHeatmap(symbol, date)
+    const lastIndex = Math.max(backgammaHeatmap.times.length - 1, 0)
+    backgammaScrubber.max = String(lastIndex)
+    backgammaScrubber.value = String(lastIndex)
+    renderBackgammaAtIndex(lastIndex)
+  } catch (err) {
+    console.error('Error cargando día de BACKGAMMA:', err)
+  }
+}
+
+function stopBackgammaPlay() {
+  if (backgammaPlayTimer) {
+    clearInterval(backgammaPlayTimer)
+    backgammaPlayTimer = null
+  }
+  backgammaPlayBtn.textContent = '▶ Reproducir'
+  backgammaPlayBtn.classList.remove('playing')
 }
 
 function fmtMoney(val) {
@@ -217,8 +277,34 @@ loginForm.addEventListener('submit', async (event) => {
 logoutBtn.addEventListener('click', async () => {
   stopDriftRefresh()
   stopLiveGammaRefresh()
+  stopBackgammaPlay()
   await logout()
   showLogin()
+})
+
+backgammaDateSelect.addEventListener('change', () => {
+  loadBackgammaDay(backgammaDateSelect.value)
+})
+
+backgammaScrubber.addEventListener('input', () => {
+  stopBackgammaPlay()
+  renderBackgammaAtIndex(parseInt(backgammaScrubber.value, 10))
+})
+
+backgammaPlayBtn.addEventListener('click', () => {
+  if (backgammaPlayTimer) {
+    stopBackgammaPlay()
+    return
+  }
+  if (!backgammaHeatmap || backgammaHeatmap.times.length <= 1) return
+  backgammaPlayBtn.textContent = '⏸ Pausar'
+  backgammaPlayBtn.classList.add('playing')
+  const speed = parseInt(backgammaSpeedSelect.value, 10) || 1000
+  backgammaPlayTimer = setInterval(() => {
+    const next = (parseInt(backgammaScrubber.value, 10) + 1) % (backgammaHeatmap.times.length)
+    backgammaScrubber.value = String(next)
+    renderBackgammaAtIndex(next)
+  }, speed)
 })
 
 driftDateInput.addEventListener('change', () => {
@@ -259,6 +345,12 @@ tabButtons.forEach((btn) => {
       startLiveGammaRefresh()
     } else {
       stopLiveGammaRefresh()
+    }
+
+    if (btn.dataset.tab === 'backgamma') {
+      if (!backgammaHeatmap) loadBackgammaDates()
+    } else {
+      stopBackgammaPlay()
     }
   })
 })

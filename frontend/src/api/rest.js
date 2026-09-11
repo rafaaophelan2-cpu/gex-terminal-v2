@@ -19,3 +19,12 @@ export async function fetchHeatmap(symbol, date) {
   if (!resp.ok) throw new Error(`Error ${resp.status}`)
   return resp.json()
 }
+
+export async function fetchAvailableDates(symbol) {
+  const resp = await fetch(`${API_BASE}/market/available-dates?symbol=${encodeURIComponent(symbol)}`, {
+    credentials: 'include',
+  })
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  const data = await resp.json()
+  return data.dates
+}

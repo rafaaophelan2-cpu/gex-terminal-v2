@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import require_auth
 from app.domain.drift import compute_drift_series
 from app.domain.heatmap import compute_heatmap_matrix
-from app.integrations.supabase_client import fetch_gex_history
+from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
 
 router = APIRouter(prefix="/market", tags=["market"])
 
@@ -48,6 +48,16 @@ async def get_drift(symbol: str = "QQQ", date: str | None = None, _username: str
 @router.get("/heatmap")
 async def get_heatmap(symbol: str = "QQQ", date: str | None = None, _username: str = Depends(require_auth)):
     """Matriz strike x tiempo de net_gex real para LIVE GAMMA, construida
-    de los mismos snapshots que /drift -- ver domain/heatmap.py."""
+    de los mismos snapshots que /drift -- ver domain/heatmap.py. BACKGAMMA
+    reusa este mismo endpoint: el scrubber solo necesita, para cada índice
+    de tiempo, spot[i] + la columna z[:, i] contra 'strikes'."""
     snapshots = await _fetch_day_snapshots(symbol, date)
     return compute_heatmap_matrix(snapshots)
+
+
+@router.get("/available-dates")
+async def get_available_dates(symbol: str = "QQQ", _username: str = Depends(require_auth)):
+    """Fechas (NY, más recientes primero) con al menos un snapshot
+    guardado -- selector de día de BACKGAMMA."""
+    dates = await fetch_available_dates(symbol, NY_TZ)
+    return {"dates": dates}
