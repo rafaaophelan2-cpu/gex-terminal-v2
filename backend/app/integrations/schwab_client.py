@@ -111,6 +111,17 @@ async def call_with_fallback(cache_key: str, empty_value, fetch_coro_fn):
 
 async def fetch_option_chain(symbol: str, strikes_count: int) -> dict:
     client = get_schwab_client()
+    if client is not None:
+        import time as _time
+        try:
+            sess_token = client.session.token
+            logger.warning(
+                "DIAG fetch_option_chain: now=%s expires_at=%s expires_in=%s token_type=%s scope=%s keys=%s",
+                _time.time(), sess_token.get('expires_at'), sess_token.get('expires_in'),
+                sess_token.get('token_type'), sess_token.get('scope'), list(sess_token.keys()),
+            )
+        except Exception:
+            logger.exception("DIAG fetch_option_chain: no se pudo leer client.session.token")
     if client is None:
         # Este camino NUNCA pasa por call_with_fallback -- sin credenciales
         # o token guardado, no tiene sentido usar el "último dato bueno"
