@@ -1,0 +1,216 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #06080d;
+  color: #d1d5db;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+#login-view {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: #0e131f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.login-card h1 {
+  font-size: 1.3rem;
+  letter-spacing: -0.5px;
+  background: linear-gradient(90deg, #f0f6fc 0%, #8b949e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0 0 4px;
+}
+
+.login-card .subtitle {
+  color: #6e7681;
+  font-size: 0.78rem;
+  margin: 0 0 24px;
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+#login-form label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #8b949e;
+  text-transform: uppercase;
+  margin-top: 10px;
+}
+
+#login-form input {
+  background: #06080d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #f0f6fc;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+#login-form button {
+  margin-top: 20px;
+  background: linear-gradient(135deg, #1e2640 0%, #0f172a 100%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  color: #60a5fa;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.8px;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+#login-form button:hover {
+  border-color: #60a5fa;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+}
+
+.error {
+  color: #ef4444;
+  font-size: 0.8rem;
+  margin-top: 12px;
+}
+
+#dashboard-view {
+  padding: 16px clamp(16px, 3vw, 32px) 32px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+header h1 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(90deg, #f0f6fc 0%, #8b949e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline;
+}
+
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+#user-badge {
+  font-size: 0.75rem;
+  color: #60a5fa;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.status-connected {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
+.status-connecting,
+.status-reconnecting {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #f59e0b;
+}
+
+.status-disconnected {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+
+#logout-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: #8b949e;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.metrics-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.metric {
+  background: rgba(13, 17, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.metric-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8b949e;
+  margin-bottom: 2px;
+}
+
+.metric-value {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #f0f6fc;
+}
+
+.chart-container {
+  background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
