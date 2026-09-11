@@ -86,6 +86,7 @@ let latestGreeksPayload = null
 let latestGexInfo = null
 let latestWalls = null
 let driftRefreshTimer = null
+let driftDateAutoSelected = true
 let liveGammaRefreshTimer = null
 let vixRefreshTimer = null
 let backgammaHeatmap = null
@@ -116,10 +117,31 @@ async function loadNetDrift() {
   }
 }
 
+async function driftRefreshTick() {
+  // Si el usuario no eligió una fecha a mano, cada refresh vuelve a
+  // resolver "la última sesión" -- así, si el mercado abre mientras la
+  // pestaña ya está abierta (mostrando la sesión anterior por defecto),
+  // NET DRIFT salta solo a la sesión nueva apenas aparece el primer
+  // snapshot, sin necesitar recargar la página. Si el usuario SÍ eligió
+  // una fecha manualmente, se respeta esa elección (no se pisa).
+  if (driftDateAutoSelected) {
+    try {
+      const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+      const dates = await fetchAvailableDates(symbol)
+      if (dates[0] && dates[0] !== driftDateInput.value) {
+        driftDateInput.value = dates[0]
+      }
+    } catch (err) {
+      console.error('Error resolviendo última sesión de NET DRIFT:', err)
+    }
+  }
+  await loadNetDrift()
+}
+
 function startDriftRefresh() {
   stopDriftRefresh()
-  loadNetDrift()
-  driftRefreshTimer = setInterval(loadNetDrift, DRIFT_REFRESH_MS)
+  driftRefreshTick()
+  driftRefreshTimer = setInterval(driftRefreshTick, DRIFT_REFRESH_MS)
 }
 
 function stopDriftRefresh() {
@@ -420,6 +442,7 @@ backgammaPlayBtn.addEventListener('click', () => {
 })
 
 driftDateInput.addEventListener('change', () => {
+  driftDateAutoSelected = false
   if (driftRefreshTimer) loadNetDrift()
 })
 
