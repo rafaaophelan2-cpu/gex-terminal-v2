@@ -40,12 +40,33 @@ export function renderBackgammaSpotChart(el, heatmap, currentIndex) {
 export function renderBackgammaStrikeChart(el, heatmap, currentIndex) {
   if (!heatmap.strikes || heatmap.strikes.length === 0) return
 
-  const values = heatmap.z.map((row) => row[currentIndex])
+  const rawValues = heatmap.z.map((row) => row[currentIndex])
+
+  // heatmap.strikes ya no es "un punto por strike real": son los bordes
+  // de la banda angosta que arma domain/heatmap.py (BAND_HALF_WIDTH,
+  // ver LIVE GAMMA), varios puntos por strike, la mayoría en 0 o con
+  // solo una fracción del valor real. Para una barra por strike real,
+  // se agrupa por strike redondeado y se toma el valor de mayor
+  // magnitud del grupo -- es el punto central de la banda (peso 1.0),
+  // el único con el Net GEX real completo; el resto son solo el
+  // difuminado del borde.
+  const grouped = new Map()
+  heatmap.strikes.forEach((strike, idx) => {
+    const rounded = Math.round(strike)
+    const value = rawValues[idx]
+    const current = grouped.get(rounded)
+    if (current === undefined || Math.abs(value) > Math.abs(current)) {
+      grouped.set(rounded, value)
+    }
+  })
+  const strikes = Array.from(grouped.keys()).sort((a, b) => a - b)
+  const values = strikes.map((s) => grouped.get(s))
+
   const colors = values.map((v) => (v >= 0 ? COLOR_POSITIVE : COLOR_NEGATIVE))
   const spot = heatmap.spot[currentIndex]
 
   const trace = {
-    type: 'bar', x: heatmap.strikes, y: values, marker: { color: colors },
+    type: 'bar', x: strikes, y: values, marker: { color: colors },
     hovertemplate: 'Strike: $%{x}<br>Net GEX: %{y:,.0f}<extra></extra>',
   }
 
@@ -58,7 +79,7 @@ export function renderBackgammaStrikeChart(el, heatmap, currentIndex) {
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
     title: { text: 'Strike Profile (Net GEX) en el instante seleccionado', font: { color: '#F0F6FC', size: 14 } },
-    xaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)' },
+    xaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', dtick: 1 },
     yaxis: { title: 'Net GEX ($)', gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' },
     shapes,
     hoverlabel: HOVER,

@@ -95,7 +95,6 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
     const levels = [
       [walls.cw1, '#10B981', 'solid', 'CW1'], [walls.cw2, '#10B981', 'dash', 'CW2'], [walls.cw3, '#10B981', 'dot', 'CW3'],
       [walls.pw1, '#EF4444', 'solid', 'PW1'], [walls.pw2, '#EF4444', 'dash', 'PW2'], [walls.pw3, '#EF4444', 'dot', 'PW3'],
-      [walls.zero_gamma, COLOR_ACCENT, 'dash', 'Gamma Flip'],
     ]
     levels.forEach(([y, color, dash, label]) => {
       if (y) {
@@ -121,6 +120,29 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
         })
       }
     })
+
+    if (walls.zero_gamma) {
+      shapes.push({
+        type: 'line', x0: 0, x1: 1, xref: 'paper', y0: walls.zero_gamma, y1: walls.zero_gamma,
+        line: { color: COLOR_ACCENT, width: 1, dash: 'dash' },
+      })
+      // A diferencia de CW/PW (izquierda), Gamma Flip va del lado
+      // DERECHO, más allá del eje de strike (x > 1 en coordenadas de
+      // paper, fuera del área de ploteo) -- quedaba encima de CW1 en el
+      // borde izquierdo cuando ambos niveles caían cerca, sin forma de
+      // distinguir cuál era cuál.
+      annotations.push({
+        x: 1.06, xref: 'paper', xanchor: 'left',
+        y: walls.zero_gamma, yref: 'y', yanchor: 'middle',
+        text: '<b>Gamma Flip</b>',
+        showarrow: false,
+        font: { color: COLOR_ACCENT, size: 10, family: 'JetBrains Mono, monospace' },
+        bgcolor: 'rgba(6, 8, 13, 0.75)',
+        bordercolor: COLOR_ACCENT,
+        borderwidth: 1,
+        borderpad: 2,
+      })
+    }
   }
 
   const layout = {
@@ -134,6 +156,13 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
     },
     yaxis: {
       title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right',
+      // Los strikes reales pueden venir cada $1, pero el eje Y en
+      // realidad son los puntos de borde de cada banda (heatmap.py:
+      // BAND_HALF_WIDTH ±0.1 alrededor de cada strike) -- sin fijar el
+      // paso, Plotly a veces elegía ticks "bonitos" en esa escala fina
+      // (716.1, 716.2) en vez de niveles enteros. dtick:1 fuerza
+      // siempre enteros ($715, $716...), sin importar el zoom.
+      dtick: 1,
       ...(prevYRange ? { range: prevYRange, autorange: false } : {}),
     },
     shapes,
@@ -148,7 +177,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
     // click-y-arrastre del usuario recortaba/hacía zoom sin querer en
     // vez de simplemente mover la vista.
     dragmode: 'pan',
-    margin: { l: 80, r: 60, t: 30, b: 50 },
+    margin: { l: 80, r: 110, t: 30, b: 50 },
     height: 650,
   }
 
