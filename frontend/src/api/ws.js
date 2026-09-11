@@ -1,4 +1,10 @@
 import { WS_BASE } from '../config.js'
+import { getToken } from './http.js'
+
+// El backend cierra el handshake con este código cuando no hay token
+// válido (ver ws_market.py) -- ante esto no tiene sentido reintentar
+// reconectar en loop, hay que mandar al usuario de vuelta al login.
+const WS_AUTH_FAILED_CODE = 4401
 
 const HEARTBEAT_INTERVAL_MS = 20000
 const RECONNECT_MIN_MS = 500
@@ -24,7 +30,11 @@ export class MarketWebSocketClient {
     this._manualClose = false
     this._setStatus('connecting')
 
-    const url = `${WS_BASE}/ws/market`
+    // El WebSocket nativo del navegador no permite mandar headers custom
+    // (Authorization) en el handshake -- a diferencia de las llamadas
+    // REST, acá el token viaja como query param.
+    const token = getToken()
+    const url = `${WS_BASE}/ws/market${token ? `?token=${encodeURIComponent(token)}` : ''}`
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
@@ -44,9 +54,14 @@ export class MarketWebSocketClient {
       this.onMessage(data)
     }
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       this._stopHeartbeat()
       this._setStatus('disconnected')
+      if (event.code === WS_AUTH_FAILED_CODE) {
+        this._manualClose = true
+        window.dispatchEvent(new CustomEvent('session-expired'))
+        return
+      }
       if (!this._manualClose) this._scheduleReconnect()
     }
 

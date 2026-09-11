@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Cookie, HTTPException
+from fastapi import Cookie, Header, HTTPException
 from jose import JWTError, jwt
 
 from app.config import get_settings
@@ -61,14 +61,33 @@ def decode_access_token(token: str) -> str | None:
         return None
 
 
-def require_auth(gex_session: str | None = Cookie(default=None)) -> str:
-    """Dependency de FastAPI para proteger endpoints REST: valida la misma
-    cookie que usa /auth/me y devuelve el username, o corta con 401 si no
-    hay sesión válida. (El endpoint WebSocket /ws/market todavía no la
-    usa -- queda pendiente como parte del hardening de Fase 4.)"""
-    if not gex_session:
+def require_auth(
+    gex_session: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
+) -> str:
+    """Dependency de FastAPI para proteger endpoints REST: acepta el token
+    por header 'Authorization: Bearer <token>' (lo que manda el frontend
+    ahora, guardado en localStorage) o, como respaldo, por la cookie
+    'gex_session' de logins previos. El cookie cross-site (backend en
+    onrender.com, frontend en pages.dev -- dominios distintos) resultó
+    poco confiable en la práctica: navegadores con bloqueo de cookies de
+    terceros activado por defecto (Safari con "Prevent Cross-Site
+    Tracking", Firefox en modo estricto, etc.) simplemente descartan esa
+    cookie sin avisar -- el login parecía funcionar (200 OK) pero la
+    siguiente llamada a la API llegaba sin cookie y caía acá con 401,
+    devolviendo al usuario al login con un mensaje confuso de "sesión
+    expirada" segundos después de haber iniciado sesión bien. El header
+    Authorization no depende de cookies en absoluto, así que no tiene
+    ese problema en ningún navegador/configuración."""
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    elif gex_session:
+        token = gex_session
+
+    if not token:
         raise HTTPException(status_code=401, detail="No autenticado.")
-    username = decode_access_token(gex_session)
+    username = decode_access_token(token)
     if not username:
         raise HTTPException(status_code=401, detail="Sesión inválida o expirada.")
     return username

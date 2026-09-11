@@ -61,6 +61,14 @@ async def login(payload: LoginRequest, request: Request, response: Response):
         await update_user_password_hash(username, hash_password_argon2(password))
 
     token = create_access_token(subject=username)
+    # La cookie se deja como respaldo (útil si algún día front y back
+    # comparten dominio), pero el frontend ya no depende de ella: la
+    # guarda vía Authorization/localStorage porque la cookie cross-site
+    # (dominios distintos: onrender.com vs pages.dev) resultó bloqueada
+    # en silencio por navegadores con protección anti-tracking activada
+    # por defecto (Safari, Firefox estricto) -- el login parecía andar
+    # (200 OK) pero la siguiente llamada llegaba sin cookie y caía en
+    # 401, expulsando al usuario de vuelta al login segundos después.
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
@@ -71,7 +79,7 @@ async def login(payload: LoginRequest, request: Request, response: Response):
     )
 
     display_name = user_record.get("name", username)
-    return LoginResponse(ok=True, message=f"Bienvenido {display_name}", username=username)
+    return LoginResponse(ok=True, message=f"Bienvenido {display_name}", username=username, token=token)
 
 
 @router.post("/logout")

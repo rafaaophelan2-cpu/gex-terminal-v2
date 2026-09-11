@@ -1,8 +1,9 @@
 import asyncio
 import time
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from app.core.security import decode_access_token
 from app.services.market_feed import SymbolFeed, feed_registry
 
 router = APIRouter()
@@ -74,8 +75,27 @@ class ConnectionState:
 
 
 @router.websocket("/ws/market")
-async def websocket_market(websocket: WebSocket):
+async def websocket_market(websocket: WebSocket, token: str | None = Query(default=None)):
+    """Requiere ?token=<JWT> en la URL -- el WebSocket nativo del
+    navegador no permite mandar headers custom (Authorization) en el
+    handshake, así que el token viaja por query param acá, a diferencia
+    de las llamadas REST que sí usan el header. Antes este endpoint no
+    validaba nada: cualquiera con la URL podía suscribirse al feed en
+    vivo sin haber iniciado sesión.
+
+    El accept() va ANTES de validar el token a propósito: cerrar la
+    conexión sin haber aceptado el handshake hace que un navegador real
+    solo vea un rechazo HTTP genérico (código 1006, sin acceso al motivo
+    ni al código real por seguridad del propio navegador) -- el frontend
+    necesita poder leer el código 4401 en el evento onclose para decidir
+    "no reintentes conectar, mandá al usuario al login" en vez de
+    quedarse reconectando en loop indefinidamente con un token inválido."""
     await websocket.accept()
+    username = decode_access_token(token) if token else None
+    if not username:
+        await websocket.close(code=4401, reason="No autenticado.")
+        return
+
     state = ConnectionState()
 
     try:

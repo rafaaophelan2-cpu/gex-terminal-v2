@@ -10,6 +10,7 @@ class LoginResponse(BaseModel):
     ok: bool
     message: str
     username: str | None = None
+    token: str | None = None
 
 
 class MeResponse(BaseModel):

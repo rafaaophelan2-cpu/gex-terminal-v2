@@ -48,6 +48,26 @@ def test_login_success_sets_cookie(client, monkeypatch):
     assert "gex_session" in resp.cookies
 
 
+def test_login_success_returns_token_for_localstorage(client, monkeypatch):
+    # El frontend guarda esto en localStorage y lo manda como
+    # Authorization: Bearer -- no depende de la cookie cross-site, que
+    # algunos navegadores bloquean en silencio (Safari, Firefox estricto).
+    monkeypatch.setattr(routes_auth, "fetch_user_by_username", _fake_fetch_user_found)
+    monkeypatch.setattr(routes_auth, "update_user_password_hash", _fake_update_password_hash)
+
+    resp = client.post("/auth/login", json={"username": "trader1", "password": "correcthorse"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["token"]
+
+    # Cliente nuevo, sin el cookie jar del login -- prueba que el token
+    # solo (vía Authorization) alcanza, sin depender de ninguna cookie.
+    bare_client = TestClient(app, base_url="https://testserver")
+    resp_me = bare_client.get("/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
+    assert resp_me.status_code == 200
+    assert resp_me.json()["username"] == "trader1"
+
+
 def test_login_wrong_password(client, monkeypatch):
     monkeypatch.setattr(routes_auth, "fetch_user_by_username", _fake_fetch_user_found)
 

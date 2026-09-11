@@ -1,11 +1,15 @@
 import hashlib
 import time
 
+import pytest
+from fastapi import HTTPException
+
 from app.core.security import (
     LoginRateLimiter,
     create_access_token,
     decode_access_token,
     hash_password_argon2,
+    require_auth,
     verify_password,
 )
 
@@ -48,6 +52,44 @@ def test_jwt_roundtrip():
 
 def test_jwt_invalid_token_returns_none():
     assert decode_access_token("not-a-real-token") is None
+
+
+def test_require_auth_accepts_bearer_header():
+    token = create_access_token(subject="trader1")
+    username = require_auth(gex_session=None, authorization=f"Bearer {token}")
+    assert username == "trader1"
+
+
+def test_require_auth_accepts_bearer_header_case_insensitive_scheme():
+    token = create_access_token(subject="trader1")
+    username = require_auth(gex_session=None, authorization=f"bearer {token}")
+    assert username == "trader1"
+
+
+def test_require_auth_falls_back_to_cookie_when_no_bearer_header():
+    # Compatibilidad con logins previos al cambio a Authorization/localStorage.
+    token = create_access_token(subject="trader1")
+    username = require_auth(gex_session=token, authorization=None)
+    assert username == "trader1"
+
+
+def test_require_auth_prefers_bearer_over_cookie():
+    bearer_token = create_access_token(subject="trader1")
+    cookie_token = create_access_token(subject="trader2")
+    username = require_auth(gex_session=cookie_token, authorization=f"Bearer {bearer_token}")
+    assert username == "trader1"
+
+
+def test_require_auth_raises_401_without_any_credential():
+    with pytest.raises(HTTPException) as exc_info:
+        require_auth(gex_session=None, authorization=None)
+    assert exc_info.value.status_code == 401
+
+
+def test_require_auth_raises_401_for_expired_or_invalid_token():
+    with pytest.raises(HTTPException) as exc_info:
+        require_auth(gex_session=None, authorization="Bearer not-a-real-token")
+    assert exc_info.value.status_code == 401
 
 
 def test_rate_limiter_locks_after_max_attempts():
