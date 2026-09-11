@@ -1,5 +1,6 @@
 import hashlib
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -74,3 +75,70 @@ def test_available_dates_returns_list(authed_client, monkeypatch):
     resp = authed_client.get("/market/available-dates?symbol=QQQ")
     assert resp.status_code == 200
     assert resp.json() == {"dates": ["2026-09-11", "2026-09-10"]}
+
+
+class _FakeFeed:
+    def __init__(self):
+        self.spot_price = 481.23
+        self.nearest_exp_key = "2026-09-11:0"
+        self.df = pd.DataFrame([
+            {"strike": 475.0, "exp_key": "2026-09-11:0", "dte": 0, "net_gex": -5.0, "call_gex": 1.0, "put_gex": -6.0,
+             "net_dex": 1.0, "net_tex": -1.0, "net_vex": 1.0, "net_chex": -1.0, "net_vanna": 1.0},
+            {"strike": 485.0, "exp_key": "2026-09-11:0", "dte": 0, "net_gex": 3.0, "call_gex": 4.0, "put_gex": -1.0,
+             "net_dex": 1.0, "net_tex": -1.0, "net_vex": 1.0, "net_chex": -1.0, "net_vanna": 1.0},
+        ])
+
+
+def test_ai_diagnosis_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/market/ai-diagnosis", json={"symbol": "QQQ"})
+    assert resp.status_code == 401
+
+
+def test_ai_diagnosis_without_active_feed_returns_409(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ"})
+    assert resp.status_code == 409
+
+
+async def _fake_candles(symbol, day):
+    return [{"time": "09:30", "open": 478.0, "high": 481.0, "low": 477.0, "close": 480.5}]
+
+
+async def _fake_vix():
+    return 18.5
+
+
+def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(routes_rest, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+
+    async def _fake_query_groq(system_prompt, user_prompt):
+        assert "481.23" in system_prompt
+        return "diagnóstico narrativo de groq"
+
+    monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
+
+    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ", "tipo_analisis": "Intradía"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source"] == "groq"
+    assert body["text"] == "diagnóstico narrativo de groq"
+
+
+def test_ai_diagnosis_falls_back_to_local_when_groq_unavailable(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(routes_rest, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+
+    async def _fake_query_groq_none(system_prompt, user_prompt):
+        return None
+
+    monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq_none)
+
+    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source"] == "local"
+    assert "Resumen Rápido" in body["text"]

@@ -169,3 +169,45 @@ async def fetch_quote(symbol: str) -> dict:
         return {}
 
     return await call_with_fallback(f"quote:{symbol}", {}, _do_fetch)
+
+
+async def fetch_nq_price() -> float:
+    """Port de fetch_nq_price_schwab en app.py: precio en vivo del futuro
+    continuo /NQ, usado solo para calcular conversion_ratio (= nq/spot)
+    del push a Quantower -- nunca para GEX/Griegas."""
+    client = get_schwab_client()
+    if client is None:
+        return 0.0
+
+    async def _do_fetch():
+        resp = await client.get_quote("/NQ")
+        if resp.status_code == 200:
+            data = resp.json()
+            quote = (data.get("/NQ", {}) or {}).get("quote", {})
+            price = float(quote.get("lastPrice", quote.get("closePrice", 0.0)))
+            if price > 0:
+                return price
+        return 0.0
+
+    return await call_with_fallback("nq_price", 0.0, _do_fetch)
+
+
+async def fetch_vix() -> float:
+    """Port de fetch_vix_schwab en app.py: prueba varios símbolos porque
+    Schwab no siempre resuelve $VIX con el mismo ticker exacto."""
+    client = get_schwab_client()
+    if client is None:
+        return 0.0
+
+    async def _do_fetch():
+        for sym in ["$VIX", "VIX", "$VIX.X"]:
+            resp = await client.get_quote(sym)
+            if resp.status_code == 200:
+                data = resp.json()
+                quote = (data.get(sym, {}) or {}).get("quote", {})
+                price = float(quote.get("lastPrice", quote.get("closePrice", 0.0)))
+                if price > 0:
+                    return price
+        return 0.0
+
+    return await call_with_fallback("vix_price", 0.0, _do_fetch)

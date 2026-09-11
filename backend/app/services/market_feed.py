@@ -182,6 +182,13 @@ class FeedRegistry:
                 feed.stop()
                 del self._feeds[symbol]
 
+    def get(self, symbol: str) -> SymbolFeed | None:
+        """Lectura sin efecto secundario (no suma/resta subscriptores) --
+        para endpoints REST bajo demanda (ej. diagnóstico de IA) que solo
+        necesitan leer el último estado calculado de un símbolo que YA
+        tiene al menos una conexión WS activa."""
+        return self._feeds.get(symbol)
+
     def active_feeds(self) -> list[SymbolFeed]:
         """Snapshot de los feeds con al menos un subscriptor ahora mismo --
         usado por snapshot_writer/quantower_pusher, que no dependen de

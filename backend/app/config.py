@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     # Firebase Realtime Database
     firebase_db_url: str = ""
+    # Símbolo cuyo SymbolFeed se empuja a /live_levels para el indicador
+    # de Quantower -- el indicador lee un único nodo plano, sin dimensión
+    # de símbolo, igual que hacía app.py con su único dashboard.
+    quantower_symbol: str = "QQQ"
 
     # IA (solo Groq; Gemini no se usa)
     groq_api_key: str = ""

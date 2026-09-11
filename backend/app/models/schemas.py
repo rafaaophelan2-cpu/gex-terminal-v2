@@ -14,3 +14,13 @@ class LoginResponse(BaseModel):
 
 class MeResponse(BaseModel):
     username: str
+
+
+class AiDiagnosisRequest(BaseModel):
+    symbol: str = "QQQ"
+    tipo_analisis: str = "Intradía"
+
+
+class AiDiagnosisResponse(BaseModel):
+    text: str
+    source: str

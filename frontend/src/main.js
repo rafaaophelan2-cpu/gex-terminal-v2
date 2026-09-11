@@ -1,6 +1,7 @@
 import './style.css'
+import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
-import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
@@ -32,6 +33,23 @@ const backgammaScrubber = document.getElementById('backgamma-scrubber')
 const backgammaCaption = document.getElementById('backgamma-caption')
 const backgammaSpotChartEl = document.getElementById('backgamma-spot-chart')
 const backgammaStrikeChartEl = document.getElementById('backgamma-strike-chart')
+const aiTipoSelect = document.getElementById('ai-tipo-select')
+const aiDiagnosisBtn = document.getElementById('ai-diagnosis-btn')
+const aiStatusEl = document.getElementById('ai-status')
+const aiResultEl = document.getElementById('ai-diagnosis-result')
+
+const dataMetricEls = {
+  regime: document.getElementById('data-regime'),
+  netGex: document.getElementById('data-net-gex'),
+  zg: document.getElementById('data-zg'),
+  cw1: document.getElementById('data-cw1'),
+  pw1: document.getElementById('data-pw1'),
+  dex: document.getElementById('data-dex'),
+  tex: document.getElementById('data-tex'),
+  vex: document.getElementById('data-vex'),
+  chex: document.getElementById('data-chex'),
+  vanna: document.getElementById('data-vanna'),
+}
 
 const greeksMetricEls = {
   dex: document.getElementById('greeks-dex'),
@@ -53,6 +71,7 @@ const metricEls = {
 let wsClient = null
 let activeGreek = 'dex'
 let latestGreeksPayload = null
+let latestGexInfo = null
 let latestWalls = null
 let driftRefreshTimer = null
 let liveGammaRefreshTimer = null
@@ -237,6 +256,28 @@ function setWsStatus(status) {
   wsStatusEl.className = `status-pill status-${status}`
 }
 
+function updateDataSummary() {
+  if (!latestGexInfo) return
+  const netGex = latestGexInfo.net_gex_total
+  const isPositive = netGex >= 0
+  const signClass = (v) => (v >= 0 ? 'val-positive' : 'val-negative')
+
+  setMetric(dataMetricEls.regime, isPositive ? 'POSITIVO (mean-reverting)' : 'NEGATIVO (trending)', signClass(netGex))
+  setMetric(dataMetricEls.netGex, fmtMoney(netGex), signClass(netGex))
+  setMetric(dataMetricEls.zg, latestGexInfo.flip_level ? `$${latestGexInfo.flip_level.toFixed(2)}` : '--', 'val-zero-gamma')
+  setMetric(dataMetricEls.cw1, latestGexInfo.walls?.cw1 ? `$${latestGexInfo.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
+  setMetric(dataMetricEls.pw1, latestGexInfo.walls?.pw1 ? `$${latestGexInfo.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
+
+  if (latestGreeksPayload) {
+    const t = latestGreeksPayload.totals
+    setMetric(dataMetricEls.dex, `${t.dex.toFixed(2)}M`, signClass(t.dex))
+    setMetric(dataMetricEls.tex, fmtMoney(t.tex), signClass(t.tex))
+    setMetric(dataMetricEls.vex, fmtMoney(t.vex), signClass(t.vex))
+    setMetric(dataMetricEls.chex, `${t.chex.toFixed(2)}M`, signClass(t.chex))
+    setMetric(dataMetricEls.vanna, `${t.vanna.toFixed(2)}M`, signClass(t.vanna))
+  }
+}
+
 function handleMarketMessage(data) {
   if (data.type === 'pong') return
 
@@ -244,6 +285,7 @@ function handleMarketMessage(data) {
     metricEls.symbol.textContent = data.symbol
     setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
+    latestGexInfo = info
     latestWalls = info.walls
     setMetric(metricEls.netGex, fmtMoney(info.net_gex_total), info.net_gex_total >= 0 ? 'val-positive' : 'val-negative')
     setMetric(metricEls.cw1, info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
@@ -272,6 +314,8 @@ function handleMarketMessage(data) {
         renderGreeksChart(greeksChartEl, activeGreek, data.greeks, data.type === 'chain_full')
       }
     }
+
+    updateDataSummary()
   }
 }
 
@@ -388,6 +432,30 @@ greeksSubNavButtons.forEach((btn) => {
       renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
     }
   })
+})
+
+aiDiagnosisBtn.addEventListener('click', async () => {
+  const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+  aiDiagnosisBtn.disabled = true
+  aiStatusEl.textContent = 'Generando diagnóstico…'
+  aiStatusEl.className = 'ai-status'
+
+  try {
+    const result = await postAiDiagnosis(symbol, aiTipoSelect.value)
+    aiResultEl.innerHTML = marked.parse(result.text)
+    if (result.source === 'local') {
+      aiStatusEl.textContent = '⚠ IA no disponible ahora mismo — diagnóstico local por plantilla'
+      aiStatusEl.className = 'ai-status local'
+    } else {
+      aiStatusEl.textContent = '✓ Generado con IA'
+      aiStatusEl.className = 'ai-status'
+    }
+  } catch (err) {
+    aiStatusEl.textContent = err.message || 'Error generando el diagnóstico.'
+    aiStatusEl.className = 'ai-status error'
+  } finally {
+    aiDiagnosisBtn.disabled = false
+  }
 })
 
 async function init() {

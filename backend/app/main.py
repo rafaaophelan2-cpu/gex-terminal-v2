@@ -8,6 +8,7 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_rest import router as rest_router
 from app.api.ws_market import router as ws_router
 from app.config import get_settings
+from app.services.quantower_pusher import quantower_pusher_loop
 from app.services.snapshot_writer import snapshot_writer_loop
 
 settings = get_settings()
@@ -15,14 +16,15 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # snapshot_writer corre siempre (con o sin conexiones WS activas) --
-    # dentro solo actúa sobre símbolos con al menos un subscriptor, así
-    # que en la práctica no hace nada hasta que alguien se conecta, pero
-    # no depende de ninguna conexión en particular (mismo criterio que
-    # quantower_pusher, que se suma en Fase 3 cuando se conecte Firebase).
+    # Ambos tasks corren siempre (con o sin conexiones WS activas) --
+    # dentro solo actúan sobre símbolos con al menos un subscriptor, así
+    # que en la práctica no hacen nada hasta que alguien se conecta, pero
+    # no dependen de ninguna conexión en particular.
     snapshot_task = asyncio.create_task(snapshot_writer_loop())
+    quantower_task = asyncio.create_task(quantower_pusher_loop())
     yield
     snapshot_task.cancel()
+    quantower_task.cancel()
 
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)

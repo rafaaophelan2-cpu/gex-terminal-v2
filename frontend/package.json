@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "lightweight-charts": "^5.2.1",
+    "marked": "^15.0.0",
     "plotly.js-dist-min": "^2.35.0"
   }
 }

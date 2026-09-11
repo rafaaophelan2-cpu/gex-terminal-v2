@@ -120,7 +120,33 @@
           </section>
 
           <section id="tab-data" class="tab-panel">
-            <div class="coming-soon">🚧 Próximamente — resumen ejecutivo y diagnóstico IA</div>
+            <div class="data-summary-grid">
+              <div class="metric"><span class="metric-label">Régimen de Gamma</span><span id="data-regime" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net GEX Total</span><span id="data-net-gex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Zero Gamma</span><span id="data-zg" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Call Wall 1</span><span id="data-cw1" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Put Wall 1</span><span id="data-pw1" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net DEX</span><span id="data-dex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net TEX</span><span id="data-tex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net VEX</span><span id="data-vex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net CHEX</span><span id="data-chex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net Vanna</span><span id="data-vanna" class="metric-value">--</span></div>
+            </div>
+
+            <div class="ai-toolbar">
+              <label for="ai-tipo-select">Tipo de análisis</label>
+              <select id="ai-tipo-select">
+                <option value="Intradía" selected>Intradía</option>
+                <option value="Premarket">Premarket</option>
+                <option value="Análisis DTE">Análisis DTE</option>
+              </select>
+              <button id="ai-diagnosis-btn">🤖 Generar Diagnóstico IA</button>
+              <span id="ai-status" class="ai-status"></span>
+            </div>
+
+            <div id="ai-diagnosis-result" class="ai-diagnosis-result">
+              <p class="ai-placeholder">Pulsa "Generar Diagnóstico IA" para un análisis de escenarios basado en los niveles de gamma en vivo.</p>
+            </div>
           </section>
         </main>
       </div>

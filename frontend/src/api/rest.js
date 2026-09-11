@@ -38,3 +38,17 @@ export async function fetchAvailableDates(symbol) {
   const data = await resp.json()
   return data.dates
 }
+
+export async function postAiDiagnosis(symbol, tipoAnalisis) {
+  const resp = await fetch(`${API_BASE}/market/ai-diagnosis`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, tipo_analisis: tipoAnalisis }),
+  })
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}))
+    throw new Error(detail.detail || `Error ${resp.status}`)
+  }
+  return resp.json()
+}
