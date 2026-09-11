@@ -113,6 +113,45 @@ class SymbolFeed:
             ],
         }
 
+    def greeks_payload(self, min_strike: float | None = None, max_strike: float | None = None) -> dict:
+        """DEX/TEX/VEX/CHEX/VANNA de la pestaña GREEKS: totales (nearest-DTE)
+        + perfil por strike de cada una. DEX incluye además el desglose
+        call/put (único que lo muestra en app.py); las demás solo el neto."""
+        greek_cols = ['net_dex', 'net_tex', 'net_vex', 'net_chex', 'net_vanna', 'call_dex', 'put_dex']
+        empty = {
+            "totals": {"dex": 0.0, "tex": 0.0, "vex": 0.0, "chex": 0.0, "vanna": 0.0},
+            "by_strike": [],
+        }
+        if self.df.empty or not all(c in self.df.columns for c in greek_cols):
+            return empty
+
+        df_nearest = get_nearest_dte_subset(self.df)
+        if min_strike is not None and max_strike is not None:
+            df_nearest = df_nearest[(df_nearest['strike'] >= min_strike) & (df_nearest['strike'] <= max_strike)]
+        if df_nearest.empty:
+            return empty
+
+        by_strike = df_nearest.groupby('strike', as_index=False)[greek_cols].sum().sort_values('strike')
+
+        return {
+            "totals": {
+                "dex": float(by_strike['net_dex'].sum()),
+                "tex": float(by_strike['net_tex'].sum()),
+                "vex": float(by_strike['net_vex'].sum()),
+                "chex": float(by_strike['net_chex'].sum()),
+                "vanna": float(by_strike['net_vanna'].sum()),
+            },
+            "by_strike": [
+                {
+                    "strike": float(r.strike),
+                    "net_dex": float(r.net_dex), "call_dex": float(r.call_dex), "put_dex": float(r.put_dex),
+                    "net_tex": float(r.net_tex), "net_vex": float(r.net_vex),
+                    "net_chex": float(r.net_chex), "net_vanna": float(r.net_vanna),
+                }
+                for r in by_strike.itertuples()
+            ],
+        }
+
 
 class FeedRegistry:
     """dict[symbol -> SymbolFeed] con ref-count de subscriptores: el loop
