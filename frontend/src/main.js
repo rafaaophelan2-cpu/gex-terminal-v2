@@ -2,6 +2,7 @@ import './style.css'
 import { login, logout, me } from './api/auth.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
+import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 
 const loginView = document.getElementById('login-view')
 const dashboardView = document.getElementById('dashboard-view')
@@ -14,7 +15,17 @@ const chartEl = document.getElementById('gex-info-chart')
 const symbolInput = document.getElementById('symbol-input')
 const strikeRangeInput = document.getElementById('strike-range-input')
 const applySymbolBtn = document.getElementById('apply-symbol-btn')
-const tabButtons = document.querySelectorAll('.tab-btn')
+const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
+const greeksChartEl = document.getElementById('greeks-chart')
+const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
+
+const greeksMetricEls = {
+  dex: document.getElementById('greeks-dex'),
+  tex: document.getElementById('greeks-tex'),
+  vex: document.getElementById('greeks-vex'),
+  chex: document.getElementById('greeks-chex'),
+  vanna: document.getElementById('greeks-vanna'),
+}
 
 const metricEls = {
   symbol: document.getElementById('metric-symbol'),
@@ -26,6 +37,12 @@ const metricEls = {
 }
 
 let wsClient = null
+let activeGreek = 'dex'
+let latestGreeksPayload = null
+
+function isGreeksTabActive() {
+  return document.getElementById('tab-greeks').classList.contains('active')
+}
 
 function fmtMoney(val) {
   if (val === null || val === undefined || Number.isNaN(val)) return '--'
@@ -42,6 +59,7 @@ function showDashboard(username) {
   dashboardView.hidden = false
   userBadge.textContent = `👤 ${username}`
   resetGexInfoChart()
+  resetGreeksChart()
   connectMarketFeed()
 }
 
@@ -79,6 +97,20 @@ function handleMarketMessage(data) {
         renderChainFull(chartEl, info, data.spot)
       } else {
         updateTick(chartEl, info, data.spot)
+      }
+    }
+
+    if (data.greeks) {
+      latestGreeksPayload = data.greeks
+      const t = data.greeks.totals
+      greeksMetricEls.dex.textContent = `${t.dex.toFixed(2)}M`
+      greeksMetricEls.tex.textContent = fmtMoney(t.tex)
+      greeksMetricEls.vex.textContent = fmtMoney(t.vex)
+      greeksMetricEls.chex.textContent = `${t.chex.toFixed(2)}M`
+      greeksMetricEls.vanna.textContent = `${t.vanna.toFixed(2)}M`
+
+      if (isGreeksTabActive()) {
+        renderGreeksChart(greeksChartEl, activeGreek, data.greeks, data.type === 'chain_full')
       }
     }
   }
@@ -128,6 +160,24 @@ tabButtons.forEach((btn) => {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'))
     btn.classList.add('active')
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active')
+
+    // Un chart de Plotly renderizado mientras su contenedor estaba oculto
+    // (display:none) no mide bien el tamaño -- forzar un redraw completo
+    // al hacerse visible por primera vez tras el cambio de pestaña.
+    if (btn.dataset.tab === 'greeks' && latestGreeksPayload) {
+      renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
+    }
+  })
+})
+
+greeksSubNavButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    greeksSubNavButtons.forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    activeGreek = btn.dataset.greek
+    if (latestGreeksPayload) {
+      renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
+    }
   })
 })
 

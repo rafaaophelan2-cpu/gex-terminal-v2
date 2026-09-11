@@ -311,6 +311,24 @@ main {
   display: block;
 }
 
+.greeks-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+#greeks-sub-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+#greeks-sub-nav .tab-btn {
+  min-width: 90px;
+}
+
 .coming-soon {
   background: rgba(13, 17, 26, 0.85);
   border: 1px dashed rgba(255, 255, 255, 0.12);

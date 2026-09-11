@@ -80,7 +80,21 @@
           </section>
 
           <section id="tab-greeks" class="tab-panel">
-            <div class="coming-soon">🚧 Próximamente — perfiles de DEX/TEX/VEX/CHEX/VANNA</div>
+            <div class="greeks-metrics">
+              <div class="metric"><span class="metric-label">Net Delta (DEX)</span><span id="greeks-dex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net Theta (TEX)</span><span id="greeks-tex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net Vega (VEX)</span><span id="greeks-vex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net Charm (CHEX)</span><span id="greeks-chex" class="metric-value">--</span></div>
+              <div class="metric"><span class="metric-label">Net Vanna</span><span id="greeks-vanna" class="metric-value">--</span></div>
+            </div>
+            <nav id="greeks-sub-nav">
+              <button class="tab-btn active" data-greek="dex">DELTA (DEX)</button>
+              <button class="tab-btn" data-greek="tex">THETA (TEX)</button>
+              <button class="tab-btn" data-greek="vex">VEGA (VEX)</button>
+              <button class="tab-btn" data-greek="chex">CHARM (CHEX)</button>
+              <button class="tab-btn" data-greek="vanna">VANNA</button>
+            </nav>
+            <div id="greeks-chart" class="chart-container"></div>
           </section>
 
           <section id="tab-backgamma" class="tab-panel">
