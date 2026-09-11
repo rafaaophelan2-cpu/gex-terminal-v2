@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo
@@ -18,6 +19,7 @@ from app.config import get_settings
 from app.integrations.supabase_client import get_supabase_client
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Serializa TODAS las llamadas de red a Schwab (chain, velas, quotes) —
 # equivalente async de _schwab_client_lock en app.py. schwab-py con
@@ -95,14 +97,28 @@ async def call_with_fallback(cache_key: str, empty_value, fetch_coro_fn):
         if not is_empty:
             _last_good[cache_key] = result
             return result
+        logger.warning("call_with_fallback('%s'): resultado vacío, usando último valor bueno.", cache_key)
     except Exception:
-        pass
+        # Se tragaba en silencio -- si fetch_coro_fn tira (ej. el token de
+        # Schwab quedó inválido), acá es donde de verdad se pierde el
+        # rastro: ni siquiera le llega la excepción a quien llama, así que
+        # ningún logging más arriba en la cadena (ver _run_loop en
+        # market_feed.py) puede verla. Sin loggear ACÁ, un fallo sostenido
+        # de Schwab es indistinguible de "no hay dato nuevo todavía".
+        logger.exception("call_with_fallback('%s'): fetch_coro_fn() falló, usando último valor bueno si hay.", cache_key)
     return _last_good.get(cache_key, empty_value)
 
 
 async def fetch_option_chain(symbol: str, strikes_count: int) -> dict:
     client = get_schwab_client()
     if client is None:
+        # Este camino NUNCA pasa por call_with_fallback -- sin credenciales
+        # o token guardado, no tiene sentido usar el "último dato bueno"
+        # (nunca va a poder refrescarlo tampoco), pero antes esto era
+        # indistinguible en silencio de cualquier otro motivo de feed
+        # vacío. Loggeado para que quede claro en Render que el problema
+        # es credenciales/token, no la API de Schwab en sí.
+        logger.warning("get_schwab_client() devolvió None (sin client_id/secret o sin token en Supabase) -- %s sin datos.", symbol)
         return {}
 
     async def _do_fetch():
@@ -116,6 +132,7 @@ async def fetch_option_chain(symbol: str, strikes_count: int) -> dict:
         )
         if resp.status_code == 200:
             return resp.json()
+        logger.warning("Schwab get_option_chain(%s) devolvió status %s: %s", symbol, resp.status_code, resp.text[:500])
         return {}
 
     return await call_with_fallback(f"chain:{symbol}:{strikes_count}", {}, _do_fetch)
