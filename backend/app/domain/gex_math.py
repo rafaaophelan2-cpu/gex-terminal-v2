@@ -10,7 +10,7 @@ def recalculate_gex_for_spot(df_input: pd.DataFrame, spot_t: float, t_exp: float
     spot actual. Port de recalculate_gex_for_spot en app.py (~línea 1417),
     vectorizado con NumPy en vez del df.apply(axis=1) original — mismo
     resultado, más barato en CPU (relevante en el free tier de 0.25 vCPU
-    de Back4app)."""
+    del host de producción)."""
     if df_input.empty or spot_t <= 0:
         return df_input
 

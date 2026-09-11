@@ -60,7 +60,7 @@ def _write_token_sync(token_metadata: dict, *args, **kwargs) -> None:
 def get_schwab_client():
     """Cliente único de Schwab para todo el proceso (equivalente al
     @st.cache_resource de app.py). El token se lee/escribe en Supabase en
-    vez de un archivo en disco -- Back4app no tiene filesystem persistente
+    vez de un archivo en disco -- Render no tiene filesystem persistente
     entre deploys/restarts. Devuelve None si no hay credenciales o token
     guardado todavía (ver scripts/bootstrap_schwab_token.py)."""
     if not settings.schwab_client_id or not settings.schwab_client_secret:

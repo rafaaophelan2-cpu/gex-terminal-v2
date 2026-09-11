@@ -12,7 +12,8 @@ router = APIRouter()
 async def websocket_diagnostic(websocket: WebSocket):
     """Endpoint mínimo sin dependencia de Schwab/mercado, para chequear
     rápido si el host sigue sosteniendo WebSocket (ya verificado en
-    Back4app: 90s sostenidos sin cortes, ver plan)."""
+    ya verificado con Back4app: 90s sostenidos sin cortes -- pendiente
+    reverificar en Render, que es el host final, ver plan)."""
     await websocket.accept()
     send_task = None
     try:

@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Equivalente a st.secrets del app.py de Streamlit. Se llenan vía
-    variables de entorno (panel del servicio en Back4app en producción,
+    variables de entorno (panel del servicio en Render en producción,
     `.env` local para desarrollo — nunca commitear ese `.env`)."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

@@ -42,6 +42,6 @@ app.include_router(auth_router)
 
 @app.get("/health")
 async def health():
-    """Usado por el health check del servicio en Back4app y por las
+    """Usado por el health check del servicio en Render y por las
     pruebas que confirman que el host no duerme/se pausa inesperadamente."""
     return {"status": "ok", "environment": settings.environment}

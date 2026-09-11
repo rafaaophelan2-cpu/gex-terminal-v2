@@ -3,9 +3,10 @@
 Backend FastAPI del GEX Quant Terminal (migración desde Streamlit). Ver el
 plan completo del proyecto en `docs/` del repo raíz.
 
-Desplegado en Koyeb, conectado directo a este repo de GitHub — cada push a
-`main` que toque `backend/` dispara un redeploy automático (configurado en
-el panel del servicio de Koyeb, sin workflow de CI adicional).
+Desplegado en Render (`https://gex-terminal-api.onrender.com`), conectado
+directo a este repo de GitHub — cada push a `main` que toque `backend/`
+dispara un redeploy automático (auto-deploy nativo de Render, sin
+workflow de CI adicional).
 
 ## Desarrollo local
 
