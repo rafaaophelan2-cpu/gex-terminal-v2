@@ -127,12 +127,17 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
         line: { color: COLOR_ACCENT, width: 1, dash: 'dash' },
       })
       // A diferencia de CW/PW (izquierda), Gamma Flip va del lado
-      // DERECHO, más allá del eje de strike (x > 1 en coordenadas de
-      // paper, fuera del área de ploteo) -- quedaba encima de CW1 en el
-      // borde izquierdo cuando ambos niveles caían cerca, sin forma de
-      // distinguir cuál era cuál.
+      // DERECHO, más allá del eje de strike -- quedaba encima de CW1 en
+      // el borde izquierdo cuando ambos niveles caían cerca. x:1 (borde
+      // del área de ploteo) + xshift en PÍXELES (no otro % de x en
+      // 'paper', que se salía de la figura: ese % se mide sobre el
+      // ancho del área de ploteo, así que con un gráfico ancho terminaba
+      // empujando el label más allá del margen reservado y quedaba
+      // cortado). xshift sí es un desplazamiento fijo en píxeles, así
+      // que cae siempre dentro del margin.r de abajo sin importar el
+      // ancho de la pantalla.
       annotations.push({
-        x: 1.06, xref: 'paper', xanchor: 'left',
+        x: 1, xref: 'paper', xanchor: 'left', xshift: 65,
         y: walls.zero_gamma, yref: 'y', yanchor: 'middle',
         text: '<b>Gamma Flip</b>',
         showarrow: false,
@@ -177,7 +182,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
     // click-y-arrastre del usuario recortaba/hacía zoom sin querer en
     // vez de simplemente mover la vista.
     dragmode: 'pan',
-    margin: { l: 80, r: 110, t: 30, b: 50 },
+    margin: { l: 80, r: 150, t: 30, b: 50 },
     height: 650,
   }
 
