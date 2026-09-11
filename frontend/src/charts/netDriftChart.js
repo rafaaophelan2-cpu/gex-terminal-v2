@@ -116,6 +116,7 @@ function ensureChart(el) {
   resizeObserver.observe(el)
 
   attachRightAxisWheelZoom(el)
+  attachAxisDragBlock(el)
 }
 
 function zoomPriceScale(priceScale, zoomFactor) {
@@ -177,6 +178,41 @@ function attachRightAxisWheelZoom(el) {
       zoomPriceScale(chart.priceScale('left'), zoomFactor)
     },
     { capture: true, passive: false },
+  )
+}
+
+/** handleScale.axisPressedMouseMove.price: false (en ensureChart) debería
+ * bastar para desactivar el arrastre del eje de precio -- pero en la
+ * práctica, apenas zoomPriceScale() llama a setAutoScale(false) por
+ * primera vez (el "zoom más ligero" que sea), la librería vuelve a
+ * permitir arrastrar ese eje con el mouse como si la opción nunca se
+ * hubiera aplicado. En vez de depender de esa opción interna (que este
+ * comportamiento demuestra que no es confiable una vez el rango pasa a
+ * manual), acá se bloquea el gesto a mano: en fase de CAPTURA, antes de
+ * que el mousedown le llegue a la librería, si el click arrancó sobre la
+ * franja de cualquiera de los dos ejes de precio (izquierdo o derecho)
+ * se cancela del todo -- así el arrastre nunca puede empezar, sin
+ * importar qué haga la librería puertas adentro. */
+function attachAxisDragBlock(el) {
+  el.addEventListener(
+    'mousedown',
+    (event) => {
+      if (!chart) return
+      const rightWidth = chart.priceScale('right').width()
+      const leftWidth = chart.priceScale('left').width()
+      if (rightWidth <= 0 && leftWidth <= 0) return
+
+      const rect = el.getBoundingClientRect()
+      const x = event.clientX - rect.left
+      const overRightAxis = rightWidth > 0 && x >= rect.width - rightWidth
+      const overLeftAxis = leftWidth > 0 && x <= leftWidth
+      if (!overRightAxis && !overLeftAxis) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+    },
+    { capture: true },
   )
 }
 
