@@ -2,13 +2,15 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap, fetchVix, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchGammaGrid, fetchHeatmap, fetchVix, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
+import { renderGammaGridTable } from './charts/gammaGridTable.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderLiveGammaChart } from './charts/liveGammaChart.js'
 import { renderNetDriftChart } from './charts/netDriftChart.js'
+import { fmtMoney } from './utils/format.js'
 
 const loginView = document.getElementById('login-view')
 const dashboardView = document.getElementById('dashboard-view')
@@ -46,6 +48,13 @@ const chatMessagesEl = document.getElementById('chat-messages')
 const chatForm = document.getElementById('chat-form')
 const chatInput = document.getElementById('chat-input')
 const chatSendBtn = document.getElementById('chat-send-btn')
+const gridDteBtn = document.getElementById('grid-dte-btn')
+const gridDteCount = document.getElementById('grid-dte-count')
+const gridDtePanel = document.getElementById('grid-dte-panel')
+const gridDteList = document.getElementById('grid-dte-list')
+const gridDteApplyBtn = document.getElementById('grid-dte-apply-btn')
+const gridStatusEl = document.getElementById('grid-status')
+const gammaGridTableEl = document.getElementById('gamma-grid-table')
 
 const dataMetricEls = {
   regime: document.getElementById('data-regime'),
@@ -95,10 +104,14 @@ let liveGammaRefreshTimer = null
 let vixRefreshTimer = null
 let backgammaHeatmap = null
 let backgammaPlayTimer = null
+let gridExpirations = []
+let gridSelectedExpKeys = null
+let gridRefreshTimer = null
 
 const DRIFT_REFRESH_MS = 30000
 const LIVE_GAMMA_REFRESH_MS = 30000
 const VIX_REFRESH_MS = 30000
+const GRID_REFRESH_MS = 15000
 
 function isGreeksTabActive() {
   return document.getElementById('tab-greeks').classList.contains('active')
@@ -212,6 +225,84 @@ function stopLiveGammaRefresh() {
   }
 }
 
+function renderDteChecklist() {
+  if (gridExpirations.length === 0) {
+    gridDteList.innerHTML = '<p class="dte-list-placeholder">Sin expiraciones disponibles -- abre GEX INFO primero.</p>'
+    return
+  }
+  // Antes de la primera selección manual, se marcan las mismas
+  // expiraciones por defecto que ya aplicó el backend (nearest-DTE en
+  // adelante) -- ver DEFAULT_GRID_EXPIRATION_COUNT en routes_rest.py.
+  const checkedKeys = gridSelectedExpKeys ?? gridExpirations.slice(0, 6).map((e) => e.exp_key)
+  gridDteList.innerHTML = gridExpirations
+    .map((exp) => {
+      const checked = checkedKeys.includes(exp.exp_key) ? 'checked' : ''
+      return `<label class="dte-item"><input type="checkbox" value="${exp.exp_key}" ${checked} /> ${exp.exp_date} · ${exp.dte} DTE</label>`
+    })
+    .join('')
+}
+
+async function loadGridExpirations() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    gridExpirations = await fetchExpirations(symbol)
+    renderDteChecklist()
+  } catch (err) {
+    console.error('Error cargando expiraciones del GRID:', err)
+  }
+}
+
+function openGridDtePanel() {
+  gridDtePanel.hidden = false
+  if (gridExpirations.length === 0) loadGridExpirations()
+}
+
+function closeGridDtePanel() {
+  gridDtePanel.hidden = true
+}
+
+function applyGridDteSelection() {
+  const checked = Array.from(gridDteList.querySelectorAll('input[type="checkbox"]:checked'))
+  gridSelectedExpKeys = checked.map((cb) => cb.value)
+  gridDteCount.textContent = gridSelectedExpKeys.length > 0 ? `(${gridSelectedExpKeys.length})` : ''
+  closeGridDtePanel()
+  loadGammaGrid()
+}
+
+async function loadGammaGrid() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    gridStatusEl.textContent = 'Actualizando…'
+    const grid = await fetchGammaGrid(symbol, gridSelectedExpKeys)
+    renderGammaGridTable(gammaGridTableEl, grid)
+
+    // Si todavía no hubo selección manual, adopta las columnas que el
+    // backend eligió por defecto -- así el selector de DTEs, al abrirse,
+    // muestra marcado exactamente lo que ya se está viendo.
+    if (gridSelectedExpKeys === null && grid.columns) {
+      gridSelectedExpKeys = grid.columns.map((c) => c.exp_key)
+      gridDteCount.textContent = `(${gridSelectedExpKeys.length})`
+    }
+    gridStatusEl.textContent = `Actualizado ${new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+  } catch (err) {
+    gridStatusEl.textContent = err.message || 'Error cargando el GRID.'
+    console.error('Error cargando GRID de gamma:', err)
+  }
+}
+
+function startGridRefresh() {
+  stopGridRefresh()
+  loadGammaGrid()
+  gridRefreshTimer = setInterval(loadGammaGrid, GRID_REFRESH_MS)
+}
+
+function stopGridRefresh() {
+  if (gridRefreshTimer) {
+    clearInterval(gridRefreshTimer)
+    gridRefreshTimer = null
+  }
+}
+
 function renderBackgammaAtIndex(index) {
   if (!backgammaHeatmap || !backgammaHeatmap.times.length) return
   const i = Math.min(Math.max(index, 0), backgammaHeatmap.times.length - 1)
@@ -260,16 +351,6 @@ function stopBackgammaPlay() {
   }
   backgammaPlayBtn.textContent = '▶ Reproducir'
   backgammaPlayBtn.classList.remove('playing')
-}
-
-function fmtMoney(val) {
-  if (val === null || val === undefined || Number.isNaN(val)) return '--'
-  const abs = Math.abs(val)
-  const sign = val >= 0 ? '+' : ''
-  if (abs >= 1e9) return `${sign}$${(val / 1e9).toFixed(2)}B`
-  if (abs >= 1e6) return `${sign}$${(val / 1e6).toFixed(2)}M`
-  if (abs >= 1e3) return `${sign}$${(val / 1e3).toFixed(1)}K`
-  return `${sign}$${val.toFixed(1)}`
 }
 
 async function setDefaultDriftDate() {
@@ -420,6 +501,9 @@ logoutBtn.addEventListener('click', async () => {
   stopDriftRefresh()
   stopLiveGammaRefresh()
   stopBackgammaPlay()
+  stopGridRefresh()
+  gridExpirations = []
+  gridSelectedExpKeys = null
   await logout()
   showLogin()
 })
@@ -461,6 +545,12 @@ applySymbolBtn.addEventListener('click', () => {
   strikeRangeInput.value = strikeRange
   resetGexInfoChart()
   wsClient?.subscribe(symbol, strikeRange)
+
+  // Las expiraciones/selección del GRID son por símbolo -- al cambiar de
+  // símbolo se descartan para que la próxima carga pida las del nuevo.
+  gridExpirations = []
+  gridSelectedExpKeys = null
+  gridDteCount.textContent = ''
 })
 
 tabButtons.forEach((btn) => {
@@ -494,7 +584,27 @@ tabButtons.forEach((btn) => {
     } else {
       stopBackgammaPlay()
     }
+
+    if (btn.dataset.tab === 'grid') {
+      startGridRefresh()
+    } else {
+      stopGridRefresh()
+      closeGridDtePanel()
+    }
   })
+})
+
+gridDteBtn.addEventListener('click', () => {
+  if (gridDtePanel.hidden) openGridDtePanel()
+  else closeGridDtePanel()
+})
+
+gridDteApplyBtn.addEventListener('click', applyGridDteSelection)
+
+document.addEventListener('click', (event) => {
+  if (!gridDtePanel.hidden && !event.target.closest('.dte-selector')) {
+    closeGridDtePanel()
+  }
 })
 
 greeksSubNavButtons.forEach((btn) => {

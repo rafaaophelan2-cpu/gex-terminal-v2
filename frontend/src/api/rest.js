@@ -45,6 +45,28 @@ export async function fetchVix() {
   return resp.json()
 }
 
+export async function fetchExpirations(symbol) {
+  const resp = await fetch(`${API_BASE}/market/expirations?symbol=${encodeURIComponent(symbol)}`, {
+    credentials: 'include',
+  })
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  const data = await resp.json()
+  return data.expirations
+}
+
+export async function fetchGammaGrid(symbol, expKeys) {
+  const params = new URLSearchParams({ symbol })
+  if (expKeys && expKeys.length > 0) params.set('exp_keys', expKeys.join(','))
+  const resp = await fetch(`${API_BASE}/market/gamma-grid?${params.toString()}`, {
+    credentials: 'include',
+  })
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}))
+    throw new Error(detail.detail || `Error ${resp.status}`)
+  }
+  return resp.json()
+}
+
 export async function postAiDiagnosis(symbol, tipoAnalisis) {
   const resp = await fetch(`${API_BASE}/market/ai-diagnosis`, {
     method: 'POST',

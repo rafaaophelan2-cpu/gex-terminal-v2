@@ -71,6 +71,7 @@
             <button class="tab-btn" data-tab="net-drift">NET DRIFT</button>
             <button class="tab-btn" data-tab="greeks">GREEKS</button>
             <button class="tab-btn" data-tab="backgamma">BACKGAMMA</button>
+            <button class="tab-btn" data-tab="grid">GRID</button>
             <button class="tab-btn" data-tab="data">DATA</button>
           </nav>
 
@@ -124,6 +125,28 @@
             <input id="backgamma-scrubber" type="range" min="0" max="0" value="0" class="backgamma-scrubber" />
             <div id="backgamma-spot-chart" class="chart-container backgamma-spot"></div>
             <div id="backgamma-strike-chart" class="chart-container"></div>
+          </section>
+
+          <section id="tab-grid" class="tab-panel">
+            <div class="grid-toolbar">
+              <div class="dte-selector">
+                <button id="grid-dte-btn" type="button">📅 DTEs <span id="grid-dte-count"></span></button>
+                <div id="grid-dte-panel" class="dte-panel" hidden>
+                  <div id="grid-dte-list" class="dte-list">
+                    <p class="dte-list-placeholder">Cargando expiraciones…</p>
+                  </div>
+                  <div class="dte-panel-actions">
+                    <button id="grid-dte-apply-btn" type="button">Aplicar</button>
+                  </div>
+                </div>
+              </div>
+              <span id="grid-status" class="grid-status"></span>
+            </div>
+            <div id="gamma-grid-wrapper" class="gamma-grid-wrapper">
+              <div id="gamma-grid-table">
+                <p class="grid-placeholder">Elige las expiraciones (DTEs) a mostrar.</p>
+              </div>
+            </div>
           </section>
 
           <section id="tab-data" class="tab-panel">

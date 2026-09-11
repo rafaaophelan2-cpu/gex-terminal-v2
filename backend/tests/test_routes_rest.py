@@ -163,3 +163,63 @@ def test_ai_diagnosis_falls_back_to_local_when_groq_unavailable(authed_client, m
     body = resp.json()
     assert body["source"] == "local"
     assert "Resumen Rápido" in body["text"]
+
+
+class _FakeMultiExpFeed:
+    def __init__(self):
+        self.spot_price = 480.0
+        self.df = pd.DataFrame([
+            {"strike": 480.0, "exp_key": "2026-09-11:0", "exp_date": "2026-09-11", "dte": 0, "net_gex": 10_000_000.0},
+            {"strike": 480.0, "exp_key": "2026-09-21:10", "exp_date": "2026-09-21", "dte": 10, "net_gex": 3_000_000.0},
+            {"strike": 480.0, "exp_key": "2026-10-01:20", "exp_date": "2026-10-01", "dte": 20, "net_gex": 1_000_000.0},
+        ])
+
+
+def test_expirations_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/expirations?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_expirations_returns_empty_without_active_feed(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/expirations?symbol=QQQ")
+    assert resp.status_code == 200
+    assert resp.json() == {"expirations": []}
+
+
+def test_expirations_lists_all_dtes_sorted(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeMultiExpFeed())
+    resp = authed_client.get("/market/expirations?symbol=QQQ")
+    assert resp.status_code == 200
+    dtes = [e["dte"] for e in resp.json()["expirations"]]
+    assert dtes == [0, 10, 20]
+
+
+def test_gamma_grid_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/gamma-grid?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_gamma_grid_without_active_feed_returns_409(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/gamma-grid?symbol=QQQ")
+    assert resp.status_code == 409
+
+
+def test_gamma_grid_defaults_to_nearest_expirations_when_none_selected(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeMultiExpFeed())
+    resp = authed_client.get("/market/gamma-grid?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [c["exp_key"] for c in body["columns"]] == ["2026-09-11:0", "2026-09-21:10", "2026-10-01:20"]
+
+
+def test_gamma_grid_respects_explicit_exp_keys(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeMultiExpFeed())
+    resp = authed_client.get("/market/gamma-grid?symbol=QQQ&exp_keys=2026-09-11:0,2026-10-01:20")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [c["exp_key"] for c in body["columns"]] == ["2026-09-11:0", "2026-10-01:20"]
+    assert body["values"][0] == [10_000_000.0, 1_000_000.0]
