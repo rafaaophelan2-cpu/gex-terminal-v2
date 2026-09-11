@@ -30,9 +30,13 @@ body {
 
 /* [hidden] tiene que ganarle a los display:flex de arriba -- si no, el
    atributo hidden que usa main.js para mostrar/ocultar login vs
-   dashboard no tiene efecto y quedan las dos vistas visibles a la vez. */
+   dashboard no tiene efecto y quedan las dos vistas visibles a la vez.
+   Mismo problema con #chat-panel (display:flex por ID, ver más abajo):
+   el botón "cerrar" seteaba hidden=true pero el panel nunca se ocultaba
+   visualmente porque esta regla ganaba sobre el [hidden] del navegador. */
 #login-view[hidden],
-#dashboard-view[hidden] {
+#dashboard-view[hidden],
+#chat-panel[hidden] {
   display: none;
 }
 

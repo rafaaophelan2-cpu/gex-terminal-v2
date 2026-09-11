@@ -4,12 +4,15 @@ from scipy.ndimage import gaussian_filter
 from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
 
 # Sigma del blur gaussiano (en unidades de índice de la matriz, no en
-# strikes/minutos reales): (eje strike, eje tiempo). Valores chicos a
-# propósito -- con strikes reales espaciados ~$1 (no la grilla sintética
-# fina de app.py), un sigma > ~0.6 ya empieza a mezclar visualmente un
-# strike con el de al lado. Da el efecto "glow" suave sin que el
-# difuminado de un nivel se monte sobre el nivel vecino.
-BLUR_SIGMA = (0.6, 0.6)
+# strikes/minutos reales): (eje strike, eje tiempo). Asimétrico a
+# propósito: en el eje strike se mantiene bajo para que niveles
+# adyacentes (~$1 de separación real, no la grilla sintética fina de
+# app.py) sigan siendo distinguibles como bandas separadas -- con 0.6 en
+# ambos ejes (valor anterior) más el zsmooth de Plotly encima, el
+# resultado terminaba siendo un solo bloque de color sin bandas
+# reconocibles. El eje tiempo puede llevar algo más para el efecto
+# "glow" horizontal sin que eso implique mezclar strikes entre sí.
+BLUR_SIGMA = (0.35, 0.5)
 
 
 def compute_heatmap_matrix(

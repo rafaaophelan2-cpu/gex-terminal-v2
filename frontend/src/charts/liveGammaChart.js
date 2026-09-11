@@ -35,7 +35,12 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
       z: heatmap.z,
       zmin: -maxAbs,
       zmax: maxAbs,
-      zsmooth: 'best',
+      // 'best' (bilineal) interpolaba encima del blur gaussiano que ya
+      // aplica el backend, mezclando strikes vecinos en un solo bloque
+      // continuo de color -- con zsmooth apagado, cada strike queda
+      // como su propia banda horizontal (con el glow del blur real
+      // encima, pero sin la interpolación extra de Plotly).
+      zsmooth: false,
       colorscale: [
         [0.0, 'rgba(239, 68, 68, 0.55)'],
         [0.3, 'rgba(239, 68, 68, 0.10)'],
