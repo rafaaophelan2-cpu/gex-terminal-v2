@@ -2,7 +2,7 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchDrift, fetchHeatmap, fetchVix, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
@@ -75,6 +75,8 @@ const metricEls = {
   cw1: document.getElementById('metric-cw1'),
   pw1: document.getElementById('metric-pw1'),
   zg: document.getElementById('metric-zg'),
+  vix: document.getElementById('metric-vix'),
+  vixStatus: document.getElementById('metric-vix-status'),
 }
 
 let wsClient = null
@@ -85,11 +87,13 @@ let latestGexInfo = null
 let latestWalls = null
 let driftRefreshTimer = null
 let liveGammaRefreshTimer = null
+let vixRefreshTimer = null
 let backgammaHeatmap = null
 let backgammaPlayTimer = null
 
 const DRIFT_REFRESH_MS = 30000
 const LIVE_GAMMA_REFRESH_MS = 30000
+const VIX_REFRESH_MS = 30000
 
 function isGreeksTabActive() {
   return document.getElementById('tab-greeks').classList.contains('active')
@@ -149,6 +153,30 @@ function startLiveGammaRefresh() {
   stopLiveGammaRefresh()
   loadLiveGamma()
   liveGammaRefreshTimer = setInterval(loadLiveGamma, LIVE_GAMMA_REFRESH_MS)
+}
+
+async function loadVix() {
+  try {
+    const vix = await fetchVix()
+    setMetric(metricEls.vix, vix.value ? vix.value.toFixed(2) : '--', null)
+    metricEls.vix.style.color = vix.color || '#f0f6fc'
+    metricEls.vixStatus.textContent = vix.status || ''
+  } catch (err) {
+    console.error('Error cargando VIX:', err)
+  }
+}
+
+function startVixRefresh() {
+  stopVixRefresh()
+  loadVix()
+  vixRefreshTimer = setInterval(loadVix, VIX_REFRESH_MS)
+}
+
+function stopVixRefresh() {
+  if (vixRefreshTimer) {
+    clearInterval(vixRefreshTimer)
+    vixRefreshTimer = null
+  }
 }
 
 function stopLiveGammaRefresh() {
@@ -242,12 +270,14 @@ function showDashboard(username) {
   resetGreeksChart()
   setDefaultDriftDate()
   connectMarketFeed()
+  startVixRefresh()
 }
 
 function showLogin() {
   loginView.hidden = false
   dashboardView.hidden = true
   wsClient?.close()
+  stopVixRefresh()
   chatHistoryLoaded = false
   chatMessagesEl.innerHTML = '<p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>'
   closeChatPanel()

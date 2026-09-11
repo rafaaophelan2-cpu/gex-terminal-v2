@@ -3,16 +3,18 @@ from scipy.ndimage import gaussian_filter
 
 from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
 
-# Sigma del blur gaussiano (en unidades de índice de la matriz, no en
-# strikes/minutos reales): (eje strike, eje tiempo). Asimétrico a
-# propósito: en el eje strike se mantiene bajo para que niveles
-# adyacentes (~$1 de separación real, no la grilla sintética fina de
-# app.py) sigan siendo distinguibles como bandas separadas -- con 0.6 en
-# ambos ejes (valor anterior) más el zsmooth de Plotly encima, el
-# resultado terminaba siendo un solo bloque de color sin bandas
-# reconocibles. El eje tiempo puede llevar algo más para el efecto
-# "glow" horizontal sin que eso implique mezclar strikes entre sí.
-BLUR_SIGMA = (0.35, 0.5)
+# Técnica "núcleo + halo" (como un glow/bloom de diseño gráfico) en vez
+# de un único blur gaussiano: CORE_SIGMA mantiene el nivel angosto y
+# preciso (un blur mínimo, casi nulo en el eje strike), GLOW_SIGMA genera
+# un halo ancho y suave alrededor a baja intensidad (GLOW_WEIGHT), y se
+# suman. Un solo blur con sigma grande (probado antes) difuminaba TODO
+# el nivel por igual -- ensanchaba el bloque en vez de solo suavizar su
+# borde -- que es exactamente lo contrario de "delgado y preciso pero
+# con más difuminado". Unidades en índice de la matriz, no en strikes
+# reales/minutos.
+CORE_SIGMA = (0.12, 0.35)
+GLOW_SIGMA = (1.4, 1.4)
+GLOW_WEIGHT = 0.55
 
 
 def compute_heatmap_matrix(
@@ -51,6 +53,8 @@ def compute_heatmap_matrix(
             z[row, t_idx] = float(item.get('net_gex', 0.0))
 
     if z.shape[0] > 1 and z.shape[1] > 1:
-        z = gaussian_filter(z, sigma=BLUR_SIGMA)
+        core = gaussian_filter(z, sigma=CORE_SIGMA)
+        glow = gaussian_filter(z, sigma=GLOW_SIGMA)
+        z = core + GLOW_WEIGHT * glow
 
     return {"times": times, "strikes": strikes_sorted, "z": z.tolist(), "spot": spots}

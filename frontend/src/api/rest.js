@@ -39,6 +39,12 @@ export async function fetchAvailableDates(symbol) {
   return data.dates
 }
 
+export async function fetchVix() {
+  const resp = await fetch(`${API_BASE}/market/vix`, { credentials: 'include' })
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
 export async function postAiDiagnosis(symbol, tipoAnalisis) {
   const resp = await fetch(`${API_BASE}/market/ai-diagnosis`, {
     method: 'POST',

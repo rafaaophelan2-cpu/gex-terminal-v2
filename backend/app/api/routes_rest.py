@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
-from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt
+from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt, classify_vix
 from app.domain.drift import compute_drift_series
 from app.domain.heatmap import compute_heatmap_matrix
 from app.integrations.groq_client import query_groq
-from app.integrations.schwab_client import fetch_price_history
+from app.integrations.schwab_client import fetch_price_history, fetch_vix
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
 from app.services.ai_context import NoActiveFeedError, build_ai_context
@@ -74,6 +74,17 @@ async def get_candles(symbol: str = "QQQ", date: str | None = None, _username: s
     japonesas de verdad, igual que hacía app.py con fetch_history_schwab."""
     day = _parse_day(date)
     return await fetch_price_history(symbol, day)
+
+
+@router.get("/vix")
+async def get_vix(_username: str = Depends(require_auth)):
+    """VIX en vivo + clasificación (mismos cortes que la tarjeta VIX del
+    sidebar de app.py, ver domain/ai_prompt.classify_vix) -- REST porque
+    no hace falta actualizarlo cada 2s como el tick de WS, el frontend
+    lo vuelve a pedir cada cierto intervalo para la barra de métricas."""
+    value = await fetch_vix()
+    status, description, color = classify_vix(value)
+    return {"value": value, "status": status, "description": description, "color": color}
 
 
 @router.get("/available-dates")

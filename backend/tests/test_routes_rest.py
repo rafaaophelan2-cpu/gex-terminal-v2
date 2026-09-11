@@ -60,6 +60,26 @@ def test_drift_returns_series_for_authed_user(authed_client, monkeypatch):
     assert body["put_gex"] == [-5.0]
 
 
+def test_vix_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/vix")
+    assert resp.status_code == 401
+
+
+def test_vix_returns_value_and_classification(authed_client, monkeypatch):
+    async def _fake_fetch_vix():
+        return 27.5
+
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_fetch_vix)
+
+    resp = authed_client.get("/market/vix")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["value"] == 27.5
+    assert body["status"] == "Volatilidad Alta"
+    assert body["color"] == "#F59E0B"
+
+
 def test_available_dates_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/market/available-dates?symbol=QQQ")
