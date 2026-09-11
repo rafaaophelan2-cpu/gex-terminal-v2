@@ -47,6 +47,28 @@ async def update_user_password_hash(username: str, new_hash: str) -> None:
     await asyncio.to_thread(_update)
 
 
+async def fetch_gex_history(symbol: str, limit: int = 500) -> list[dict]:
+    """Snapshots de gex_intraday para un símbolo, ordenados cronológicamente.
+    Port de fetch_supabase_gex_history en app.py (~línea 103) -- usado para
+    reconstruir NET DRIFT (y, más adelante, el heatmap de LIVE GAMMA)."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    def _query():
+        res = (
+            client.table("gex_intraday")
+            .select("*")
+            .eq("symbol", symbol)
+            .order("created_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return res.data or []
+
+    return await asyncio.to_thread(_query)
+
+
 async def insert_gex_snapshot(snapshot: dict) -> None:
     """Guarda un snapshot en gex_intraday, con el mismo dedup por
     symbol+time que push_to_supabase_bg en app.py (~línea 2598): con

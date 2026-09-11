@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_auth import router as auth_router
+from app.api.routes_rest import router as rest_router
 from app.api.ws_market import router as ws_router
 from app.config import get_settings
 from app.services.snapshot_writer import snapshot_writer_loop
@@ -41,6 +42,7 @@ app.add_middleware(
 
 app.include_router(ws_router)
 app.include_router(auth_router)
+app.include_router(rest_router)
 
 
 @app.get("/health")

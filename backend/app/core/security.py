@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from fastapi import Cookie, HTTPException
 from jose import JWTError, jwt
 
 from app.config import get_settings
@@ -58,6 +59,19 @@ def decode_access_token(token: str) -> str | None:
         return payload.get("sub")
     except JWTError:
         return None
+
+
+def require_auth(gex_session: str | None = Cookie(default=None)) -> str:
+    """Dependency de FastAPI para proteger endpoints REST: valida la misma
+    cookie que usa /auth/me y devuelve el username, o corta con 401 si no
+    hay sesión válida. (El endpoint WebSocket /ws/market todavía no la
+    usa -- queda pendiente como parte del hardening de Fase 4.)"""
+    if not gex_session:
+        raise HTTPException(status_code=401, detail="No autenticado.")
+    username = decode_access_token(gex_session)
+    if not username:
+        raise HTTPException(status_code=401, detail="Sesión inválida o expirada.")
+    return username
 
 
 class LoginRateLimiter:

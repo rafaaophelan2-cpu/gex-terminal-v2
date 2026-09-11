@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Cookie, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from app.config import get_settings
 from app.core.security import (
     create_access_token,
-    decode_access_token,
     hash_password_argon2,
     login_rate_limiter,
+    require_auth,
     verify_password,
 )
 from app.integrations.supabase_client import fetch_user_by_username, update_user_password_hash
@@ -81,10 +81,5 @@ async def logout(response: Response):
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(gex_session: str | None = Cookie(default=None)):
-    if not gex_session:
-        raise HTTPException(status_code=401, detail="No autenticado.")
-    username = decode_access_token(gex_session)
-    if not username:
-        raise HTTPException(status_code=401, detail="Sesión inválida o expirada.")
+async def me(username: str = Depends(require_auth)):
     return MeResponse(username=username)

@@ -1,8 +1,10 @@
 import './style.css'
 import { login, logout, me } from './api/auth.js'
+import { fetchDrift } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
+import { renderNetDriftChart } from './charts/netDriftChart.js'
 
 const loginView = document.getElementById('login-view')
 const dashboardView = document.getElementById('dashboard-view')
@@ -18,6 +20,7 @@ const applySymbolBtn = document.getElementById('apply-symbol-btn')
 const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
 const greeksChartEl = document.getElementById('greeks-chart')
 const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
+const netDriftChartEl = document.getElementById('net-drift-chart')
 
 const greeksMetricEls = {
   dex: document.getElementById('greeks-dex'),
@@ -39,9 +42,34 @@ const metricEls = {
 let wsClient = null
 let activeGreek = 'dex'
 let latestGreeksPayload = null
+let driftRefreshTimer = null
+
+const DRIFT_REFRESH_MS = 30000
 
 function isGreeksTabActive() {
   return document.getElementById('tab-greeks').classList.contains('active')
+}
+
+async function loadNetDrift() {
+  try {
+    const series = await fetchDrift(symbolInput.value.trim().toUpperCase() || 'QQQ')
+    renderNetDriftChart(netDriftChartEl, series)
+  } catch (err) {
+    console.error('Error cargando NET DRIFT:', err)
+  }
+}
+
+function startDriftRefresh() {
+  stopDriftRefresh()
+  loadNetDrift()
+  driftRefreshTimer = setInterval(loadNetDrift, DRIFT_REFRESH_MS)
+}
+
+function stopDriftRefresh() {
+  if (driftRefreshTimer) {
+    clearInterval(driftRefreshTimer)
+    driftRefreshTimer = null
+  }
 }
 
 function fmtMoney(val) {
@@ -147,6 +175,7 @@ loginForm.addEventListener('submit', async (event) => {
 })
 
 logoutBtn.addEventListener('click', async () => {
+  stopDriftRefresh()
   await logout()
   showLogin()
 })
@@ -172,6 +201,12 @@ tabButtons.forEach((btn) => {
     // al hacerse visible por primera vez tras el cambio de pestaña.
     if (btn.dataset.tab === 'greeks' && latestGreeksPayload) {
       renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
+    }
+
+    if (btn.dataset.tab === 'net-drift') {
+      startDriftRefresh()
+    } else {
+      stopDriftRefresh()
     }
   })
 })
