@@ -12,6 +12,7 @@ import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfo
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderLiveGammaChart } from './charts/liveGammaChart.js'
 import { renderNetDriftChart } from './charts/netDriftChart.js'
+import { renderSignalsPanel } from './charts/signalsPanel.js'
 import { renderVolSurfaceChart } from './charts/volSurfaceChart.js'
 import { fmtMoney } from './utils/format.js'
 
@@ -67,6 +68,9 @@ const surface3dDteApplyBtn = document.getElementById('surface3d-dte-apply-btn')
 const surface3dStatusEl = document.getElementById('surface3d-status')
 const surface3dSubNavButtons = document.querySelectorAll('#surface3d-sub-nav .tab-btn')
 const surface3dChartEl = document.getElementById('surface3d-chart')
+const signalsListEl = document.getElementById('signals-list')
+const squeezeBodyEl = document.getElementById('squeeze-body')
+const squeezeBiasBadgeEl = document.getElementById('squeeze-bias-badge')
 
 const dataMetricEls = {
   regime: document.getElementById('data-regime'),
@@ -606,6 +610,10 @@ function handleMarketMessage(data) {
       if (isGreeksTabActive()) {
         renderGreeksChart(greeksChartEl, activeGreek, data.greeks, data.type === 'chain_full')
       }
+    }
+
+    if (data.signals) {
+      renderSignalsPanel(signalsListEl, squeezeBodyEl, squeezeBiasBadgeEl, data.signals)
     }
 
     updateDataSummary()

@@ -48,6 +48,27 @@ def test_parse_schwab_chain_put_delta_is_negative():
     assert row100['delta_p'] < 0
 
 
+def test_parse_schwab_chain_volume_defaults_to_zero_when_missing():
+    # SAMPLE_CHAIN no trae 'totalVolume' en ninguna entrada -- confirma
+    # que el default (0) no revienta el parseo de chains reales viejos/
+    # de test que no incluyan ese campo.
+    df, _ = parse_schwab_chain(SAMPLE_CHAIN)
+    row100 = df[df['strike'] == 100.0].iloc[0]
+    assert row100['volume_c'] == 0
+    assert row100['volume_p'] == 0
+
+
+def test_parse_schwab_chain_volume_split():
+    chain = {
+        "callExpDateMap": {"2026-09-10:0": {"100.0": [{"openInterest": 500, "totalVolume": 1200}]}},
+        "putExpDateMap": {"2026-09-10:0": {"100.0": [{"openInterest": 300, "totalVolume": 450}]}},
+    }
+    df, _ = parse_schwab_chain(chain)
+    row100 = df[df['strike'] == 100.0].iloc[0]
+    assert row100['volume_c'] == 1200
+    assert row100['volume_p'] == 450
+
+
 def test_parse_schwab_chain_empty_input():
     df, exp_key = parse_schwab_chain({})
     assert df.empty

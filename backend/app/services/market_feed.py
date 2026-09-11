@@ -5,6 +5,7 @@ import pandas as pd
 
 from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
+from app.domain.signals import compute_signals, compute_squeeze_screener
 from app.integrations.schwab_client import fetch_option_chain
 from app.domain.parsing import parse_schwab_chain
 
@@ -128,6 +129,33 @@ class SymbolFeed:
                 {"strike": float(r.strike), "net_gex": float(r.net_gex), "call_gex": float(r.call_gex), "put_gex": float(r.put_gex)}
                 for r in by_strike.itertuples()
             ],
+        }
+
+    def signals_payload(self) -> dict:
+        """Panel de Señales + Gamma Squeeze Screener de GEX INFO (ver
+        domain/signals.py) -- SIN recortar por strike_range: a diferencia
+        del gráfico de barras, estos niveles clave (Magnet, Resistance,
+        etc.) pueden caer fuera de la ventana que el usuario eligió para
+        visualizar y siguen siendo información válida."""
+        empty = {"signals": [], "squeeze": {"direction": None, "state": None, "probability": None, "factors": [], "key_levels": {}}}
+        if self.df.empty:
+            return empty
+
+        df_nearest = get_nearest_dte_subset(self.df)
+        agg_cols = ['call_gex', 'put_gex', 'net_gex', 'openInterest_c', 'openInterest_p', 'volume_c', 'volume_p', 'net_dex']
+        agg_map = {c: 'sum' for c in agg_cols if c in df_nearest.columns}
+        if not agg_map:
+            return empty
+        by_strike = df_nearest.groupby('strike', as_index=False).agg(agg_map).sort_values('strike')
+
+        cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, self.spot_price)
+        zero_gamma = compute_zero_gamma(by_strike, self.spot_price)
+        walls = {"cw1": cw1, "cw2": cw2, "cw3": cw3, "pw1": pw1, "pw2": pw2, "pw3": pw3, "zero_gamma": zero_gamma}
+        net_dex_total = float(by_strike['net_dex'].sum()) if 'net_dex' in by_strike.columns else 0.0
+
+        return {
+            "signals": compute_signals(by_strike, self.spot_price, walls),
+            "squeeze": compute_squeeze_screener(by_strike, self.spot_price, walls, net_dex_total),
         }
 
     def greeks_payload(self, min_strike: float | None = None, max_strike: float | None = None) -> dict:

@@ -77,7 +77,26 @@
           </nav>
 
           <section id="tab-gex-info" class="tab-panel active">
-            <div id="gex-info-chart" class="chart-container"></div>
+            <div class="gex-info-layout">
+              <div id="gex-info-chart" class="chart-container gex-info-chart"></div>
+              <aside class="signals-panel">
+                <div class="signals-section">
+                  <h3 class="signals-heading"><span class="signals-heading-bar"></span>Signals</h3>
+                  <div id="signals-list" class="signals-list">
+                    <p class="signals-placeholder">Cargando señales…</p>
+                  </div>
+                </div>
+                <div class="signals-section">
+                  <div class="squeeze-header">
+                    <h3 class="signals-heading"><span class="signals-heading-bar"></span>Gamma Squeeze Screener</h3>
+                    <span id="squeeze-bias-badge" class="badge badge-bias"></span>
+                  </div>
+                  <div id="squeeze-body">
+                    <p class="signals-placeholder">Cargando…</p>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </section>
 
           <section id="tab-live-gamma" class="tab-panel">

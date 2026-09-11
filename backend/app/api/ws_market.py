@@ -148,6 +148,7 @@ async def _tick_sender(websocket: WebSocket, state: ConnectionState) -> None:
                 "schwab_online": feed.schwab_online,
                 "gex_info": feed.gex_info_payload(min_strike, max_strike),
                 "greeks": feed.greeks_payload(min_strike, max_strike),
+                "signals": feed.signals_payload(),
             })
             state._last_sent_update = feed.last_update
 
