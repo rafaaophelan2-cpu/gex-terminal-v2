@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
 from app.domain.metrics import get_nearest_dte_subset
 from app.integrations.supabase_client import insert_gex_snapshot
 from app.services.market_feed import feed_registry
@@ -21,6 +22,17 @@ async def _write_snapshot_for_feed(feed) -> None:
 
     now_store = datetime.now(STORAGE_TZ)
     time_str = now_store.strftime("%H:%M")
+
+    # Fuera de horario de mercado, Schwab sigue devolviendo la última
+    # chain conocida (call_with_fallback la sirve como "último dato
+    # bueno" indefinidamente) -- sin este filtro, el writer graba ese
+    # mismo snapshot stale cada minuto toda la noche. Aparte del ruido,
+    # esas filas rompían el dedup por symbol+time del día siguiente (ver
+    # insert_gex_snapshot) y hacían que available-dates apuntara a un día
+    # sin ninguna fila dentro de 09:30-16:00, dejando LIVE GAMMA en
+    # blanco hasta que abriera el mercado real.
+    if not (DEFAULT_SESSION_START <= time_str <= DEFAULT_SESSION_END):
+        return
 
     # SIEMPRE la expiración más cercana (0DTE), nunca el DTE que cualquier
     # conexión tenga seleccionado en pantalla -- mismo criterio que

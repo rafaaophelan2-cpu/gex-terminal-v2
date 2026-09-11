@@ -1,11 +1,19 @@
 import asyncio
+from datetime import datetime, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from supabase import Client, create_client
 
 from app.config import get_settings
 
 settings = get_settings()
+
+# El dedup de insert_gex_snapshot compara por symbol+time ("HH:MM", sin
+# fecha) -- necesita acotarse al día de mercado en curso para no confundir
+# el "09:30" de hoy con el "09:30" ya guardado ayer. Mismo criterio de
+# zona horaria que STORAGE_TZ en snapshot_writer.py.
+_NY_TZ = ZoneInfo("America/New_York")
 
 
 @lru_cache
@@ -75,10 +83,18 @@ async def fetch_gex_history(
 
 async def fetch_available_dates(symbol: str, tz) -> list[str]:
     """Fechas calendario (YYYY-MM-DD, en la zona horaria 'tz') que tienen
-    al menos un snapshot guardado para 'symbol', más recientes primero --
-    usado para el selector de BACKGAMMA. Trae solo la columna created_at
-    (liviano) y deriva las fechas en Python; con el volumen actual de
-    datos (recién arrancado) esto alcanza sin paginar."""
+    al menos un snapshot DENTRO del horario de mercado (09:30-16:00 NY)
+    para 'symbol', más recientes primero -- usado tanto por el selector
+    de BACKGAMMA como por LIVE GAMMA para resolver "la última sesión"
+    (dates[0] en el frontend). Trae created_at + time (liviano) y filtra
+    en Python; con el volumen actual de datos esto alcanza sin paginar.
+
+    El filtro de horario importa incluso con snapshot_writer ya
+    gateado a horas de mercado (ver snapshot_writer.py): filas viejas de
+    ANTES de ese fix, o cualquier fila fuera de horario insertada por
+    otra vía, no deben hacer que este símbolo apunte a un día sin
+    ninguna fila útil para el heatmap/drift -- eso dejaba LIVE GAMMA en
+    blanco hasta que abriera el mercado real."""
     client = get_supabase_client()
     if client is None:
         return []
@@ -86,7 +102,7 @@ async def fetch_available_dates(symbol: str, tz) -> list[str]:
     def _query():
         res = (
             client.table("gex_intraday")
-            .select("created_at")
+            .select("created_at, time")
             .eq("symbol", symbol)
             .order("created_at", desc=True)
             .limit(5000)
@@ -98,9 +114,14 @@ async def fetch_available_dates(symbol: str, tz) -> list[str]:
 
     from datetime import datetime
 
+    from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
+
     dates: list[str] = []
     seen = set()
     for row in rows:
+        time_str = row.get("time", "")
+        if not (DEFAULT_SESSION_START <= time_str <= DEFAULT_SESSION_END):
+            continue
         dt = datetime.fromisoformat(row["created_at"]).astimezone(tz)
         date_str = dt.strftime("%Y-%m-%d")
         if date_str not in seen:
@@ -113,10 +134,22 @@ async def insert_gex_snapshot(snapshot: dict) -> None:
     """Guarda un snapshot en gex_intraday, con el mismo dedup por
     symbol+time que push_to_supabase_bg en app.py (~línea 2598): con
     varias conexiones guardando cada ~60s de forma independiente, dos
-    pueden caer casi en el mismo minuto y duplicar la fila."""
+    pueden caer casi en el mismo minuto y duplicar la fila.
+
+    'time' es solo "HH:MM" (sin fecha) -- comparado a secas, el "09:30"
+    de hoy calza con el "09:30" ya guardado cualquier día anterior y el
+    insert se descarta como si fuera un duplicado real, dejando el
+    símbolo sin ningún snapshot nuevo apenas se repite el horario de
+    mercado (bug encontrado en vivo: LIVE GAMMA quedaba vacío el mismo
+    día que se agotaban los "HH:MM" ya vistos en días previos). El dedup
+    se acota al día de mercado en curso (NY) para que solo bloquee
+    duplicados reales dentro del mismo día."""
     client = get_supabase_client()
     if client is None:
         return
+
+    day_start = datetime.now(_NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
 
     def _insert():
         existing = (
@@ -124,6 +157,8 @@ async def insert_gex_snapshot(snapshot: dict) -> None:
             .select("id")
             .eq("symbol", snapshot["symbol"])
             .eq("time", snapshot["time"])
+            .gte("created_at", day_start.isoformat())
+            .lt("created_at", day_end.isoformat())
             .limit(1)
             .execute()
         )
