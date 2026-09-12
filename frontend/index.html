@@ -24,16 +24,25 @@
 
       <div id="dashboard-view" hidden>
         <nav id="icon-rail" aria-label="Secciones">
-          <div class="icon-rail-brand" data-tooltip="GEX Terminal">
+          <button type="button" id="icon-rail-brand-btn" class="icon-rail-brand" data-tooltip="GEX Terminal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 19V10" /><path d="M10 19V5" /><path d="M16 19V13" /><path d="M22 19V8" />
             </svg>
-          </div>
+          </button>
           <div class="icon-rail-divider"></div>
           <button type="button" class="icon-rail-btn active" data-tooltip="GEX Analytics" aria-current="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 3v18h18" />
-              <path d="M7 15l3.5-5 3 3L19 6" />
+            <svg class="icon-gamma-mark" viewBox="0 0 32 32" fill="url(#gexGammaGrad)">
+              <defs>
+                <linearGradient id="gexGammaGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#60a5fa" />
+                  <stop offset="1" stop-color="#10b981" />
+                </linearGradient>
+              </defs>
+              <rect x="2" y="4" width="6" height="22" rx="3" />
+              <rect x="2" y="4" width="20" height="6" rx="3" />
+              <rect x="10" y="16" width="5" height="10" rx="2.5" />
+              <rect x="17" y="11" width="5" height="15" rx="2.5" />
+              <rect x="24" y="6" width="5" height="20" rx="2.5" />
             </svg>
           </button>
           <button type="button" class="icon-rail-btn" data-tooltip="Próximamente" disabled>
@@ -52,7 +61,12 @@
 
         <aside id="sidebar">
           <div class="sidebar-header">
-            <h1>GEX TERMINAL</h1>
+            <h1 id="sidebar-title" role="button" tabindex="0" title="Ocultar panel">
+              GEX TERMINAL
+              <svg class="sidebar-title-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+            </h1>
             <span id="user-badge"></span>
           </div>
 
@@ -98,18 +112,32 @@
             </div>
           </div>
 
-          <nav id="tab-nav">
-            <button class="tab-btn active" data-tab="gex-info">GEX INFO</button>
-            <button class="tab-btn" data-tab="live-gamma">LIVE GAMMA</button>
-            <button class="tab-btn" data-tab="net-drift">NET DRIFT</button>
-            <button class="tab-btn" data-tab="greeks">GREEKS</button>
-            <button class="tab-btn" data-tab="backgamma">BACKGAMMA</button>
-            <button class="tab-btn" data-tab="grid">GRID</button>
-            <button class="tab-btn" data-tab="surface3d">3D</button>
-            <button class="tab-btn" data-tab="data">DATA</button>
-          </nav>
+          <div class="tab-nav-row">
+            <nav id="tab-nav">
+              <button class="tab-btn active" data-tab="gex-info">GEX INFO</button>
+              <button class="tab-btn" data-tab="live-gamma">LIVE GAMMA</button>
+              <button class="tab-btn" data-tab="net-drift">NET DRIFT</button>
+              <button class="tab-btn" data-tab="greeks">GREEKS</button>
+              <button class="tab-btn" data-tab="backgamma">BACKGAMMA</button>
+              <button class="tab-btn" data-tab="grid">GRID</button>
+              <button class="tab-btn" data-tab="surface3d">3D</button>
+              <button class="tab-btn" data-tab="data">DATA</button>
+            </nav>
 
-          <section id="tab-gex-info" class="tab-panel active">
+            <div class="split-controls">
+              <button type="button" id="split-toggle-btn" title="Vista dividida">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" />
+                </svg>
+                Dividir
+              </button>
+              <select id="split-secondary-select" hidden></select>
+              <button type="button" id="split-close-btn" hidden title="Cerrar vista dividida">✕</button>
+            </div>
+          </div>
+
+          <div id="tab-content">
+          <section id="tab-gex-info" class="tab-panel active" data-label="GEX INFO">
             <div class="gex-info-layout">
               <div id="gex-info-chart" class="chart-container gex-info-chart"></div>
               <aside class="signals-panel">
@@ -132,11 +160,11 @@
             </div>
           </section>
 
-          <section id="tab-live-gamma" class="tab-panel">
+          <section id="tab-live-gamma" class="tab-panel" data-label="LIVE GAMMA">
             <div id="live-gamma-chart" class="chart-container"></div>
           </section>
 
-          <section id="tab-net-drift" class="tab-panel">
+          <section id="tab-net-drift" class="tab-panel" data-label="NET DRIFT">
             <div class="drift-toolbar">
               <label for="drift-date-input">Fecha</label>
               <input id="drift-date-input" type="date" />
@@ -144,7 +172,7 @@
             <div id="net-drift-chart" class="chart-container"></div>
           </section>
 
-          <section id="tab-greeks" class="tab-panel">
+          <section id="tab-greeks" class="tab-panel" data-label="GREEKS">
             <div class="greeks-metrics">
               <div class="metric"><span class="metric-label">Net Delta (DEX)</span><span id="greeks-dex" class="metric-value">--</span></div>
               <div class="metric"><span class="metric-label">Net Theta (TEX)</span><span id="greeks-tex" class="metric-value">--</span></div>
@@ -162,7 +190,7 @@
             <div id="greeks-chart" class="chart-container"></div>
           </section>
 
-          <section id="tab-backgamma" class="tab-panel">
+          <section id="tab-backgamma" class="tab-panel" data-label="BACKGAMMA">
             <div class="backgamma-toolbar">
               <label for="backgamma-date-select">Fecha</label>
               <select id="backgamma-date-select"></select>
@@ -180,7 +208,7 @@
             <div id="backgamma-strike-chart" class="chart-container"></div>
           </section>
 
-          <section id="tab-grid" class="tab-panel">
+          <section id="tab-grid" class="tab-panel" data-label="GRID">
             <div class="grid-toolbar">
               <div class="dte-selector">
                 <button id="grid-dte-btn" type="button">📅 DTEs <span id="grid-dte-count"></span></button>
@@ -205,7 +233,7 @@
             </div>
           </section>
 
-          <section id="tab-surface3d" class="tab-panel">
+          <section id="tab-surface3d" class="tab-panel" data-label="3D">
             <div class="grid-toolbar">
               <div class="dte-selector">
                 <button id="surface3d-dte-btn" type="button">📅 DTEs <span id="surface3d-dte-count"></span></button>
@@ -227,7 +255,7 @@
             <div id="surface3d-chart" class="chart-container surface3d-chart"></div>
           </section>
 
-          <section id="tab-data" class="tab-panel">
+          <section id="tab-data" class="tab-panel" data-label="DATA">
             <div class="data-summary-grid">
               <div class="metric"><span class="metric-label">Régimen de Gamma</span><span id="data-regime" class="metric-value">--</span></div>
               <div class="metric"><span class="metric-label">Net GEX Total</span><span id="data-net-gex" class="metric-value">--</span></div>
@@ -261,6 +289,7 @@
               <p class="ai-placeholder">Pulsa "Generar Diagnóstico IA" para un análisis de escenarios basado en los niveles de gamma en vivo.</p>
             </div>
           </section>
+          </div>
         </main>
 
         <div id="chat-widget">

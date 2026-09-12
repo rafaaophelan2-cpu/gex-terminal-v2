@@ -194,6 +194,23 @@ body {
   border-radius: 9px;
   box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
   position: relative;
+  /* Ahora es un <button> (clickeable para colapsar/expandir #sidebar) --
+     resetea los estilos nativos de botón que si no pisan el fondo/radio
+     de arriba. */
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.icon-rail-brand:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 22px rgba(59, 130, 246, 0.5);
+}
+
+.icon-rail-brand:active {
+  transform: scale(0.96);
 }
 
 .icon-rail-brand svg {
@@ -227,6 +244,14 @@ body {
 .icon-rail-btn svg {
   width: 19px;
   height: 19px;
+}
+
+/* El isotipo de "GEX Analytics" (gradiente propio, no currentColor) se
+   deja un poco más grande que los íconos de línea -- es una marca, no un
+   ícono de UI genérico, así que pesa distinto a propósito. */
+.icon-rail-btn svg.icon-gamma-mark {
+  width: 22px;
+  height: 22px;
 }
 
 .icon-rail-btn:hover:not(:disabled) {
@@ -288,15 +313,49 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), flex-basis 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding-right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Colapsado: clickeando el título "GEX TERMINAL" (o la marca del riel de
+   íconos, que hace lo mismo) -- para recuperar el máximo de ancho posible
+   para los gráficos sin perder acceso a Symbol/Strike Range/Ratio, que
+   siguen a un click de distancia. */
+#sidebar.collapsed {
+  width: 0;
+  flex: 0 0 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-right: none;
 }
 
 .sidebar-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 1rem;
   font-weight: 800;
   margin: 0;
   background: linear-gradient(90deg, #f0f6fc 0%, #8b949e 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sidebar-title-chevron {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: #6e7681;
+  -webkit-text-fill-color: initial;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-header h1:hover .sidebar-title-chevron {
+  color: #60a5fa;
 }
 
 #user-badge {
@@ -503,15 +562,135 @@ main {
   color: #f0f6fc;
 }
 
+.tab-nav-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
 #tab-nav {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 6px;
   background: #0b0e17;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   padding: 5px;
-  margin-bottom: 16px;
+}
+
+.split-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+#split-toggle-btn,
+#split-close-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #0b0e17;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  color: #8b949e;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.4px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: color 0.18s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#split-toggle-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+#split-toggle-btn:hover {
+  color: #d1d5db;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+#split-toggle-btn.active {
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+#split-close-btn {
+  padding: 9px 11px;
+  color: #6e7681;
+}
+
+#split-close-btn:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+#split-secondary-select {
+  background: #0b0e17;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #f0f6fc;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+/* Vista dividida: dos tab-panel visibles a la vez, cada una en su propia
+   mitad con scroll independiente -- .active (la pestaña principal, a la
+   izquierda) y .split-secondary (elegida en el <select>, a la derecha).
+   El resto de las reglas de .tab-panel/.tab-panel.active no cambian, así
+   que fuera de split-mode todo se comporta exactamente igual que antes. */
+#tab-content.split-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+#tab-content.split-mode .tab-panel.active,
+#tab-content.split-mode .tab-panel.split-secondary {
+  display: block;
+  min-width: 0;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(13, 17, 26, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+#tab-content.split-mode .tab-panel[data-label]::before {
+  content: attr(data-label);
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #60a5fa;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 900px) {
+  /* Pantalla angosta: dos columnas de 50% quedarían inutilizables (cada
+     gráfico necesita bastante ancho real) -- se apilan en una sola
+     columna en vez de forzar el side-by-side. */
+  #tab-content.split-mode {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tab-btn {

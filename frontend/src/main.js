@@ -29,6 +29,13 @@ const strikeRangeInput = document.getElementById('strike-range-input')
 const conversionRatioInput = document.getElementById('conversion-ratio-input')
 const applySymbolBtn = document.getElementById('apply-symbol-btn')
 const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
+const sidebarEl = document.getElementById('sidebar')
+const sidebarTitle = document.getElementById('sidebar-title')
+const iconRailBrandBtn = document.getElementById('icon-rail-brand-btn')
+const tabContentEl = document.getElementById('tab-content')
+const splitToggleBtn = document.getElementById('split-toggle-btn')
+const splitSecondarySelect = document.getElementById('split-secondary-select')
+const splitCloseBtn = document.getElementById('split-close-btn')
 const greeksChartEl = document.getElementById('greeks-chart')
 const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
 const netDriftChartEl = document.getElementById('net-drift-chart')
@@ -130,6 +137,17 @@ let surface3dRefreshTimer = null
 let surface3dActiveView = 'gamma' // 'gamma' | 'vol'
 let latestGammaSurface = null
 let latestVolSurface = null
+let splitMode = false
+let splitSecondaryTab = null
+
+// Nombre visible de cada pestaña -- se arma una sola vez leyendo el texto
+// real de los botones del nav (en vez de duplicarlo a mano acá), así que
+// nunca puede desincronizarse del HTML. Usado tanto para el <select> del
+// split-view como para el header de cada panel en modo dividido.
+const TAB_LABELS = {}
+tabButtons.forEach((btn) => {
+  TAB_LABELS[btn.dataset.tab] = btn.textContent.trim()
+})
 
 const DRIFT_REFRESH_MS = 30000
 const LIVE_GAMMA_REFRESH_MS = 30000
@@ -142,8 +160,137 @@ const SURFACE3D_REFRESH_MS = 20000
 // verse como superficie continua en vez de un par de cortes aislados.
 const SURFACE3D_DEFAULT_DTE_COUNT = 10
 
+// "Visible" en vez de "activa": en modo split hay DOS paneles a la vista
+// a la vez (.active a la izquierda, .split-secondary a la derecha), así
+// que cualquier lógica que antes preguntaba "¿es esta LA pestaña activa?"
+// ahora tiene que preguntar "¿está esta pestaña visible en algún lado?".
+function isTabVisible(tabKey) {
+  const el = document.getElementById(`tab-${tabKey}`)
+  return el ? el.classList.contains('active') || el.classList.contains('split-secondary') : false
+}
+
 function isGreeksTabActive() {
-  return document.getElementById('tab-greeks').classList.contains('active')
+  return isTabVisible('greeks')
+}
+
+function toggleSidebar() {
+  const collapsed = sidebarEl.classList.toggle('collapsed')
+  sidebarTitle.title = collapsed ? 'Mostrar panel' : 'Ocultar panel'
+}
+
+sidebarTitle.addEventListener('click', toggleSidebar)
+sidebarTitle.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    toggleSidebar()
+  }
+})
+iconRailBrandBtn.addEventListener('click', toggleSidebar)
+
+// --- Vista dividida (split-view) -----------------------------------
+// Deja ver dos pestañas a la vez (ej. GEX INFO + NET DRIFT) en vez de
+// una sola pantalla completa. La pestaña PRINCIPAL sigue siendo la que
+// ya controla el nav de arriba (#tab-nav, clase .active); la SECUNDARIA
+// se elige en el <select> y se marca con .split-secondary. Todo lo que
+// ya dependía de "está esta pestaña activa" (temporizadores de refresh,
+// redibujado de GREEKS) pasa a usar isTabVisible(), que considera ambas.
+function refreshSplitSecondaryOptions() {
+  const primaryTab = document.querySelector('#tab-nav .tab-btn.active')?.dataset.tab
+  const options = Object.keys(TAB_LABELS).filter((key) => key !== primaryTab)
+  splitSecondarySelect.innerHTML = options.map((key) => `<option value="${key}">${TAB_LABELS[key]}</option>`).join('')
+  if (!splitSecondaryTab || splitSecondaryTab === primaryTab) {
+    splitSecondaryTab = options[0]
+  }
+  splitSecondarySelect.value = splitSecondaryTab
+}
+
+function applySplitSecondaryTab() {
+  document.querySelectorAll('.tab-panel.split-secondary').forEach((p) => p.classList.remove('split-secondary'))
+  if (splitMode && splitSecondaryTab) {
+    document.getElementById(`tab-${splitSecondaryTab}`)?.classList.add('split-secondary')
+  }
+  syncTabLifecycle()
+}
+
+function enableSplitMode() {
+  splitMode = true
+  tabContentEl.classList.add('split-mode')
+  splitToggleBtn.classList.add('active')
+  splitSecondarySelect.hidden = false
+  splitCloseBtn.hidden = false
+  refreshSplitSecondaryOptions()
+  applySplitSecondaryTab()
+}
+
+function disableSplitMode() {
+  splitMode = false
+  tabContentEl.classList.remove('split-mode')
+  splitToggleBtn.classList.remove('active')
+  splitSecondarySelect.hidden = true
+  splitCloseBtn.hidden = true
+  document.querySelectorAll('.tab-panel.split-secondary').forEach((p) => p.classList.remove('split-secondary'))
+  syncTabLifecycle()
+}
+
+splitToggleBtn.addEventListener('click', () => {
+  if (splitMode) disableSplitMode()
+  else enableSplitMode()
+})
+
+splitCloseBtn.addEventListener('click', disableSplitMode)
+
+splitSecondarySelect.addEventListener('change', () => {
+  splitSecondaryTab = splitSecondarySelect.value
+  applySplitSecondaryTab()
+})
+
+// Arranca/para los refrescos periódicos de cada pestaña según quién esté
+// VISIBLE ahora mismo (principal + secundaria en split-mode) -- reemplaza
+// el if/else que antes vivía inline en el click handler del nav, para
+// poder llamarlo también al entrar/salir de split-mode o cambiar la
+// pestaña secundaria, no solo al click de una pestaña principal. Cada
+// startXRefresh ya es idempotente (llama stopXRefresh primero), pero acá
+// se evita reiniciar un timer que ya está corriendo para no perder el
+// ritmo de refresco ni disparar un fetch de más sin necesidad.
+function syncTabLifecycle() {
+  if (isTabVisible('net-drift')) {
+    if (!driftRefreshTimer) startDriftRefresh()
+  } else {
+    stopDriftRefresh()
+  }
+
+  if (isTabVisible('live-gamma')) {
+    if (!liveGammaRefreshTimer) startLiveGammaRefresh()
+  } else {
+    stopLiveGammaRefresh()
+  }
+
+  if (isTabVisible('grid')) {
+    if (!gridRefreshTimer) startGridRefresh()
+  } else {
+    stopGridRefresh()
+    closeGridDtePanel()
+  }
+
+  if (isTabVisible('surface3d')) {
+    if (!surface3dRefreshTimer) startSurface3dRefresh()
+  } else {
+    stopSurface3dRefresh()
+    closeSurface3dDtePanel()
+  }
+
+  if (isTabVisible('backgamma')) {
+    if (!backgammaHeatmap) loadBackgammaDates()
+  } else {
+    stopBackgammaPlay()
+  }
+
+  // Un chart de Plotly renderizado mientras su contenedor estaba oculto
+  // (display:none) no mide bien el tamaño -- forzar un redraw completo
+  // al hacerse visible (either como principal o como secundaria nueva).
+  if (isTabVisible('greeks') && latestGreeksPayload) {
+    renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
+  }
 }
 
 function todayInLima() {
@@ -509,6 +656,12 @@ function showLogin() {
   loginView.hidden = false
   dashboardView.hidden = true
   wsClient?.close()
+  // disableSplitMode() ANTES de los stops de abajo, no después -- por
+  // dentro llama a syncTabLifecycle(), que podría VOLVER A ARRANCAR el
+  // refresh de la pestaña que sigue marcada .active (la clase no se
+  // limpia acá) según isTabVisible(). Llamándolo primero, los stops
+  // explícitos que siguen son los que definitivamente ganan.
+  disableSplitMode()
   // Se detienen TODOS los refrescos periódicos sin importar en qué
   // pestaña estaba el usuario -- antes solo el cambio de pestaña los
   // paraba, así que si la sesión expiraba (ver 'session-expired' más
@@ -708,43 +861,13 @@ tabButtons.forEach((btn) => {
     btn.classList.add('active')
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active')
 
-    // Un chart de Plotly renderizado mientras su contenedor estaba oculto
-    // (display:none) no mide bien el tamaño -- forzar un redraw completo
-    // al hacerse visible por primera vez tras el cambio de pestaña.
-    if (btn.dataset.tab === 'greeks' && latestGreeksPayload) {
-      renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
-    }
-
-    if (btn.dataset.tab === 'net-drift') {
-      startDriftRefresh()
+    // En split-mode la pestaña secundaria no puede ser también la
+    // principal -- si justo lo era, se reasigna sola a otra opción.
+    if (splitMode) {
+      refreshSplitSecondaryOptions()
+      applySplitSecondaryTab()
     } else {
-      stopDriftRefresh()
-    }
-
-    if (btn.dataset.tab === 'live-gamma') {
-      startLiveGammaRefresh()
-    } else {
-      stopLiveGammaRefresh()
-    }
-
-    if (btn.dataset.tab === 'backgamma') {
-      if (!backgammaHeatmap) loadBackgammaDates()
-    } else {
-      stopBackgammaPlay()
-    }
-
-    if (btn.dataset.tab === 'grid') {
-      startGridRefresh()
-    } else {
-      stopGridRefresh()
-      closeGridDtePanel()
-    }
-
-    if (btn.dataset.tab === 'surface3d') {
-      startSurface3dRefresh()
-    } else {
-      stopSurface3dRefresh()
-      closeSurface3dDtePanel()
+      syncTabLifecycle()
     }
   })
 })
