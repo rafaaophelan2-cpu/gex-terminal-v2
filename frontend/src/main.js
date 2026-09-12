@@ -26,6 +26,7 @@ const logoutBtn = document.getElementById('logout-btn')
 const chartEl = document.getElementById('gex-info-chart')
 const symbolInput = document.getElementById('symbol-input')
 const strikeRangeInput = document.getElementById('strike-range-input')
+const conversionRatioInput = document.getElementById('conversion-ratio-input')
 const applySymbolBtn = document.getElementById('apply-symbol-btn')
 const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
 const greeksChartEl = document.getElementById('greeks-chart')
@@ -864,7 +865,7 @@ chatForm.addEventListener('submit', async (event) => {
   const pendingBubble = appendChatMessage('assistant', 'Pensando…', { pending: true })
 
   try {
-    const result = await postChatMessage(symbol, message)
+    const result = await postChatMessage(symbol, message, getConversionRatio())
     pendingBubble.remove()
     appendChatMessage('assistant', result.content)
   } catch (err) {
@@ -884,7 +885,7 @@ aiDiagnosisBtn.addEventListener('click', async () => {
   aiStatusEl.className = 'ai-status'
 
   try {
-    const result = await postAiDiagnosis(symbol, aiTipoSelect.value)
+    const result = await postAiDiagnosis(symbol, aiTipoSelect.value, getConversionRatio())
     aiResultEl.innerHTML = marked.parse(result.text)
     if (result.source === 'local') {
       aiStatusEl.textContent = '⚠ IA no disponible ahora mismo — diagnóstico local por plantilla'
@@ -912,6 +913,40 @@ window.addEventListener('session-expired', () => {
   showLogin()
   loginError.textContent = 'Tu sesión expiró -- inicia sesión de nuevo.'
   loginError.hidden = false
+})
+
+// Ratio QQQ->MNQ manual: mismo concepto que ManualRatio en el indicador
+// de Quantower (GexProfileCloud.cs) -- el ratio automático del backend
+// puede quedar desactualizado (Schwab no da una cotización de futuros NQ
+// confiable), así que esto le gana siempre que el usuario lo cargue. Se
+// persiste en localStorage para que sobreviva a un refresh de página.
+const CONVERSION_RATIO_STORAGE_KEY = 'gex-terminal:conversion-ratio'
+
+function getConversionRatio() {
+  const raw = conversionRatioInput.value.trim()
+  if (!raw) return undefined
+  const parsed = parseFloat(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+try {
+  const storedRatio = localStorage.getItem(CONVERSION_RATIO_STORAGE_KEY)
+  if (storedRatio) conversionRatioInput.value = storedRatio
+} catch {
+  // localStorage puede fallar en modo privado -- no rompe nada, el campo
+  // simplemente arranca vacío (ratio automático).
+}
+
+conversionRatioInput.addEventListener('change', () => {
+  try {
+    if (conversionRatioInput.value.trim()) {
+      localStorage.setItem(CONVERSION_RATIO_STORAGE_KEY, conversionRatioInput.value.trim())
+    } else {
+      localStorage.removeItem(CONVERSION_RATIO_STORAGE_KEY)
+    }
+  } catch {
+    // ídem
+  }
 })
 
 async function init() {

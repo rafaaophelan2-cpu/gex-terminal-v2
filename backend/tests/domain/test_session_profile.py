@@ -52,12 +52,12 @@ def test_keys_convert_other_timezones_to_lima():
 
 
 def test_format_session_profile_none_says_no_data_yet():
-    text = format_session_profile("Overnight", None)
+    text = format_session_profile("Overnight", None, conversion_ratio=41.125)
     assert "sin datos disponibles" in text
 
 
 def test_format_session_profile_includes_all_fields():
-    text = format_session_profile("Overnight (Asia/London/pre-market)", PROFILE)
+    text = format_session_profile("Overnight (Asia/London/pre-market)", PROFILE, conversion_ratio=41.125)
     assert "20100.00" in text  # POC
     assert "20150.00" in text  # VAH
     assert "20050.00" in text  # VAL
@@ -70,5 +70,21 @@ def test_format_session_profile_includes_all_fields():
 
 def test_format_session_profile_empty_lists_say_ninguno():
     empty_profile = {"poc": 100.0, "vah": 101.0, "val": 99.0, "hvn": [], "lvn": [], "delta_outliers": [], "tpo_poc": 100.0, "tpo_lvn": []}
-    text = format_session_profile("Cash", empty_profile)
+    text = format_session_profile("Cash", empty_profile, conversion_ratio=41.125)
     assert text.count("ninguno") == 4  # HVN, LVN, delta outliers, TPO LVN
+
+
+def test_format_session_profile_converts_to_ticker_equivalent():
+    # 20100 pts NQ / 41.125 ratio ~= 488.75 -- el equivalente en el ticker
+    # de opciones debe aparecer JUNTO al valor nativo, ya calculado, no
+    # dejado para que la IA lo infiera del ratio suelto en el prompt.
+    text = format_session_profile("Overnight", PROFILE, conversion_ratio=41.125, ticker="QQQ")
+    assert "488.75" in text
+    assert "QQQ" in text
+
+
+def test_format_session_profile_without_ratio_flags_missing_conversion():
+    text = format_session_profile("Overnight", PROFILE, conversion_ratio=None, ticker="QQQ")
+    assert "sin ratio de conversión" in text
+    # Sin ratio, no debe inventar un equivalente numérico.
+    assert "488.75" not in text

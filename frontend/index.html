@@ -39,6 +39,12 @@
             <input id="strike-range-input" type="number" min="5" max="80" value="20" />
           </div>
 
+          <div class="sidebar-field">
+            <label for="conversion-ratio-input">Ratio QQQ → MNQ (manual)</label>
+            <input id="conversion-ratio-input" type="number" min="0" step="0.001" placeholder="auto" />
+            <span class="sidebar-field-hint">Vacío = usa el ratio automático del servidor. Se lo pasa al bot para que compare niveles bien.</span>
+          </div>
+
           <button id="apply-symbol-btn">Aplicar</button>
 
           <div class="sidebar-status">

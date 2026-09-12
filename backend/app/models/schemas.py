@@ -20,6 +20,7 @@ class MeResponse(BaseModel):
 class AiDiagnosisRequest(BaseModel):
     symbol: str = "QQQ"
     tipo_analisis: str = "Intradía"
+    conversion_ratio: float | None = None
 
 
 class AiDiagnosisResponse(BaseModel):
@@ -39,6 +40,7 @@ class ChatHistoryResponse(BaseModel):
 class ChatMessageRequest(BaseModel):
     symbol: str = "QQQ"
     message: str
+    conversion_ratio: float | None = None
 
 
 class ChatMessageResponse(BaseModel):

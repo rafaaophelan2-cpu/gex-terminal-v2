@@ -7,11 +7,11 @@ export async function fetchChatHistory() {
   return data.messages
 }
 
-export async function postChatMessage(symbol, message) {
+export async function postChatMessage(symbol, message, conversionRatio) {
   const resp = await apiFetch('/chat/message', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, message }),
+    body: JSON.stringify({ symbol, message, conversion_ratio: conversionRatio || null }),
   })
   if (!resp.ok) {
     const detail = await resp.json().catch(() => ({}))

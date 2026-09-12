@@ -65,13 +65,17 @@ async def post_chat_message(body: ChatMessageRequest, username: str = Depends(re
 
     await insert_chat_message(username, "user", message)
 
+    # Mismo criterio que /market/ai-diagnosis: un ratio manual mandado
+    # desde la web tiene prioridad sobre la constante fija.
+    conversion_ratio = body.conversion_ratio if body.conversion_ratio and body.conversion_ratio > 0 else NQ_QQQ_RATIO
+
     system_prompt = build_system_prompt(
         ticker=body.symbol,
         spot=ctx["spot"],
         metrics=ctx["metrics"],
         vix_val=ctx["vix_val"],
         intraday_context=ctx["intraday_context"],
-        conversion_ratio=NQ_QQQ_RATIO,
+        conversion_ratio=conversion_ratio,
         overnight_profile=ctx.get("overnight_profile"),
         cash_profile=ctx.get("cash_profile"),
     )
@@ -79,7 +83,7 @@ async def post_chat_message(body: ChatMessageRequest, username: str = Depends(re
     ai_text = await query_groq(system_prompt, message, history=history)
     source = "groq"
     if not ai_text:
-        ai_text = generate_local_diagnosis(body.symbol, ctx["spot"], ctx["metrics"], ctx["vix_val"], NQ_QQQ_RATIO)
+        ai_text = generate_local_diagnosis(body.symbol, ctx["spot"], ctx["metrics"], ctx["vix_val"], conversion_ratio)
         source = "local"
 
     await insert_chat_message(username, "assistant", ai_text)

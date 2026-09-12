@@ -127,13 +127,20 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
             detail=f"No hay datos en vivo para {body.symbol} todavía -- abre GEX INFO en ese símbolo primero.",
         )
 
+    # El ratio NQ_QQQ_RATIO fijo puede quedar desactualizado (misma causa
+    # raíz que ya se resolvió del lado de Quantower con ManualRatio en
+    # GexProfileCloud.cs: Schwab no da una cotización de futuros NQ
+    # confiable) -- si el usuario manda uno manual desde la web, tiene
+    # prioridad total, igual criterio que en el indicador.
+    conversion_ratio = body.conversion_ratio if body.conversion_ratio and body.conversion_ratio > 0 else NQ_QQQ_RATIO
+
     system_prompt = build_system_prompt(
         ticker=body.symbol,
         spot=ctx["spot"],
         metrics=ctx["metrics"],
         vix_val=ctx["vix_val"],
         intraday_context=ctx["intraday_context"],
-        conversion_ratio=NQ_QQQ_RATIO,
+        conversion_ratio=conversion_ratio,
         overnight_profile=ctx.get("overnight_profile"),
         cash_profile=ctx.get("cash_profile"),
     )
@@ -143,7 +150,7 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
     if ai_text:
         return AiDiagnosisResponse(text=ai_text, source="groq")
 
-    local_text = generate_local_diagnosis(body.symbol, ctx["spot"], ctx["metrics"], ctx["vix_val"], NQ_QQQ_RATIO)
+    local_text = generate_local_diagnosis(body.symbol, ctx["spot"], ctx["metrics"], ctx["vix_val"], conversion_ratio)
     return AiDiagnosisResponse(text=local_text, source="local")
 
 

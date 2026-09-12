@@ -77,11 +77,11 @@ export async function fetchVolSurface(symbol, expKeys) {
   return resp.json()
 }
 
-export async function postAiDiagnosis(symbol, tipoAnalisis) {
+export async function postAiDiagnosis(symbol, tipoAnalisis, conversionRatio) {
   const resp = await apiFetch('/market/ai-diagnosis', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, tipo_analisis: tipoAnalisis }),
+    body: JSON.stringify({ symbol, tipo_analisis: tipoAnalisis, conversion_ratio: conversionRatio || null }),
   })
   if (!resp.ok) {
     const detail = await resp.json().catch(() => ({}))

@@ -153,6 +153,30 @@ def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
     assert body["text"] == "diagnóstico narrativo de groq"
 
 
+def test_ai_diagnosis_manual_conversion_ratio_overrides_default(authed_client, monkeypatch):
+    # El ratio NQ_QQQ_RATIO fijo puede quedar desactualizado -- un ratio
+    # manual mandado desde la web (ver InputParameter ManualRatio del
+    # indicador de Quantower, mismo concepto) debe tener prioridad total
+    # y llegar tal cual al prompt.
+    monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
+
+    async def _fake_query_groq(system_prompt, user_prompt):
+        assert "39.5000" in system_prompt  # el ratio manual, no 41.1250
+        return "ok"
+
+    monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
+
+    resp = authed_client.post(
+        "/market/ai-diagnosis",
+        json={"symbol": "QQQ", "tipo_analisis": "Intradía", "conversion_ratio": 39.5},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["text"] == "ok"
+
+
 def test_ai_diagnosis_falls_back_to_local_when_groq_unavailable(authed_client, monkeypatch):
     monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)

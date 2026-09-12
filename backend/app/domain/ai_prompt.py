@@ -98,9 +98,13 @@ def build_system_prompt(
     )
 
     session_profiles_section = (
-        f"PERFILES DE SESIÓN -- VOLUME/DELTA/TPO PROFILE (Overnight 17:00-08:29 y Cash 08:30-15:00, hora Lima/UTC-5):\n"
-        f"{format_session_profile('Overnight (Asia/London/pre-market)', overnight_profile)}\n\n"
-        f"{format_session_profile('Cash Session', cash_profile)}\n"
+        f"PERFILES DE SESIÓN -- VOLUME/DELTA/TPO PROFILE (Overnight 17:00-08:29 y Cash 08:30-15:00, hora Lima/UTC-5). "
+        f"Los niveles ya vienen con su equivalente en {ticker} calculado (dividido por el ratio de conversión "
+        f"{conversion_ratio:.4f}) -- COMPARÁ ESE EQUIVALENTE directo contra tus walls/Zero Gamma, no hagas la conversión "
+        f"vos mismo, y NO digas que dos niveles están alineados si sus equivalentes en {ticker} difieren por más de "
+        f"~0.3 USD:\n"
+        f"{format_session_profile('Overnight (Asia/London/pre-market)', overnight_profile, conversion_ratio, ticker)}\n\n"
+        f"{format_session_profile('Cash Session', cash_profile, conversion_ratio, ticker)}\n"
         if has_session_data else ""
     )
 

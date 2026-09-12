@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
 # Horarios de sesión definidos por el usuario en UTC-5 fijo (sin horario de
@@ -33,33 +33,62 @@ def cash_key_for(now: datetime) -> str:
     return f"cash_{session_date.isoformat()}"
 
 
-def _fmt_levels(values: list[float] | None) -> str:
+def _to_equivalent(nq_value: float, conversion_ratio: float | None) -> float | None:
+    """NQ/MNQ points -> USD equivalentes del ticker de opciones (QQQ) --
+    división directa por el ratio, la MISMA fórmula que ya usa el
+    indicador de Quantower (GexProfileCloud.cs) para ir en sentido
+    contrario (strike * ratio = precio MNQ). Se precomputa acá, en vez
+    de dejar que la IA haga la cuenta mentalmente con el ratio suelto en
+    el prompt -- fue justo eso lo que causó una lectura de "alineación"
+    incorrecta entre un wall en USD y un POC/VAH/VAL en puntos NQ."""
+    if not conversion_ratio or conversion_ratio <= 0:
+        return None
+    return nq_value / conversion_ratio
+
+
+def _fmt_level(value: float, conversion_ratio: float | None, ticker: str) -> str:
+    equiv = _to_equivalent(value, conversion_ratio)
+    if equiv is None:
+        return f"{value:.2f} pts NQ/MNQ (sin ratio de conversión para comparar contra {ticker})"
+    return f"{value:.2f} pts NQ/MNQ (equivalente {ticker}: {equiv:.2f})"
+
+
+def _fmt_levels(values: list[float] | None, conversion_ratio: float | None, ticker: str) -> str:
     if not values:
         return "ninguno"
-    return ", ".join(f"{v:.2f}" for v in values)
+    return "; ".join(_fmt_level(v, conversion_ratio, ticker) for v in values)
 
 
-def _fmt_outliers(outliers: list[dict] | None) -> str:
+def _fmt_outliers(outliers: list[dict] | None, conversion_ratio: float | None, ticker: str) -> str:
     if not outliers:
         return "ninguno"
-    return ", ".join(f"{o.get('price', 0):.2f} (delta {o.get('delta', 0):+.0f})" for o in outliers)
+    parts = []
+    for o in outliers:
+        price = o.get('price', 0)
+        delta = o.get('delta', 0)
+        parts.append(f"{_fmt_level(price, conversion_ratio, ticker)} (delta {delta:+.0f})")
+    return "; ".join(parts)
 
 
-def format_session_profile(label: str, profile: dict | None) -> str:
+def format_session_profile(label: str, profile: dict | None, conversion_ratio: float | None, ticker: str = "QQQ") -> str:
     """Texto para el prompt de la IA a partir de un perfil de Volume/Delta/
-    TPO empujado por SessionProfilePusher.cs -- niveles en puntos de
-    NQ/MNQ (nativos del indicador, no convertidos a USD del ticker de
-    opciones), coherente con cómo ya se le presenta a la IA el resto de
-    niveles de futuros (ver 'Ratio NQ' en build_system_prompt)."""
+    TPO empujado por SessionProfilePusher.cs -- los niveles llegan
+    NATIVOS en puntos de NQ/MNQ (así los calcula el indicador, sobre el
+    chart de futuros), así que cada uno se muestra CON su equivalente ya
+    convertido a {ticker} (dividido por conversion_ratio) -- para que la
+    IA compare directo contra sus walls/Zero Gamma (que sí están en
+    {ticker}) sin tener que hacer la conversión ella misma."""
     if not profile:
         return f"{label}: sin datos disponibles todavía (el indicador de Quantower aún no empujó esta sesión)."
 
     return (
-        f"{label} (niveles en puntos de NQ/MNQ):\n"
-        f"  POC (Point of Control): {profile.get('poc', 0):.2f} | "
-        f"VAH: {profile.get('vah', 0):.2f} | VAL: {profile.get('val', 0):.2f}\n"
-        f"  HVN (nodos de alto volumen -- zonas de aceptación/imán): {_fmt_levels(profile.get('hvn'))}\n"
-        f"  LVN (nodos de bajo volumen -- zonas de aceleración, el precio tiende a cruzarlas rápido): {_fmt_levels(profile.get('lvn'))}\n"
-        f"  Delta outliers (flujo agresivo concentrado en un nivel puntual): {_fmt_outliers(profile.get('delta_outliers'))}\n"
-        f"  TPO POC: {profile.get('tpo_poc', 0):.2f} | TPO LVN: {_fmt_levels(profile.get('tpo_lvn'))}"
+        f"{label}:\n"
+        f"  POC (Point of Control): {_fmt_level(profile.get('poc', 0), conversion_ratio, ticker)}\n"
+        f"  VAH: {_fmt_level(profile.get('vah', 0), conversion_ratio, ticker)}\n"
+        f"  VAL: {_fmt_level(profile.get('val', 0), conversion_ratio, ticker)}\n"
+        f"  HVN (nodos de alto volumen -- zonas de aceptación/imán): {_fmt_levels(profile.get('hvn'), conversion_ratio, ticker)}\n"
+        f"  LVN (nodos de bajo volumen -- zonas de aceleración, el precio tiende a cruzarlas rápido): {_fmt_levels(profile.get('lvn'), conversion_ratio, ticker)}\n"
+        f"  Delta outliers (flujo agresivo concentrado en un nivel puntual): {_fmt_outliers(profile.get('delta_outliers'), conversion_ratio, ticker)}\n"
+        f"  TPO POC: {_fmt_level(profile.get('tpo_poc', 0), conversion_ratio, ticker)}\n"
+        f"  TPO LVN: {_fmt_levels(profile.get('tpo_lvn'), conversion_ratio, ticker)}"
     )
