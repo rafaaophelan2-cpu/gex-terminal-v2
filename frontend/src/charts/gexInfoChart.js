@@ -1,5 +1,6 @@
 import Plotly from 'plotly.js-dist-min'
 import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
+import { strongestOutline } from '../utils/chartHighlight.js'
 
 // Un solo gráfico de GEX INFO en esta pantalla (Fase 2 MVP) -- si más
 // adelante hay varias instancias en pantalla a la vez, esto pasa a ser
@@ -43,12 +44,13 @@ export function renderChainFull(el, payload, spot) {
   const strikes = payload.by_strike.map((s) => s.strike)
   const netGex = payload.by_strike.map((s) => s.net_gex)
   const colors = netGex.map((v) => (v >= 0 ? COLOR_POSITIVE : COLOR_NEGATIVE))
+  const outline = strongestOutline(netGex)
 
   const trace = {
     type: 'bar',
     x: strikes,
     y: netGex,
-    marker: { color: colors },
+    marker: { color: colors, line: { color: outline.colors, width: outline.widths } },
     hovertemplate: 'Strike: $%{x}<br>Net GEX: %{y:,.0f}<extra></extra>',
   }
 
@@ -70,8 +72,12 @@ export function updateTick(el, payload, spot) {
   const strikes = payload.by_strike.map((s) => s.strike)
   const netGex = payload.by_strike.map((s) => s.net_gex)
   const colors = netGex.map((v) => (v >= 0 ? COLOR_POSITIVE : COLOR_NEGATIVE))
+  const outline = strongestOutline(netGex)
 
-  Plotly.restyle(el, { x: [strikes], y: [netGex], 'marker.color': [colors] })
+  Plotly.restyle(el, {
+    x: [strikes], y: [netGex], 'marker.color': [colors],
+    'marker.line.color': [outline.colors], 'marker.line.width': [outline.widths],
+  })
   Plotly.relayout(el, { shapes: spotLineShape(spot) })
 }
 

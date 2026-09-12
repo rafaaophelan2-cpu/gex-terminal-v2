@@ -1,5 +1,6 @@
 import Plotly from 'plotly.js-dist-min'
 import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
+import { strongestOutline } from '../utils/chartHighlight.js'
 
 const HOVER = {
   font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },
@@ -63,10 +64,11 @@ export function renderBackgammaStrikeChart(el, heatmap, currentIndex) {
   const values = strikes.map((s) => grouped.get(s))
 
   const colors = values.map((v) => (v >= 0 ? COLOR_POSITIVE : COLOR_NEGATIVE))
+  const outline = strongestOutline(values)
   const spot = heatmap.spot[currentIndex]
 
   const trace = {
-    type: 'bar', x: strikes, y: values, marker: { color: colors },
+    type: 'bar', x: strikes, y: values, marker: { color: colors, line: { color: outline.colors, width: outline.widths } },
     hovertemplate: 'Strike: $%{x}<br>Net GEX: %{y:,.0f}<extra></extra>',
   }
 

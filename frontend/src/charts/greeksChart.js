@@ -1,5 +1,6 @@
 import Plotly from 'plotly.js-dist-min'
 import { COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
+import { strongestOutline } from '../utils/chartHighlight.js'
 
 const GREEK_FIELD = { dex: 'net_dex', tex: 'net_tex', vex: 'net_vex', chex: 'net_chex', vanna: 'net_vanna' }
 const GREEK_TITLE = {
@@ -43,8 +44,9 @@ export function renderGreeksChart(el, greekKey, payload, forceRedraw = false) {
   const strikes = payload.by_strike.map((s) => s.strike)
   const values = payload.by_strike.map((s) => s[field])
   const colors = values.map((v) => (v >= 0 ? COLOR_POSITIVE : COLOR_NEGATIVE))
+  const outline = strongestOutline(values)
   const trace = {
-    type: 'bar', x: strikes, y: values, marker: { color: colors },
+    type: 'bar', x: strikes, y: values, marker: { color: colors, line: { color: outline.colors, width: outline.widths } },
     hovertemplate: 'Strike: $%{x}<br>Valor: %{y:,.2f}<extra></extra>',
   }
 
@@ -52,7 +54,10 @@ export function renderGreeksChart(el, greekKey, payload, forceRedraw = false) {
     Plotly.react(el, [trace], baseLayout(GREEK_TITLE[greekKey]), { responsive: true, displaylogo: false })
     initializedGreek = greekKey
   } else {
-    Plotly.restyle(el, { x: [strikes], y: [values], 'marker.color': [colors] })
+    Plotly.restyle(el, {
+      x: [strikes], y: [values], 'marker.color': [colors],
+      'marker.line.color': [outline.colors], 'marker.line.width': [outline.widths],
+    })
   }
 }
 
