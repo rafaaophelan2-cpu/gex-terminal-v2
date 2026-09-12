@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo
 
 from app.domain.ai_prompt import build_intraday_context
 from app.domain.metrics import compute_metrics_for_dte
+from app.domain.session_profile import SESSION_TZ, cash_key_for, overnight_key_for
+from app.integrations.firebase_client import fetch_session_profile
 from app.integrations.schwab_client import fetch_price_history, fetch_vix
 from app.services.market_feed import feed_registry
 
@@ -29,9 +31,12 @@ async def build_ai_context(symbol: str) -> dict:
     metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
 
     today = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-    candles, vix_val = await asyncio.gather(
+    now_lima = datetime.now(SESSION_TZ)
+    candles, vix_val, overnight_profile, cash_profile = await asyncio.gather(
         fetch_price_history(symbol, today),
         fetch_vix(),
+        fetch_session_profile(overnight_key_for(now_lima)),
+        fetch_session_profile(cash_key_for(now_lima)),
     )
     intraday_context = build_intraday_context(candles, feed.spot_price)
 
@@ -40,4 +45,6 @@ async def build_ai_context(symbol: str) -> dict:
         "metrics": metrics,
         "vix_val": vix_val,
         "intraday_context": intraday_context,
+        "overnight_profile": overnight_profile,
+        "cash_profile": cash_profile,
     }

@@ -64,3 +64,32 @@ def test_build_system_prompt_includes_gamma_mechanics_and_conversational_mode():
     # checklist de confirmación, no afirmar que "ve" absorción.
     assert "checklist" in prompt.lower()
     assert "PROHIBIDO" in prompt
+
+
+def test_build_system_prompt_without_session_profiles_keeps_no_data_disclaimer():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "NO tienes esos datos en vivo" in prompt
+    assert "PERFILES DE SESIÓN" not in prompt
+
+
+def test_build_system_prompt_with_session_profiles_includes_real_levels():
+    overnight = {
+        "poc": 20100.0, "vah": 20150.0, "val": 20050.0,
+        "hvn": [20100.0], "lvn": [20075.0],
+        "delta_outliers": [{"price": 20080.0, "delta": 1250.0}],
+        "tpo_poc": 20105.0, "tpo_lvn": [20060.0],
+    }
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        overnight_profile=overnight, cash_profile=None,
+    )
+    assert "PERFILES DE SESIÓN" in prompt
+    assert "20100.00" in prompt  # POC del overnight
+    assert "tienes acceso a datos reales" in prompt.lower()
+    # El disclaimer de "NO tienes esos datos" ya no debe aparecer tal cual
+    # cuando SÍ hay perfiles -- solo el matiz sobre el footprint en vivo.
+    assert "NO tienes esos datos en vivo todavía" not in prompt

@@ -55,6 +55,10 @@ async def _fake_vix():
     return 18.5
 
 
+async def _fake_session_profile(session_key):
+    return None
+
+
 def test_get_chat_history_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/chat/history")
@@ -109,6 +113,7 @@ def test_post_chat_message_saves_both_messages_and_uses_groq(authed_client, monk
     monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
     monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
 
     async def _fake_fetch_chat_history(username, limit=50):
         return [{"role": "user", "content": "hola"}, {"role": "assistant", "content": "hola, en qué te ayudo?"}]
@@ -143,6 +148,7 @@ def test_post_chat_message_falls_back_to_local_when_groq_unavailable(authed_clie
     monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
     monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
 
     async def _fake_fetch_chat_history(username, limit=50):
         return []

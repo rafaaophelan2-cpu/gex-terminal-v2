@@ -1,3 +1,6 @@
+from app.domain.session_profile import format_session_profile
+
+
 def build_intraday_context(candles: list[dict], current_price: float) -> str:
     """Resume el movimiento de precio de HOY (apertura, máximo, mínimo, y
     el movimiento de los últimos ~30 minutos) para que la IA razone
@@ -59,6 +62,8 @@ def build_system_prompt(
     intraday_context: str,
     conversion_ratio: float = 41.125,
     dte_note: str = "",
+    overnight_profile: dict | None = None,
+    cash_profile: dict | None = None,
 ) -> str:
     """Port ampliado del system_prompt de consultar_ia en app.py (~línea
     2066): mismos datos de mercado y mismas reglas duras de coherencia
@@ -73,6 +78,31 @@ def build_system_prompt(
     pregunta conversacional (antes el chat respondía SIEMPRE con el
     informe completo sin importar el mensaje)."""
     vix_status, vix_desc, _ = classify_vix(vix_val)
+
+    # Cuando hay perfiles de sesión reales (Overnight/Cash, ver
+    # domain/session_profile.py, empujados por el indicador de Quantower
+    # SessionProfilePusher.cs), la IA SÍ tiene datos reales de volume/delta/
+    # TPO profile estructural -- ya no aplica la advertencia de "no tengo
+    # esos datos" tal cual, solo se mantiene para el footprint EN VIVO del
+    # instante exacto, que sigue sin estar disponible.
+    has_session_data = bool(overnight_profile or cash_profile)
+    order_flow_line = (
+        "Tienes acceso a datos REALES de Volume Profile, Delta Profile y TPO Profile de las sesiones Overnight y Cash "
+        "(ver la sección PERFILES DE SESIÓN más abajo) -- úsalos como parte real de tu análisis de order flow, no son una "
+        "simulación. Lo único que sigues sin ver es el footprint/delta acumulado EN VIVO del instante exacto -- ahí sigue "
+        "aplicando: nunca inventes una lectura del momento presente (\"veo absorción ahora mismo\" sigue PROHIBIDO), pero "
+        "para los niveles estructurales (POC/VAH/VAL/HVN/LVN/delta outliers/TPO) sí tienes el dato real, no digas que no lo tienes."
+        if has_session_data else
+        "Usa footprint chart, cumulative delta y volume profile como herramientas de ejecución. Tú NO tienes esos datos en "
+        "vivo todavía -- nunca inventes lecturas de order flow concretas (\"veo absorción ahora mismo\" está PROHIBIDO)."
+    )
+
+    session_profiles_section = (
+        f"PERFILES DE SESIÓN -- VOLUME/DELTA/TPO PROFILE (Overnight 17:00-08:29 y Cash 08:30-15:00, hora Lima/UTC-5):\n"
+        f"{format_session_profile('Overnight (Asia/London/pre-market)', overnight_profile)}\n\n"
+        f"{format_session_profile('Cash Session', cash_profile)}\n"
+        if has_session_data else ""
+    )
 
     return f"""
     Eres un analista senior de order flow, derivados y microestructura de mercado, especializado en gamma exposure (GEX) de opciones sobre Nasdaq y en scalping de futuros NQ/MNQ, operando dentro del GEX Quant Terminal. {dte_note}
@@ -96,7 +126,7 @@ def build_system_prompt(
 
     PERFIL DEL TRADER AL QUE ASESORAS (cuando sí corresponda el análisis completo):
     - Opera intradía puro: sus trades duran entre 5 y 30 minutos, NUNCA "swing".
-    - Usa footprint chart, cumulative delta y volume profile como herramientas de ejecución. Tú NO tienes esos datos en vivo -- nunca inventes lecturas de order flow concretas ("veo absorción ahora mismo" está PROHIBIDO) -- pero tu trabajo es decirle EXACTAMENTE qué patrón buscar ahí para confirmar o invalidar cada escenario antes de operarlo: absorción (mecha con volumen sin desplazamiento neto), agresión compradora/vendedora sostenida en el delta acumulado, nodos de alto/bajo volumen (HVN/LVN) como zonas de aceleración o de imán, divergencias entre precio y delta acumulado como señal de agotamiento.
+    - {order_flow_line} Tu trabajo, con o sin ese dato, es decirle EXACTAMENTE qué patrón buscar en vivo para confirmar o invalidar cada escenario antes de operarlo: absorción (mecha con volumen sin desplazamiento neto), agresión compradora/vendedora sostenida en el delta acumulado, nodos de alto/bajo volumen (HVN/LVN) como zonas de aceleración o de imán, divergencias entre precio y delta acumulado como señal de agotamiento.
     - Opera MNQ/NQ (Nasdaq), pero tus niveles de referencia (Call/Put Walls, Zero Gamma) están en {ticker} -- factor de conversión: {conversion_ratio:.4f}.
     - NUNCA propongas objetivos (TP) de tipo swing. Los objetivos deben ser alcanzables en minutos, no en días.
 
@@ -109,6 +139,7 @@ def build_system_prompt(
     CONTEXTO DE PRECIO INTRADÍA (movimiento ya ocurrido hoy -- ÚSALO, no lo ignores):
     {intraday_context}
 
+    {session_profiles_section}
     DATOS DEL MERCADO EN TIEMPO REAL ({ticker}):
     - Ticker: {ticker} | Spot Price: {spot:.2f} USD | Ratio NQ: {conversion_ratio:.4f}
     - Índice VIX: {vix_val:.2f} ({vix_status} - {vix_desc})

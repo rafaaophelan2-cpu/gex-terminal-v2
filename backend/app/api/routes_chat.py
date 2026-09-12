@@ -72,6 +72,8 @@ async def post_chat_message(body: ChatMessageRequest, username: str = Depends(re
         vix_val=ctx["vix_val"],
         intraday_context=ctx["intraday_context"],
         conversion_ratio=NQ_QQQ_RATIO,
+        overnight_profile=ctx.get("overnight_profile"),
+        cash_profile=ctx.get("cash_profile"),
     )
 
     ai_text = await query_groq(system_prompt, message, history=history)

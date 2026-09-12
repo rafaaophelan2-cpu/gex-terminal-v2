@@ -130,10 +130,15 @@ async def _fake_vix():
     return 18.5
 
 
+async def _fake_session_profile(session_key):
+    return None
+
+
 def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
     monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
     monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
 
     async def _fake_query_groq(system_prompt, user_prompt):
         assert "481.23" in system_prompt
@@ -152,6 +157,7 @@ def test_ai_diagnosis_falls_back_to_local_when_groq_unavailable(authed_client, m
     monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
     monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
     monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
 
     async def _fake_query_groq_none(system_prompt, user_prompt):
         return None
