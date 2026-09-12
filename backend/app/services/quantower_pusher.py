@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from app.config import get_settings
 from app.domain.quantower import build_live_levels_payload, compute_conversion_ratio
@@ -7,6 +8,7 @@ from app.integrations.schwab_client import fetch_nq_price
 from app.services.market_feed import feed_registry
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 PUSH_INTERVAL_SECONDS = 8
 
@@ -40,5 +42,11 @@ async def quantower_pusher_loop() -> None:
         try:
             await _push_once()
         except Exception:
-            pass  # Fase 4: loggear a console_logs (Supabase)
+            # Antes se tragaba en silencio -- mismo patrón que ya causó una
+            # salida completa de datos indiagnosticable en market_feed.py y
+            # schwab_client.py (ver commits de esta sesión), acá con el
+            # mismo riesgo: si esto falla sostenido, el indicador de
+            # Quantower deja de recibir niveles sin ningún rastro visible.
+            # TODO Fase 4: además, loggear a console_logs (Supabase).
+            logger.exception("Error en quantower_pusher_loop -- se reintenta en el próximo ciclo.")
         await asyncio.sleep(PUSH_INTERVAL_SECONDS)

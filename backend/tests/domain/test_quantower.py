@@ -30,8 +30,22 @@ def test_build_live_levels_payload_matches_quantower_schema():
     assert payload["qqq_spot"] == 500.0
     assert payload["conversion_ratio"] == 40.0
     assert set(payload.keys()) == {
-        "qqq_spot", "conversion_ratio", "cw1", "cw2", "cw3", "pw1", "pw2", "pw3", "levels",
+        "qqq_spot", "conversion_ratio", "cw1", "cw2", "cw3", "pw1", "pw2", "pw3", "zero_gamma", "levels",
     }
     strikes_pushed = {lvl["strike"] for lvl in payload["levels"]}
     assert strikes_pushed == {495.0, 505.0}
     assert all(isinstance(lvl["net_gex"], float) for lvl in payload["levels"])
+    assert isinstance(payload["zero_gamma"], float)
+
+
+def test_build_live_levels_payload_zero_gamma_is_the_flip_strike():
+    # net_gex acumulado (ordenado por strike) cruza cero entre 495 (+50) y
+    # 505 (-30) -- compute_zero_gamma ya se prueba a fondo en
+    # tests/domain/test_gex_math.py, acá solo se confirma que el valor
+    # llega tal cual al payload de Quantower (no se recalcula distinto).
+    df = pd.DataFrame([
+        {"strike": 495.0, "net_gex": 50.0, "exp_key": "e0", "dte": 0},
+        {"strike": 505.0, "net_gex": -30.0, "exp_key": "e0", "dte": 0},
+    ])
+    payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
+    assert payload["zero_gamma"] in (495.0, 505.0)
