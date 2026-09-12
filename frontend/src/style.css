@@ -657,6 +657,11 @@ main {
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  /* El SVG que arma Plotly con responsive:true a veces mide 1-2px de más
+     que el contenedor (redondeo entre su ResizeObserver y el ancho
+     fraccionario que le da flexbox) -- overflow:hidden recorta ese
+     sobrante en vez de dejarlo asomar por el borde redondeado. */
+  overflow: hidden;
 }
 
 @media (max-width: 720px) {
@@ -1097,6 +1102,7 @@ main {
 .gex-info-chart {
   flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
 }
 
 .signals-panel {
