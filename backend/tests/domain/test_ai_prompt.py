@@ -41,7 +41,7 @@ def test_build_system_prompt_embeds_key_numbers():
     assert "481.23" in prompt
     assert "478.50" in prompt
     assert "contexto de prueba" in prompt
-    assert "Rebote" in prompt and "Ruptura y Retesteo" in prompt and "Re-Ruptura" in prompt
+    assert "Rebote" in prompt and "Ruptura y Retesteo" in prompt and "Entrada Contraria" in prompt
     # La única aparición de "$$" debe ser la propia regla que la prohíbe.
     assert prompt.count("$$") == 1
     assert "22.50%" in prompt
