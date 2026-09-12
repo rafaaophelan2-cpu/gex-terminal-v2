@@ -41,7 +41,7 @@ def test_build_system_prompt_embeds_key_numbers():
     assert "481.23" in prompt
     assert "478.50" in prompt
     assert "contexto de prueba" in prompt
-    assert "Escenario A" in prompt and "Escenario B" in prompt and "Escenario C" in prompt
+    assert "Rebote" in prompt and "Ruptura y Retesteo" in prompt and "Re-Ruptura" in prompt
     # La única aparición de "$$" debe ser la propia regla que la prohíbe.
     assert prompt.count("$$") == 1
     assert "22.50%" in prompt
@@ -72,7 +72,11 @@ def test_build_system_prompt_without_session_profiles_keeps_no_data_disclaimer()
         intraday_context="contexto de prueba",
     )
     assert "NO tienes esos datos en vivo" in prompt
-    assert "PERFILES DE SESIÓN" not in prompt
+    # La sección de perfiles (con los datos en sí) no debe armarse sin
+    # datos -- el trader profile SÍ puede mencionar "PERFILES DE SESIÓN"
+    # como referencia general, por eso se busca el encabezado completo de
+    # la sección, no el substring suelto.
+    assert "PERFILES DE SESIÓN -- VOLUME/DELTA/TPO PROFILE" not in prompt
 
 
 def test_build_system_prompt_with_session_profiles_includes_real_levels():

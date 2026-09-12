@@ -12,7 +12,8 @@ def test_generate_local_diagnosis_has_all_sections_and_table():
     text = generate_local_diagnosis("QQQ", 481.23, METRICS, vix_val=18.5)
     for heading in ["Estado Actual", "Niveles Operativos", "Order Flow", "Escenarios Operativos", "Resumen Rápido"]:
         assert heading in text
-    assert "| Escenario | Dirección" in text
+    assert "| Setup | Dirección" in text
+    assert "Rebote" in text and "Ruptura y Retesteo" in text
     assert "478.50" in text
     assert "22.50%" in text
     assert "64th percentile" in text

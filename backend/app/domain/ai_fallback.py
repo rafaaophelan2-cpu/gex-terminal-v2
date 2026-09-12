@@ -38,17 +38,17 @@ Régimen de gamma: {metrics['regime_str']} ({metrics['condition_str']}). VIX en 
 **3. Qué Vigilar en Order Flow**
 Confirma cualquier escenario con absorción real en footprint/cumulative delta antes de entrar: una mecha de rechazo sin volumen de agresión en contra no es suficiente para operar un nivel de gamma.
 
-**4. Escenarios Operativos de Scalping (5-30 min)**
-* **Escenario A (Rechazo en Put Wall 1 → LONG)**: entrada cerca de {metrics['pw1']:.2f}, TP hacia {metrics['zero_gamma']:.2f}, invalidación por debajo de {metrics['pw2']:.2f}.
-* **Escenario B (Rechazo en Call Wall 1 → SHORT)**: entrada cerca de {metrics['cw1']:.2f}, TP hacia {metrics['zero_gamma']:.2f}, invalidación por encima de {metrics['cw2']:.2f}.
-* **Escenario C (Ruptura de Zero Gamma)**: si el precio sostiene por encima de {metrics['zero_gamma']:.2f}, continuación LONG hacia {metrics['cw1']:.2f}; si sostiene por debajo, continuación SHORT hacia {metrics['pw1']:.2f}.
+**4. Escenarios Operativos (5-30 min)**
+* **Rebote en Put Wall 1 → LONG**: entrada cerca de {metrics['pw1']:.2f}, TP hacia {metrics['zero_gamma']:.2f}, invalidación por debajo de {metrics['pw2']:.2f}.
+* **Rebote en Call Wall 1 → SHORT**: entrada cerca de {metrics['cw1']:.2f}, TP hacia {metrics['zero_gamma']:.2f}, invalidación por encima de {metrics['cw2']:.2f}.
+* **Ruptura y Retesteo de Zero Gamma**: si el precio sostiene por encima de {metrics['zero_gamma']:.2f}, continuación LONG hacia {metrics['cw1']:.2f} en el retest; si sostiene por debajo, continuación SHORT hacia {metrics['pw1']:.2f} en el retest.
 
 **5. Resumen Rápido para el Trader**
 
-| Escenario | Dirección | Entrada | TP | Invalidación | Comentario OF |
+| Setup | Dirección | Entrada | TP | Invalidación | Comentario OF |
 |---|---|---|---|---|---|
-| A | LONG | {metrics['pw1']:.2f} | {metrics['zero_gamma']:.2f} | {metrics['pw2']:.2f} | Buscar absorción compradora en el soporte |
-| B | SHORT | {metrics['cw1']:.2f} | {metrics['zero_gamma']:.2f} | {metrics['cw2']:.2f} | Buscar absorción vendedora en la resistencia |
-| C | Según ruptura | {metrics['zero_gamma']:.2f} | {metrics['cw1']:.2f} / {metrics['pw1']:.2f} | Reingreso al rango | Confirmar con delta acumulado sostenido |
+| Rebote PW1 | LONG | {metrics['pw1']:.2f} | {metrics['zero_gamma']:.2f} | {metrics['pw2']:.2f} | Buscar absorción compradora en el soporte (delta grid/cumulative delta) |
+| Rebote CW1 | SHORT | {metrics['cw1']:.2f} | {metrics['zero_gamma']:.2f} | {metrics['cw2']:.2f} | Buscar absorción vendedora en la resistencia (delta grid/cumulative delta) |
+| Ruptura y Retesteo ZG | Según ruptura | {metrics['zero_gamma']:.2f} | {metrics['cw1']:.2f} / {metrics['pw1']:.2f} | Reingreso al rango | Confirmar con delta acumulado sostenido en el retest |
 
 _Diagnóstico generado localmente (sin IA) -- conecta GROQ_API_KEY para un análisis narrativo completo._"""
