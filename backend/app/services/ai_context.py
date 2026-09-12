@@ -29,6 +29,13 @@ async def build_ai_context(symbol: str) -> dict:
 
     exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
     metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
+    # compute_metrics_for_dte no sabe nada del percentil REAL que
+    # iv_percentile_updater_loop calcula contra el historial de Supabase
+    # (ver market_feed.SymbolFeed._iv_rank_is_real) -- sin este override
+    # el diagnóstico de la IA seguiría mostrando la fórmula estimada aunque
+    # el badge de la barra superior ya muestre el percentil real.
+    if getattr(feed, "_iv_rank_is_real", False):
+        metrics = {**metrics, "iv_rank_str": feed.iv_rank_str}
 
     today = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     now_lima = datetime.now(SESSION_TZ)

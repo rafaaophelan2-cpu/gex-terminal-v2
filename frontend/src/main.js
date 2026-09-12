@@ -682,7 +682,7 @@ driftDateInput.addEventListener('change', () => {
 
 applySymbolBtn.addEventListener('click', () => {
   const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-  const strikeRange = Math.min(Math.max(parseInt(strikeRangeInput.value, 10) || 20, 5), 80)
+  const strikeRange = Math.min(Math.max(parseInt(strikeRangeInput.value, 10) || 25, 5), 80)
   symbolInput.value = symbol
   strikeRangeInput.value = strikeRange
   resetGexInfoChart()

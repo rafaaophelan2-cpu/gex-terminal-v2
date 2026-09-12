@@ -108,6 +108,26 @@ def build_system_prompt(
         if has_session_data else ""
     )
 
+    # Dirección inversa a la de session_profile.py (que ya precomputa
+    # puntos NQ/MNQ -> USD {ticker}): acá el trader necesita sus walls/Zero
+    # Gamma -- que están en USD {ticker} -- traducidos a puntos NQ/MNQ para
+    # compararlos contra su chart de futuros. Se precomputa EN PYTHON por
+    # la misma razón que la otra dirección: dejar que el modelo multiplique
+    # "wall * ratio" a mano en el texto de la respuesta produjo resultados
+    # aritméticamente incorrectos (ej. 708 * 41.105 respondido como 29115
+    # en vez de 29102.34) -- un LLM no ejecuta la multiplicación, la
+    # aproxima por patrón de texto.
+    def _wall_in_points(usd_value: float) -> str:
+        return f"{usd_value:.2f} USD ({usd_value * conversion_ratio:,.2f} pts NQ/MNQ)"
+
+    gamma_levels_in_points = (
+        f"- Niveles de gamma en puntos NQ/MNQ (YA CALCULADOS, USÁLOS TAL CUAL -- NUNCA multipliques wall x ratio vos "
+        f"mismo en la respuesta, incluso si parece una cuenta simple; usa exactamente estos números):\n"
+        f"  CW1={_wall_in_points(metrics['cw1'])}, CW2={_wall_in_points(metrics['cw2'])}, CW3={_wall_in_points(metrics['cw3'])}\n"
+        f"  PW1={_wall_in_points(metrics['pw1'])}, PW2={_wall_in_points(metrics['pw2'])}, PW3={_wall_in_points(metrics['pw3'])}\n"
+        f"  Zero Gamma={_wall_in_points(metrics['zero_gamma'])}"
+    )
+
     return f"""
     Eres un analista senior de order flow, derivados y microestructura de mercado, especializado en gamma exposure (GEX) de opciones sobre Nasdaq y en scalping de futuros NQ/MNQ, operando dentro del GEX Quant Terminal. {dte_note}
 
@@ -145,6 +165,7 @@ def build_system_prompt(
     2. En un LONG: el Take Profit SIEMPRE debe ser un precio MAYOR que el de entrada. En un SHORT: el Take Profit SIEMPRE debe ser un precio MENOR que el de entrada.
     3. NO propongas cazar una reversión (short después de una caída fuerte, o long después de una subida fuerte) sin una razón estructural explícita (rechazo confirmado en un nivel de gamma, agotamiento de la mecha, absorción visible). Nunca sugieras "shortear" muy por debajo de donde ya cayó el precio, ni "comprar" muy por encima de donde ya subió, sin ese sustento.
     4. Usa el contexto de movimiento reciente de abajo para calibrar tus escenarios: si ya hubo un movimiento grande y reciente, prioriza continuación con retest o agotamiento en un nivel específico -- no ignores que el movimiento ya ocurrió.
+    5. NUNCA multipliques ni dividas manualmente un nivel por el ratio de conversión para pasar entre USD {ticker} y puntos NQ/MNQ -- ese resultado YA viene calculado arriba (ver "Niveles de gamma en puntos NQ/MNQ" y, si hay PERFILES DE SESIÓN, cada nivel con su equivalente ya resuelto). Copiá esos números tal cual; una cuenta hecha por vos mismo en el texto de la respuesta es la fuente más común de errores aritméticos y de "alineaciones" falsas entre niveles.
 
     CONTEXTO DE PRECIO INTRADÍA (movimiento ya ocurrido hoy -- ÚSALO, no lo ignores):
     {intraday_context}
@@ -158,6 +179,7 @@ def build_system_prompt(
     - Call Walls (Resistencias): CW1={metrics['cw1']:.0f} USD, CW2={metrics['cw2']:.0f} USD, CW3={metrics['cw3']:.0f} USD
     - Put Walls (Soportes): PW1={metrics['pw1']:.0f} USD, PW2={metrics['pw2']:.0f} USD, PW3={metrics['pw3']:.0f} USD
     - Zero Gamma Level (Flip): {metrics['zero_gamma']:.2f} USD
+    {gamma_levels_in_points}
     - Volatilidad Implícita ATM: {metrics['iv_str']} (percentil de IV: {metrics['iv_rank_str']}) -- un percentil alto sugiere IV cara respecto a su propio rango reciente (favorece vender prima/spreads de crédito), uno bajo sugiere IV barata (favorece comprar opciones directas si el catalizador es fuerte).
     - Delta Exposure (DEX): {metrics['net_dex_val']:.2f}M USD | Theta Exposure (TEX): {metrics['net_tex_val']:,.0f} USD/día
     - Vega Exposure (VEX): {metrics['net_vex_val']:,.0f} USD/1% IV | Charm Exposure (CHEX): {metrics['net_chex_val']:.2f}M USD/día | Vanna: {metrics['net_vanna_val']:.2f}M USD

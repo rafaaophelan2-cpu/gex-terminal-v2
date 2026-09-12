@@ -130,6 +130,49 @@ async def fetch_available_dates(symbol: str, tz) -> list[str]:
     return dates
 
 
+async def fetch_daily_atm_iv_history(symbol: str, max_days: int = 400) -> list[float]:
+    """Un valor de IV ATM por día calendario (el más reciente de ese día,
+    ~el cierre) para 'symbol' -- historial real para el percentil de IV de
+    domain/iv_percentile.py. Requiere la columna 'atm_iv' en gex_intraday
+    (ver scripts/add_atm_iv_column.sql); si todavía no existe, PostgREST
+    devuelve un error de columna desconocida, que acá se trata como 'sin
+    historial todavía' en vez de propagar la excepción -- así el resto de
+    la app sigue funcionando aunque la migración no se haya corrido."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    def _query():
+        res = (
+            client.table("gex_intraday")
+            .select("created_at, atm_iv")
+            .eq("symbol", symbol)
+            .not_.is_("atm_iv", "null")
+            .order("created_at", desc=True)
+            .limit(5000)
+            .execute()
+        )
+        return res.data or []
+
+    try:
+        rows = await asyncio.to_thread(_query)
+    except Exception:
+        return []
+
+    # Filas ya vienen de más reciente a más vieja -- la primera vez que se
+    # ve cada día calendario es su lectura más tardía (el cierre de ese
+    # día), que es justo el criterio estándar para una serie diaria de IV.
+    daily: dict[str, float] = {}
+    for row in rows:
+        day = (row.get("created_at") or "")[:10]
+        if not day or day in daily:
+            continue
+        daily[day] = row["atm_iv"]
+        if len(daily) >= max_days:
+            break
+    return list(daily.values())
+
+
 async def insert_gex_snapshot(snapshot: dict) -> None:
     """Guarda un snapshot en gex_intraday, con el mismo dedup por
     symbol+time que push_to_supabase_bg en app.py (~línea 2598): con
@@ -164,7 +207,21 @@ async def insert_gex_snapshot(snapshot: dict) -> None:
         )
         if existing.data:
             return
-        client.table("gex_intraday").insert(snapshot).execute()
+        try:
+            client.table("gex_intraday").insert(snapshot).execute()
+        except Exception:
+            # 'atm_iv' requiere una columna que puede no existir todavía
+            # (ver scripts/add_atm_iv_column.sql) -- sin este fallback, un
+            # insert con esa clave desconocida hace fallar TODO el
+            # snapshot (net_gex, spot, strikes incluidos) hasta que se
+            # corra la migración, rompiendo LIVE GAMMA/NET DRIFT por un
+            # campo que ni siquiera es crítico. Reintenta una vez sin
+            # 'atm_iv'; si el fallo era por otra razón, se propaga igual.
+            if "atm_iv" in snapshot:
+                fallback = {k: v for k, v in snapshot.items() if k != "atm_iv"}
+                client.table("gex_intraday").insert(fallback).execute()
+            else:
+                raise
 
     await asyncio.to_thread(_insert)
 

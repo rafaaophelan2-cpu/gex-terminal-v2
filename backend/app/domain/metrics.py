@@ -50,7 +50,7 @@ def _metrics_fallback(spot_ref: float) -> dict:
         "pw1": spot_ref - 5, "pw2": spot_ref - 10, "pw3": spot_ref - 15,
         "zero_gamma": spot_ref, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
         "net_dex_val": 0.0, "net_tex_val": 0.0, "net_vex_val": 0.0, "net_chex_val": 0.0, "net_vanna_val": 0.0,
-        "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
+        "atm_iv": 0.20, "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
         "condition_str": "Neutral",
     }
 
@@ -110,7 +110,8 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
         "call_gex_sum": call_gex_sum, "put_gex_sum": put_gex_sum,
         "net_dex_val": net_dex_val, "net_tex_val": net_tex_val, "net_vex_val": net_vex_val,
         "net_chex_val": net_chex_val, "net_vanna_val": net_vanna_val,
+        "atm_iv": atm_iv,
         "iv_str": f"{atm_iv * 100:.2f}%",
-        "iv_rank_str": f"{int(min(max((atm_iv / 0.35) * 100, 15), 85))}th percentile",
+        "iv_rank_str": f"{int(min(max((atm_iv / 0.35) * 100, 15), 85))}th percentile (estimado)",
         "regime_str": regime_str, "condition_str": condition_str,
     }

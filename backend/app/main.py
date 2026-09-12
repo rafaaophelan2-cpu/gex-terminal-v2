@@ -9,6 +9,7 @@ from app.api.routes_chat import router as chat_router
 from app.api.routes_rest import router as rest_router
 from app.api.ws_market import router as ws_router
 from app.config import get_settings
+from app.services.iv_percentile_updater import iv_percentile_updater_loop
 from app.services.quantower_pusher import quantower_pusher_loop
 from app.services.snapshot_writer import snapshot_writer_loop
 
@@ -23,9 +24,11 @@ async def lifespan(app: FastAPI):
     # no dependen de ninguna conexión en particular.
     snapshot_task = asyncio.create_task(snapshot_writer_loop())
     quantower_task = asyncio.create_task(quantower_pusher_loop())
+    iv_percentile_task = asyncio.create_task(iv_percentile_updater_loop())
     yield
     snapshot_task.cancel()
     quantower_task.cancel()
+    iv_percentile_task.cancel()
 
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)

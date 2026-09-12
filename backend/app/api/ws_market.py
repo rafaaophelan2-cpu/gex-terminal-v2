@@ -41,7 +41,7 @@ async def _send_diag_ticks(websocket: WebSocket):
 
 
 DEFAULT_SYMBOL = "QQQ"
-DEFAULT_STRIKE_RANGE = 20
+DEFAULT_STRIKE_RANGE = 25
 POLL_INTERVAL_SECONDS = 0.5
 
 

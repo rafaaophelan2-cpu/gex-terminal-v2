@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -6,6 +7,8 @@ from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
 from app.domain.metrics import get_nearest_dte_subset
 from app.integrations.supabase_client import insert_gex_snapshot
 from app.services.market_feed import feed_registry
+
+logger = logging.getLogger(__name__)
 
 SNAPSHOT_INTERVAL_SECONDS = 60
 
@@ -58,6 +61,7 @@ async def _write_snapshot_for_feed(feed) -> None:
         "spot": float(feed.spot_price),
         "net_gex": float(by_strike['net_gex'].sum()),
         "strikes": strikes_payload,
+        "atm_iv": float(feed.atm_iv),
     }
 
     await insert_gex_snapshot(snapshot)
@@ -74,5 +78,5 @@ async def snapshot_writer_loop() -> None:
             try:
                 await _write_snapshot_for_feed(feed)
             except Exception:
-                pass  # Fase 4: loggear a console_logs (Supabase)
+                logger.exception("Error guardando snapshot de %s -- se reintenta en el próximo ciclo.", feed.symbol)
         await asyncio.sleep(SNAPSHOT_INTERVAL_SECONDS)

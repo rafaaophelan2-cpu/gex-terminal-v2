@@ -22,7 +22,7 @@ export class MarketWebSocketClient {
     this.ws = null
     this.heartbeatTimer = null
     this.reconnectDelay = RECONNECT_MIN_MS
-    this.lastSubscribe = { type: 'subscribe', symbol: 'QQQ', strike_range: 20 }
+    this.lastSubscribe = { type: 'subscribe', symbol: 'QQQ', strike_range: 25 }
     this._manualClose = false
   }
 

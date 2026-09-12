@@ -44,6 +44,13 @@ class SymbolFeed:
         # análisis de la IA vean exactamente el mismo número.
         self.iv_str: str = "--"
         self.iv_rank_str: str = "N/A"
+        self.atm_iv: float = 0.20
+        # Una vez que iv_percentile.py logra calcular un percentil real
+        # contra historial de Supabase (ver update_real_iv_percentile),
+        # _recalculate() deja de pisarlo con la fórmula estimada en cada
+        # tick -- si no, el resultado real duraría 2 segundos en pantalla
+        # antes de que el próximo tick lo reemplace por la estimación.
+        self._iv_rank_is_real: bool = False
 
         self._task: asyncio.Task | None = None
         self._subscriber_count = 0
@@ -105,7 +112,9 @@ class SymbolFeed:
 
         metrics = compute_metrics_for_dte(df, [exp0] if exp0 else [], spot)
         self.iv_str = metrics['iv_str']
-        self.iv_rank_str = metrics['iv_rank_str']
+        self.atm_iv = metrics['atm_iv']
+        if not self._iv_rank_is_real:
+            self.iv_rank_str = metrics['iv_rank_str']
 
     def gex_info_payload(self, min_strike: float | None = None, max_strike: float | None = None) -> dict:
         """Slice ya agrupado/filtrado listo para mandar por WS: nearest-DTE
