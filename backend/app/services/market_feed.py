@@ -4,6 +4,7 @@ import time
 
 import pandas as pd
 
+from app.domain.gamma_price_profile import compute_gamma_price_profile
 from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
 from app.domain.signals import compute_signals, compute_squeeze_screener
@@ -127,9 +128,11 @@ class SymbolFeed:
                           "pw1": self.spot_price, "pw2": self.spot_price, "pw3": self.spot_price},
                 "iv_str": "--", "iv_rank_str": "N/A",
                 "by_strike": [],
+                "price_profile": {"prices": [], "net_gamma": []},
             }
 
-        df_nearest = get_nearest_dte_subset(self.df)
+        df_nearest_full = get_nearest_dte_subset(self.df)
+        df_nearest = df_nearest_full
         if min_strike is not None and max_strike is not None:
             df_nearest = df_nearest[(df_nearest['strike'] >= min_strike) & (df_nearest['strike'] <= max_strike)]
 
@@ -137,6 +140,12 @@ class SymbolFeed:
 
         cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, self.spot_price)
         zero_gamma = compute_zero_gamma(by_strike, self.spot_price)
+
+        # Gamma Price Profile: SIEMPRE con la cadena completa (no recortada
+        # por strike_range) -- un strike hoy fuera de la ventana visible
+        # puede ser justo el que domina la curva en un precio hipotético
+        # cercano a él.
+        price_profile = compute_gamma_price_profile(df_nearest_full, self.spot_price, DEFAULT_T_EXP, DEFAULT_IV)
 
         return {
             "net_gex_total": float(by_strike['net_gex'].sum()),
@@ -149,6 +158,7 @@ class SymbolFeed:
                 {"strike": float(r.strike), "net_gex": float(r.net_gex), "call_gex": float(r.call_gex), "put_gex": float(r.put_gex)}
                 for r in by_strike.itertuples()
             ],
+            "price_profile": price_profile,
         }
 
     def signals_payload(self) -> dict:

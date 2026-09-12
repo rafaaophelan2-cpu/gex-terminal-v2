@@ -37,6 +37,12 @@ export async function fetchVix() {
   return resp.json()
 }
 
+export async function fetchTradingViewString(symbol) {
+  const resp = await apiFetch(`/market/tradingview-string?symbol=${encodeURIComponent(symbol)}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
 export async function fetchExpirations(symbol) {
   const resp = await apiFetch(`/market/expirations?symbol=${encodeURIComponent(symbol)}`)
   if (!resp.ok) throw new Error(`Error ${resp.status}`)

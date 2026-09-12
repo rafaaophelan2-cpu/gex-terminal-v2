@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.services.iv_percentile_updater import iv_percentile_updater_loop
 from app.services.quantower_pusher import quantower_pusher_loop
 from app.services.snapshot_writer import snapshot_writer_loop
+from app.services.tradingview_string_updater import tradingview_string_updater_loop
 
 settings = get_settings()
 
@@ -25,10 +26,12 @@ async def lifespan(app: FastAPI):
     snapshot_task = asyncio.create_task(snapshot_writer_loop())
     quantower_task = asyncio.create_task(quantower_pusher_loop())
     iv_percentile_task = asyncio.create_task(iv_percentile_updater_loop())
+    tv_string_task = asyncio.create_task(tradingview_string_updater_loop())
     yield
     snapshot_task.cancel()
     quantower_task.cancel()
     iv_percentile_task.cancel()
+    tv_string_task.cancel()
 
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)

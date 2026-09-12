@@ -2,10 +2,11 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchVix, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchTradingViewString, fetchVix, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
+import { renderGammaPriceProfileChart } from './charts/gammaPriceProfileChart.js'
 import { renderGammaSurfaceChart } from './charts/gammaSurfaceChart.js'
 import { renderGammaVolumeProfile } from './charts/gammaVolumeProfile.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
@@ -32,6 +33,15 @@ const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
 const sidebarEl = document.getElementById('sidebar')
 const sidebarTitle = document.getElementById('sidebar-title')
 const iconRailBrandBtn = document.getElementById('icon-rail-brand-btn')
+const iconRailGexBtn = document.getElementById('icon-rail-gex-btn')
+const iconRailUtilidadBtn = document.getElementById('icon-rail-utilidad-btn')
+const gexAnalyticsView = document.getElementById('gex-analytics-view')
+const utilidadView = document.getElementById('utilidad-view')
+const gammaPriceProfileChartEl = document.getElementById('gamma-price-profile-chart')
+const copyPineBtn = document.getElementById('copy-pine-btn')
+const copyStringBtn = document.getElementById('copy-string-btn')
+const tvStringBox = document.getElementById('tv-string-box')
+const tvStringUpdated = document.getElementById('tv-string-updated')
 const tabContentEl = document.getElementById('tab-content')
 const splitToggleBtn = document.getElementById('split-toggle-btn')
 const splitSecondarySelect = document.getElementById('split-secondary-select')
@@ -140,6 +150,8 @@ let latestGammaSurface = null
 let latestVolSurface = null
 let splitMode = false
 let splitSecondaryTab = null
+let tvStringRefreshTimer = null
+const TV_STRING_REFRESH_MS = 20000
 
 // Nombre visible de cada pestaña -- se arma una sola vez leyendo el texto
 // real de los botones del nav (en vez de duplicarlo a mano acá), así que
@@ -195,6 +207,93 @@ sidebarTitle.addEventListener('keydown', (event) => {
   }
 })
 iconRailBrandBtn.addEventListener('click', toggleSidebar)
+
+// --- Riel de íconos: apartados (GEX Analytics / Utilidad) -----------
+// Por ahora solo hay dos apartados reales -- el resto de los íconos del
+// riel siguen deshabilitados ("Próximamente", ver index.html) hasta que
+// se agregue contenido ahí. Cambiar de apartado no toca el estado interno
+// de GEX Analytics (símbolo, pestaña activa, split-mode): solo se oculta
+// su vista y se muestra la de Utilidad, o viceversa.
+function switchIconRailSection(section) {
+  const isUtilidad = section === 'utilidad'
+  iconRailGexBtn.classList.toggle('active', !isUtilidad)
+  iconRailGexBtn.setAttribute('aria-current', String(!isUtilidad))
+  iconRailUtilidadBtn.classList.toggle('active', isUtilidad)
+  iconRailUtilidadBtn.setAttribute('aria-current', String(isUtilidad))
+  gexAnalyticsView.hidden = isUtilidad
+  utilidadView.hidden = !isUtilidad
+
+  if (isUtilidad) {
+    startTvStringRefresh()
+  } else {
+    stopTvStringRefresh()
+  }
+}
+
+iconRailGexBtn.addEventListener('click', () => switchIconRailSection('gex-analytics'))
+iconRailUtilidadBtn.addEventListener('click', () => switchIconRailSection('utilidad'))
+
+// --- Utilidad: copiar el indicador de Pine / el string en vivo -------
+async function copyToClipboard(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text)
+    const original = btn.innerHTML
+    btn.classList.add('copied')
+    btn.textContent = '✓ Copiado'
+    setTimeout(() => {
+      btn.classList.remove('copied')
+      btn.innerHTML = original
+    }, 1500)
+  } catch (err) {
+    console.error('Error copiando al portapapeles:', err)
+  }
+}
+
+copyPineBtn.addEventListener('click', async () => {
+  try {
+    const resp = await fetch('/pine/gex-terminal.pine')
+    const code = await resp.text()
+    await copyToClipboard(code, copyPineBtn)
+  } catch (err) {
+    console.error('Error obteniendo el código del indicador:', err)
+  }
+})
+
+copyStringBtn.addEventListener('click', () => {
+  const text = tvStringBox.textContent
+  if (text && tvStringBox.dataset.hasString === 'true') copyToClipboard(text, copyStringBtn)
+})
+
+async function loadTvString() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const data = await fetchTradingViewString(symbol)
+    if (data.string) {
+      tvStringBox.textContent = data.string
+      tvStringBox.dataset.hasString = 'true'
+      tvStringUpdated.textContent = data.updated_at ? `Última actualización: ${data.updated_at} (hora Lima)` : ''
+    } else {
+      tvStringBox.textContent = 'Sin datos todavía -- esperando la apertura del mercado (08:30 hora Lima).'
+      tvStringBox.dataset.hasString = 'false'
+      tvStringUpdated.textContent = ''
+    }
+  } catch (err) {
+    console.error('Error cargando el string de TradingView:', err)
+  }
+}
+
+function startTvStringRefresh() {
+  stopTvStringRefresh()
+  loadTvString()
+  tvStringRefreshTimer = setInterval(loadTvString, TV_STRING_REFRESH_MS)
+}
+
+function stopTvStringRefresh() {
+  if (tvStringRefreshTimer) {
+    clearInterval(tvStringRefreshTimer)
+    tvStringRefreshTimer = null
+  }
+}
 
 // --- Vista dividida (split-view) -----------------------------------
 // Deja ver dos pestañas a la vez (ej. GEX INFO + NET DRIFT) en vez de
@@ -274,7 +373,10 @@ function syncTabLifecycle() {
     stopLiveGammaRefresh()
   }
 
-  if (isTabVisible('grid')) {
+  // GRID vivía en su propia pestaña -- ahora es una sub-sección DENTRO de
+  // GEX INFO (ver index.html), así que su ciclo de vida sigue la
+  // visibilidad de gex-info en vez de la suya propia.
+  if (isTabVisible('gex-info')) {
     if (!gridRefreshTimer) startGridRefresh()
   } else {
     stopGridRefresh()
@@ -317,8 +419,12 @@ function syncTabLifecycle() {
 }
 
 function forceGexInfoRedraw() {
-  if (latestGexInfo && latestGexInfo.by_strike && latestGexInfo.by_strike.length > 0) {
+  if (!latestGexInfo) return
+  if (latestGexInfo.by_strike && latestGexInfo.by_strike.length > 0) {
     renderChainFull(chartEl, latestGexInfo, latestSpot)
+  }
+  if (latestGexInfo.price_profile) {
+    renderGammaPriceProfileChart(gammaPriceProfileChartEl, latestGexInfo.price_profile)
   }
 }
 
@@ -676,6 +782,7 @@ function showDashboard(username) {
   userBadge.textContent = `👤 ${username}`
   resetGexInfoChart()
   resetGreeksChart()
+  switchIconRailSection('gex-analytics')
   setDefaultDriftDate()
   connectMarketFeed()
   startVixRefresh()
@@ -699,6 +806,7 @@ function showLogin() {
   stopVixRefresh()
   stopDriftRefresh()
   stopLiveGammaRefresh()
+  stopTvStringRefresh()
   stopBackgammaPlay()
   stopGridRefresh()
   stopSurface3dRefresh()
@@ -779,6 +887,10 @@ function handleMarketMessage(data) {
       } else {
         updateTick(chartEl, info, data.spot)
       }
+    }
+
+    if (info.price_profile && isTabVisible('gex-info')) {
+      renderGammaPriceProfileChart(gammaPriceProfileChartEl, info.price_profile)
     }
 
     if (data.greeks) {

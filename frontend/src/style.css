@@ -1789,3 +1789,145 @@ main {
   color: #f59e0b;
   font-weight: 700;
 }
+
+/* --- GEX INFO: encabezados de sub-secciones (Gamma Price Profile, Gamma
+   Grid, ambos ahora dentro de GEX INFO en vez de pestañas separadas) --- */
+.gex-info-section-heading {
+  margin: 24px 0 4px;
+}
+
+.gex-info-section-sub {
+  font-size: 0.76rem;
+  color: #8b949e;
+  margin: 2px 0 12px;
+}
+
+/* --- Utilidad: Indicadores + Strings --- */
+#utilidad-view {
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.utilidad-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.indicator-card,
+.tv-string-card {
+  background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.indicator-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.indicator-card-title {
+  font-family: var(--mono);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #f0f6fc;
+}
+
+.indicator-card-sub {
+  font-size: 0.76rem;
+  color: #8b949e;
+}
+
+.indicator-card-sub strong {
+  color: #60a5fa;
+}
+
+.indicator-card-desc {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #d1d5db;
+  margin: 0;
+}
+
+.indicator-card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.indicator-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #1e2640 0%, #0f172a 100%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  color: #60a5fa;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.74rem;
+  letter-spacing: 0.4px;
+  padding: 9px 14px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.indicator-btn svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.indicator-btn:hover {
+  border-color: #60a5fa;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.5);
+}
+
+.indicator-btn.copied {
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.tv-string-desc {
+  font-size: 0.78rem;
+  color: #8b949e;
+  margin: 0;
+}
+
+.tv-string-box {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #f0f6fc;
+  background: #06080d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tv-string-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tv-string-updated {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: #6e7681;
+}

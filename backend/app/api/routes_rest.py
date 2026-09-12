@@ -16,6 +16,7 @@ from app.integrations.supabase_client import fetch_available_dates, fetch_gex_hi
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
 from app.services.ai_context import NoActiveFeedError, build_ai_context
 from app.services.market_feed import feed_registry
+from app.services.tradingview_string_updater import latest_strings as tv_latest_strings
 
 # Cuántas expiraciones (de la más cercana en adelante) se preseleccionan
 # en el GRID cuando el usuario no eligió ninguna DTE todavía.
@@ -106,6 +107,20 @@ async def get_available_dates(symbol: str = "QQQ", _username: str = Depends(requ
     guardado -- selector de día de BACKGAMMA."""
     dates = await fetch_available_dates(symbol, NY_TZ)
     return {"dates": dates}
+
+
+@router.get("/tradingview-string")
+async def get_tradingview_string(symbol: str = "QQQ", _username: str = Depends(require_auth)):
+    """String de niveles para el indicador de Pine Script "Gamma Levels
+    para TradingView" (ver sección Utilidad del frontend) -- lo genera
+    tradingview_string_updater_loop una vez por minuto durante la Cash
+    Session (08:31-15:00 hora Lima). 'string' viene None si todavía no se
+    generó ninguno hoy (antes de las 08:31, o sin feed activo para el
+    símbolo)."""
+    entry = tv_latest_strings.get(symbol)
+    if entry is None:
+        return {"symbol": symbol, "string": None, "updated_at": None}
+    return entry
 
 
 @router.post("/ai-diagnosis", response_model=AiDiagnosisResponse)
