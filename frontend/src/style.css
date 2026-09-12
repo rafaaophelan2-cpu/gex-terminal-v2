@@ -183,30 +183,31 @@ body {
   padding: 18px 0;
 }
 
+/* Marca "GEX Terminal": el isotipo (gradiente propio, ver icon-gamma-mark)
+   ya trae su propio color -- a diferencia de la versión anterior (ícono
+   de trazo simple dentro de una caja con fondo degradado), acá NO lleva
+   caja de fondo propia, para no competir con el gradiente del ícono. Es
+   un <button> clickeable (colapsa/expande #sidebar, igual que el título
+   "GEX TERMINAL" del panel). */
 .icon-rail-brand {
   width: 34px;
   height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #06080d;
-  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
-  border-radius: 9px;
-  box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
-  position: relative;
-  /* Ahora es un <button> (clickeable para colapsar/expandir #sidebar) --
-     resetea los estilos nativos de botón que si no pisan el fondo/radio
-     de arriba. */
+  background: transparent;
   border: none;
+  border-radius: 9px;
   padding: 0;
   cursor: pointer;
   font: inherit;
-  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .icon-rail-brand:hover {
+  background: rgba(255, 255, 255, 0.06);
   transform: scale(1.05);
-  box-shadow: 0 0 22px rgba(59, 130, 246, 0.5);
 }
 
 .icon-rail-brand:active {
@@ -214,8 +215,8 @@ body {
 }
 
 .icon-rail-brand svg {
-  width: 18px;
-  height: 18px;
+  width: 25px;
+  height: 25px;
 }
 
 .icon-rail-divider {
@@ -244,14 +245,6 @@ body {
 .icon-rail-btn svg {
   width: 19px;
   height: 19px;
-}
-
-/* El isotipo de "GEX Analytics" (gradiente propio, no currentColor) se
-   deja un poco más grande que los íconos de línea -- es una marca, no un
-   ícono de UI genérico, así que pesa distinto a propósito. */
-.icon-rail-btn svg.icon-gamma-mark {
-  width: 22px;
-  height: 22px;
 }
 
 .icon-rail-btn:hover:not(:disabled) {
@@ -1472,6 +1465,24 @@ main {
     flex: 0 0 auto;
     width: 100%;
   }
+}
+
+/* Mismo apilado que la media query de arriba, pero disparado por el
+   ANCHO DEL PANEL en vez del viewport -- en split-view el viewport sigue
+   ancho (nada activa la media query), pero cada mitad puede quedar tan
+   angosta como una pantalla chica. Sin esto, .signals-panel (340px fijos)
+   le dejaba al gráfico de Plotly apenas ~175px de ancho real, lo que
+   además hacía que Plotly recalculara su autorange de forma rara (el
+   "zoom" que quedaba pegado hasta hacer zoom-out a mano) -- el problema
+   nunca fue el zoom en sí, era el contenedor real siendo demasiado
+   angosto para lo que Plotly esperaba dibujar. */
+#tab-content.split-mode #tab-gex-info .gex-info-layout {
+  flex-direction: column;
+}
+
+#tab-content.split-mode #tab-gex-info .signals-panel {
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 .signals-section {

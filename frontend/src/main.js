@@ -121,6 +121,7 @@ let chatHistoryLoaded = false
 let activeGreek = 'dex'
 let latestGreeksPayload = null
 let latestGexInfo = null
+let latestSpot = null
 let latestWalls = null
 let driftRefreshTimer = null
 let driftDateAutoSelected = true
@@ -176,6 +177,14 @@ function isGreeksTabActive() {
 function toggleSidebar() {
   const collapsed = sidebarEl.classList.toggle('collapsed')
   sidebarTitle.title = collapsed ? 'Mostrar panel' : 'Ocultar panel'
+  // #sidebar tarda 0.25s en terminar la transición de ancho -- si se
+  // redibuja el gráfico de GEX INFO ANTES de eso, Plotly mide el
+  // contenedor a mitad de camino (todavía angosto/ancho viejo) y ese
+  // rango mal calculado queda "pegado" hasta que el usuario hace zoom out
+  // manual (mismo síntoma reportado con split-view, ver
+  // forceGexInfoRedraw). Se espera a que termine la transición real en
+  // vez de adivinar con un setTimeout de duración fija.
+  sidebarEl.addEventListener('transitionend', forceGexInfoRedraw, { once: true })
 }
 
 sidebarTitle.addEventListener('click', toggleSidebar)
@@ -290,6 +299,26 @@ function syncTabLifecycle() {
   // al hacerse visible (either como principal o como secundaria nueva).
   if (isTabVisible('greeks') && latestGreeksPayload) {
     renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
+  }
+
+  // Mismo problema para GEX INFO: entrar/salir de split-mode o cambiar la
+  // pestaña secundaria cambia el ANCHO del contenedor de golpe (de 100%
+  // a 50% o viceversa, vía el grid de #tab-content). updateTick() (lo que
+  // corre en cada tick normal) solo hace Plotly.restyle -- liviano a
+  // propósito para no pisar el zoom manual del usuario -- pero eso mismo
+  // significa que nunca vuelve a mirar el tamaño real del contenedor. Si
+  // el ancho cambió, hace falta el redraw completo de renderChainFull
+  // (mismo Plotly.react que ya hace al recibir 'chain_full') para que
+  // vuelva a medir bien y el eje no quede "pegado" a un rango angosto
+  // hasta que el usuario haga zoom out a mano.
+  if (isTabVisible('gex-info') && latestGexInfo) {
+    forceGexInfoRedraw()
+  }
+}
+
+function forceGexInfoRedraw() {
+  if (latestGexInfo && latestGexInfo.by_strike && latestGexInfo.by_strike.length > 0) {
+    renderChainFull(chartEl, latestGexInfo, latestSpot)
   }
 }
 
@@ -732,6 +761,7 @@ function handleMarketMessage(data) {
     setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
     latestGexInfo = info
+    latestSpot = data.spot
     // zero_gamma se agrega acá (no viene dentro de info.walls) para que
     // LIVE GAMMA pueda dibujar también la línea de Gamma Flip con el
     // mismo objeto que ya usa para Call/Put Walls.
