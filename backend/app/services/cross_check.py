@@ -127,11 +127,20 @@ def format_ndx_cross_check_text(primary_symbol: str, result: dict | None) -> str
             f"niveles de {primary_symbol} como el único libro disponible, sin ese plus de convicción."
         )
 
+    # Tope duro -- en un caso extremo (muchos niveles agrupados dentro de
+    # la tolerancia) esta lista podía crecer bastante; sumado al resto
+    # del prompt (ver session_profile.py, mismo motivo) fue parte de lo
+    # que hizo superar el límite de Tokens Por Minuto de la cuenta de
+    # Groq en producción.
+    MAX_MATCHES_SHOWN = 6
+    shown_matches = matches[:MAX_MATCHES_SHOWN]
     lines = "\n".join(
         f"  - {m.primary_name} de {primary_symbol} ({m.primary_value:.2f}) coincide con {m.secondary_name} "
         f"(equivalente {m.secondary_value_translated:.2f} en escala {primary_symbol})"
-        for m in matches
+        for m in shown_matches
     )
+    if len(matches) > MAX_MATCHES_SHOWN:
+        lines += f"\n  (+{len(matches) - MAX_MATCHES_SHOWN} coincidencias más, mismo criterio)"
     return (
         "CRUCE CON NDX (niveles compuestos -- en el framework de Aleks Rosme esto es su 'bread and butter'): cuando el "
         f"mismo precio muestra gamma grande en DOS libros de open interest independientes sobre el mismo mercado "

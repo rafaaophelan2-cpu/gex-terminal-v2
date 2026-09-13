@@ -128,6 +128,14 @@ def format_economic_calendar(economic_calendar: list[dict] | None, today_str: st
     # pesa en el razonamiento -- se recorta acá, no se pierde nada
     # relevante.
     economic_calendar = [ev for ev in (economic_calendar or []) if ev.get("impact") != "low"]
+    # Tope adicional -- una semana muy cargada (ej. temporada de CPI +
+    # FOMC + varios discursos de la Fed) puede tener bastante más de esto
+    # incluso ya sin 'low'; ya ordenado cronológicamente (ver
+    # fetch_economic_calendar), así que los primeros son los más
+    # inmediatos.
+    MAX_EVENTS_SHOWN = 15
+    truncated_count = max(0, len(economic_calendar) - MAX_EVENTS_SHOWN)
+    economic_calendar = economic_calendar[:MAX_EVENTS_SHOWN]
 
     if not economic_calendar:
         return "Calendario económico de esta semana: sin eventos de impacto medio/alto en EE.UU. (o sin esta fuente configurada)."
@@ -179,6 +187,7 @@ def format_economic_calendar(economic_calendar: list[dict] | None, today_str: st
         "todavía -- mencionalo así cuando aplique (ej. \"la IV se mantiene alta, consistente con el <evento> en N "
         "días\", usando el 'en N días' YA CALCULADO arriba, nunca restando las fechas vos mismo). Impacto medio pesa "
         "como contexto; impacto ALTO puede invalidar de golpe el régimen de gamma/VIX vigente."
+        + (f"\n(+{truncated_count} eventos más adelante en la semana, no mostrados acá por espacio.)" if truncated_count else "")
     )
 
 

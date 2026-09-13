@@ -53,21 +53,36 @@ def _fmt_level(value: float, conversion_ratio: float | None, ticker: str) -> str
     return f"{value:.2f} pts NQ/MNQ (equivalente {ticker}: {equiv:.2f})"
 
 
+# Tope duro de cuántos nodos/outliers se listan en el prompt -- el
+# indicador de Quantower (SessionProfilePusher.cs) puede empujar
+# decenas de HVN/LVN/delta outliers en una sesión larga (Overnight dura
+# 17:00-08:29), y listarlos TODOS sin límite es justo lo que hizo que el
+# prompt de este sistema superara el límite de Tokens Por Minuto de la
+# cuenta de Groq en producción (confirmado en vivo: un pedido de
+# ~30.700 caracteres). Con el tope, "el más relevante" queda a criterio
+# de lo que YA venga ordenado desde el indicador (no se reordena acá).
+MAX_LEVELS_SHOWN = 6
+
+
 def _fmt_levels(values: list[float] | None, conversion_ratio: float | None, ticker: str) -> str:
     if not values:
         return "ninguno"
-    return "; ".join(_fmt_level(v, conversion_ratio, ticker) for v in values)
+    shown = values[:MAX_LEVELS_SHOWN]
+    extra = f" (+{len(values) - MAX_LEVELS_SHOWN} más)" if len(values) > MAX_LEVELS_SHOWN else ""
+    return "; ".join(_fmt_level(v, conversion_ratio, ticker) for v in shown) + extra
 
 
 def _fmt_outliers(outliers: list[dict] | None, conversion_ratio: float | None, ticker: str) -> str:
     if not outliers:
         return "ninguno"
+    shown = outliers[:MAX_LEVELS_SHOWN]
     parts = []
-    for o in outliers:
+    for o in shown:
         price = o.get('price', 0)
         delta = o.get('delta', 0)
         parts.append(f"{_fmt_level(price, conversion_ratio, ticker)} (delta {delta:+.0f})")
-    return "; ".join(parts)
+    extra = f" (+{len(outliers) - MAX_LEVELS_SHOWN} más)" if len(outliers) > MAX_LEVELS_SHOWN else ""
+    return "; ".join(parts) + extra
 
 
 def format_session_profile(label: str, profile: dict | None, conversion_ratio: float | None, ticker: str = "QQQ") -> str:
