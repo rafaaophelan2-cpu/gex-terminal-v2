@@ -59,6 +59,7 @@ const netDriftChartEl = document.getElementById('net-drift-chart')
 const driftDateInput = document.getElementById('drift-date-input')
 const driftOtmButtons = document.querySelectorAll('.drift-otm-btn')
 const liveGammaChartEl = document.getElementById('live-gamma-chart')
+const liveGammaTrendBtn = document.getElementById('live-gamma-trend-lines-btn')
 const charmHeatmapChartEl = document.getElementById('charm-heatmap-chart')
 const charmHeatmapSectionEl = document.getElementById('charm-heatmap-section')
 const backgammaDateSelect = document.getElementById('backgamma-date-select')
@@ -695,6 +696,24 @@ function stopDriftRefresh() {
   }
 }
 
+// Pedido explícito del usuario ("me hacen ruido"): las líneas de
+// Gamma Peak/Trough/Zero arrancan OCULTAS, el usuario las prende cuando
+// las quiere ver puntualmente (ver liveGammaTrendBtn más abajo). Solo
+// afecta a LIVE GAMMA -- Charm Heatmap sigue mostrando su única línea
+// (Charm Zero) siempre, no fue parte del pedido.
+let liveGammaTrendLinesEnabled = false
+// Cache del último heatmap/candles/date ya renderizado -- togglear las
+// líneas de tendencia no necesita un fetch nuevo, solo volver a llamar
+// renderLiveGammaChart con el flag cambiado sobre los mismos datos.
+let latestLiveGammaHeatmap = null
+let latestLiveGammaCandles = null
+let latestLiveGammaDate = null
+
+function renderCurrentLiveGamma() {
+  if (!latestLiveGammaHeatmap) return
+  renderLiveGammaChart(liveGammaChartEl, latestLiveGammaHeatmap, latestWalls, latestLiveGammaCandles, latestLiveGammaDate, 'Net GEX', liveGammaTrendLinesEnabled)
+}
+
 async function loadLiveGamma() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
@@ -709,7 +728,10 @@ async function loadLiveGamma() {
       fetchHeatmap(symbol, date),
       fetchCandles(symbol, date).catch(() => []),
     ])
-    renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles, date)
+    latestLiveGammaHeatmap = heatmap
+    latestLiveGammaCandles = candles
+    latestLiveGammaDate = date
+    renderCurrentLiveGamma()
   } catch (err) {
     console.error('Error cargando LIVE GAMMA:', err)
   }
@@ -1399,6 +1421,14 @@ driftOtmButtons.forEach((btn) => {
     driftOtmButtons.forEach((b) => b.classList.toggle('active', b === btn))
     loadNetDrift()
   })
+})
+
+liveGammaTrendBtn.addEventListener('click', () => {
+  liveGammaTrendLinesEnabled = !liveGammaTrendLinesEnabled
+  liveGammaTrendBtn.classList.toggle('active', liveGammaTrendLinesEnabled)
+  liveGammaTrendBtn.setAttribute('aria-pressed', String(liveGammaTrendLinesEnabled))
+  liveGammaTrendBtn.querySelector('.live-gamma-trend-state').textContent = liveGammaTrendLinesEnabled ? 'ON' : 'OFF'
+  renderCurrentLiveGamma()
 })
 
 // Extraído de lo que antes era el único click handler de "Aplicar" --

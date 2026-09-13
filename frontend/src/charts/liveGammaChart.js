@@ -26,7 +26,12 @@ const COLOR_GAMMA_TROUGH = '#EAB308'
  * hover -- 'Net GEX' por defecto (LIVE GAMMA); se reusa esta misma
  * función para el panel de Charm Heatmap pasando 'Charm Exposure', ya que
  * el heatmap en sí es idéntico (mismo backend, mismo formato de
- * respuesta, ver domain/heatmap.py), solo cambia qué valor trae 'z'. */
+ * respuesta, ver domain/heatmap.py), solo cambia qué valor trae 'z'.
+ * 'showGammaTrendLines' (opcional, true por defecto): controla SOLO las
+ * 3 líneas de Gamma Peak/Trough/Zero -- pedido explícito del usuario
+ * ("me hacen ruido"), LIVE GAMMA las pasa en false por defecto vía un
+ * toggle propio (ver main.js), Charm Heatmap no lo toca (su única línea,
+ * Charm Zero, sigue siempre visible -- no fue parte del pedido). */
 // Un rango [a, b] solo es válido para reusar como zoom preservado si
 // ambos extremos son números finitos y a < b -- confirmado en vivo el
 // bug real que esto previene: si Plotly llega a computar/heredar un
@@ -47,7 +52,7 @@ function isValidRange(range) {
   )
 }
 
-export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metricLabel = 'Net GEX') {
+export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metricLabel = 'Net GEX', showGammaTrendLines = true) {
   if (!heatmap.times || heatmap.times.length === 0) return
 
   // Preservar el zoom/pan actual entre refrescos periódicos (ver
@@ -126,21 +131,21 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
   // que se detecta cuál trend line corresponde por qué campo trae
   // 'heatmap' -- gamma_peak/gamma_trough/gamma_zero para LIVE GAMMA,
   // charm_zero para el panel de Charm.
-  if (heatmap.gamma_peak && heatmap.gamma_peak.length > 0) {
+  if (showGammaTrendLines && heatmap.gamma_peak && heatmap.gamma_peak.length > 0) {
     traces.push({
       type: 'scatter', mode: 'lines', name: 'Gamma Peak', x: heatmapX, y: heatmap.gamma_peak,
       line: { color: COLOR_POSITIVE, width: 1.5 },
       hovertemplate: 'Gamma Peak: $%{y}<extra></extra>',
     })
   }
-  if (heatmap.gamma_trough && heatmap.gamma_trough.length > 0) {
+  if (showGammaTrendLines && heatmap.gamma_trough && heatmap.gamma_trough.length > 0) {
     traces.push({
       type: 'scatter', mode: 'lines', name: 'Gamma Trough', x: heatmapX, y: heatmap.gamma_trough,
       line: { color: COLOR_GAMMA_TROUGH, width: 1.5 },
       hovertemplate: 'Gamma Trough: $%{y}<extra></extra>',
     })
   }
-  if (heatmap.gamma_zero && heatmap.gamma_zero.length > 0) {
+  if (showGammaTrendLines && heatmap.gamma_zero && heatmap.gamma_zero.length > 0) {
     traces.push({
       type: 'scatter', mode: 'lines', name: 'Gamma Zero', x: heatmapX, y: heatmap.gamma_zero,
       line: { color: COLOR_ACCENT, width: 1.5 },
