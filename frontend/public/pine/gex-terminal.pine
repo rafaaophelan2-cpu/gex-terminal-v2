@@ -173,34 +173,79 @@ if barstate.islast
         // líneas pisándose -- siempre en overlap_color, con el ancho más
         // grueso de los niveles que se fusionaron (para que se note que
         // ahí hay más de un nivel, no solo el más angosto de los dos).
+        //
+        // OJO: acá abajo cada chequeo de rango vive en su PROPIO 'if'
+        // anidado, nunca combinado con 'and' ni con el operador ternario
+        // '?:' -- en Pine NINGUNO de los dos hace cortocircuito (evalúan
+        // TODAS las ramas/operandos siempre, sin importar el primer
+        // resultado), así que "i < array.size(x) and array.get(x, i)"
+        // llama a array.get() igual aunque el índice esté fuera de rango
+        // -- eso fue justo lo que seguía rompiendo el indicador después
+        // del primer intento de arreglo.
         for i = 0 to n_levels - 1
-            if i < array.size(consumed) and not array.get(consumed, i)
-                array.set(consumed, i, true)
-                float val_out_i = array.get(vals_out, i)
-                float val_in_i = array.get(gen_strikes, i)
-                string combined_label = i < array.size(gen_comments) ? array.get(gen_comments, i) : ""
-                color lvl_color = i < array.size(level_colors) ? array.get(level_colors, i) : color.gray
-                int lvl_width = i < array.size(level_widths) ? array.get(level_widths, i) : 2
-                string lvl_style = i < array.size(level_styles) ? array.get(level_styles, i) : "Solid"
-                bool is_overlap = false
+            bool i_in_range = i < array.size(consumed)
+            bool i_free = false
+            if i_in_range
+                if not array.get(consumed, i)
+                    i_free := true
 
-                for j = i + 1 to n_levels - 1
-                    if j < array.size(consumed) and j < array.size(vals_out) and not array.get(consumed, j) and array.get(vals_out, j) == val_out_i
-                        if j < array.size(gen_comments)
-                            combined_label := combined_label + " / " + array.get(gen_comments, j)
-                        array.set(consumed, j, true)
-                        is_overlap := true
-                        int j_width = j < array.size(level_widths) ? array.get(level_widths, j) : 2
-                        if j_width > lvl_width
-                            lvl_width := j_width
+            if i_in_range
+                if i_free
+                    array.set(consumed, i, true)
+                    float val_out_i = array.get(vals_out, i)
+                    float val_in_i = array.get(gen_strikes, i)
 
-                if is_overlap
-                    lvl_color := overlap_color
-                    lvl_style := "Solid"
+                    string combined_label = ""
+                    if i < array.size(gen_comments)
+                        combined_label := array.get(gen_comments, i)
 
-                line l = line.new(start_time, val_out_i, right_x_time, val_out_i, xloc=xloc.bar_time, color=lvl_color, width=lvl_width, style=get_line_style(lvl_style), extend=extend.right)
-                array.push(level_lines, l)
+                    color lvl_color = color.gray
+                    if i < array.size(level_colors)
+                        lvl_color := array.get(level_colors, i)
 
-                string label_txt = combined_label + "\n" + str.tostring(val_out_i, "#.##") + " (" + str.tostring(val_in_i, "#.##") + ")"
-                label lb = label.new(right_x_time, val_out_i, text=label_txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.black, 100), textcolor=lvl_color, size=size.small, text_font_family=font.family_monospace)
-                array.push(level_labels, lb)
+                    int lvl_width = 2
+                    if i < array.size(level_widths)
+                        lvl_width := array.get(level_widths, i)
+
+                    string lvl_style = "Solid"
+                    if i < array.size(level_styles)
+                        lvl_style := array.get(level_styles, i)
+
+                    bool is_overlap = false
+
+                    for j = i + 1 to n_levels - 1
+                        bool j_in_range = j < array.size(consumed)
+                        if j_in_range
+                            j_in_range := j < array.size(vals_out)
+
+                        bool j_free = false
+                        if j_in_range
+                            if not array.get(consumed, j)
+                                j_free := true
+
+                        bool j_matches = false
+                        if j_free
+                            if array.get(vals_out, j) == val_out_i
+                                j_matches := true
+
+                        if j_matches
+                            if j < array.size(gen_comments)
+                                combined_label := combined_label + " / " + array.get(gen_comments, j)
+                            array.set(consumed, j, true)
+                            is_overlap := true
+                            int j_width = 2
+                            if j < array.size(level_widths)
+                                j_width := array.get(level_widths, j)
+                            if j_width > lvl_width
+                                lvl_width := j_width
+
+                    if is_overlap
+                        lvl_color := overlap_color
+                        lvl_style := "Solid"
+
+                    line l = line.new(start_time, val_out_i, right_x_time, val_out_i, xloc=xloc.bar_time, color=lvl_color, width=lvl_width, style=get_line_style(lvl_style), extend=extend.right)
+                    array.push(level_lines, l)
+
+                    string label_txt = combined_label + "\n" + str.tostring(val_out_i, "#.##") + " (" + str.tostring(val_in_i, "#.##") + ")"
+                    label lb = label.new(right_x_time, val_out_i, text=label_txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.black, 100), textcolor=lvl_color, size=size.small, text_font_family=font.family_monospace)
+                    array.push(level_labels, lb)
