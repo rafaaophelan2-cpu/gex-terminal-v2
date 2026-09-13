@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -10,16 +12,18 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.marketdata.app/v1/options/chain"
 
+NY_TZ = ZoneInfo("America/New_York")
+
 # El Open Interest real no varia intradia -- se actualiza UNA vez por
-# noche via OCC (Options Clearing Corporation), no en cada trade. En
-# rigor, con UN solo fetch al abrir el mercado ya alcanzaria. 15 min
-# (el valor anterior) ya cubria de sobra el limite diario en el uso
-# normal, pero un fallo en cascada (ver FAILURE_COOLDOWN_SECONDS, ya
-# corregido) agoto la cuota diaria completa en produccion en cuestion de
-# minutos -- se sube a 4 horas como margen de seguridad adicional: 2
-# simbolos (NDX/VIX) * ~3 refrescos en una sesion de 12h completa = ~6
-# requests/dia en el peor caso, muy lejos de cualquier limite.
-REFRESH_INTERVAL_SECONDS = 14400
+# noche via OCC (Options Clearing Corporation), no en cada trade. Un
+# fetch por hora ya es mucho mas seguido de lo necesario (en rigor, uno
+# solo al abrir el mercado alcanzaria), pero da margen por si el primer
+# intento del dia falla. Ver tambien el chequeo de fin de semana abajo
+# (_is_weekend_ny): sin eso, un fallo en cascada (ya corregido, ver
+# FAILURE_COOLDOWN_SECONDS) o simplemente dejar el dashboard abierto un
+# sabado/domingo seguia gastando cuota sin necesidad, porque Schwab sirve
+# la ultima chain conocida 24/7 y el feed no distinguia el dia.
+REFRESH_INTERVAL_SECONDS = 3600
 
 # Cooldown mínimo entre INTENTOS (éxito o fallo) -- confirmado en vivo en
 # Render: sin esto, un solo fallo (ej. 429 rate limit) dejaba _cache sin
@@ -40,6 +44,10 @@ _last_attempt: dict[str, float] = {}
 _locks: dict[str, asyncio.Lock] = {}
 
 
+def _is_weekend_ny() -> bool:
+    return datetime.now(NY_TZ).weekday() >= 5
+
+
 async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
     """Open Interest real por strike para la expiracion mas proxima de
     `symbol`, como {(strike, 'call'|'put'): open_interest} -- pieza que le
@@ -56,6 +64,15 @@ async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
     lock = _locks.setdefault(symbol, asyncio.Lock())
     async with lock:
         cached = _cache.get(symbol)
+
+        # Sábado/domingo: el mercado no abre, así que el OI de ayer sigue
+        # siendo el OI de hoy -- no tiene sentido gastar cuota pidiéndolo
+        # de nuevo. Devuelve el último cache que haya (aunque sea de
+        # varios días, sigue siendo mejor que el proxy de volumen) sin
+        # tocar la red.
+        if _is_weekend_ny():
+            return cached[1] if cached is not None else None
+
         if cached is not None and (time.time() - cached[0]) < REFRESH_INTERVAL_SECONDS:
             return cached[1]
 

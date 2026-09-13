@@ -37,6 +37,18 @@ async def _write_snapshot_for_feed(feed) -> None:
     if not (DEFAULT_SESSION_START <= time_str <= DEFAULT_SESSION_END):
         return
 
+    # Mismo problema pero por DÍA: este chequeo de horario no sabe qué día
+    # es -- confirmado en vivo un domingo, con alguien mirando el
+    # dashboard: Schwab sirvió la última chain conocida (de un viernes) y
+    # el reloj de NY caía igual dentro de 09:30-16:00, así que se
+    # guardaron snapshots de un día sin mercado. Esas filas "ganaban" como
+    # fecha más reciente en available-dates, dejando LIVE GAMMA/Charm
+    # Heatmap con una sesión de apenas unos minutos en vez de la última
+    # sesión real (viernes completo). weekday() 5=sábado, 6=domingo -- no
+    # cubre feriados de mercado, pero soluciona el caso real visto.
+    if now_store.weekday() >= 5:
+        return
+
     # SIEMPRE la expiración más cercana (0DTE), nunca el DTE que cualquier
     # conexión tenga seleccionado en pantalla -- mismo criterio que
     # get_nearest_dte_subset en export_snapshot_throttled de app.py, para

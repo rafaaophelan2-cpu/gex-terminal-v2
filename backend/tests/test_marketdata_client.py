@@ -46,10 +46,51 @@ def _reset_module_state(monkeypatch):
     marketdata_client._last_attempt.clear()
     marketdata_client._locks.clear()
     monkeypatch.setattr(marketdata_client, "get_settings", lambda: _FakeSettings())
+    # Los tests de este archivo, salvo los que prueban el gate de fin de
+    # semana explícitamente, asumen un día hábil -- sin esto, corrieron
+    # (y fallaron) distinto según qué día real fuera al ejecutar la suite.
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: False)
 
 
 def _patch_response(monkeypatch, response: _FakeResponse):
     monkeypatch.setattr(marketdata_client.httpx, "AsyncClient", lambda **kwargs: _FakeAsyncClient(response))
+
+
+def test_fetch_oi_map_skips_network_on_weekend_no_cache(monkeypatch):
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: True)
+    calls = {"count": 0}
+    monkeypatch.setattr(marketdata_client.httpx, "AsyncClient", lambda **kwargs: calls.__setitem__("count", calls["count"] + 1))
+
+    result = asyncio.run(fetch_oi_map("VIX"))
+
+    assert result is None
+    assert calls["count"] == 0
+
+
+def test_fetch_oi_map_skips_network_on_weekend_returns_stale_cache(monkeypatch):
+    # Sábado/domingo: el OI de la última sesión sigue siendo válido (el
+    # mercado no abre), así que se devuelve el cache aunque esté "vencido"
+    # por REFRESH_INTERVAL_SECONDS, sin gastar cuota pidiéndolo de nuevo.
+    stale_map = {(15.0, "call"): 100}
+    marketdata_client._cache["VIX"] = (0.0, stale_map)
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: True)
+    calls = {"count": 0}
+    monkeypatch.setattr(marketdata_client.httpx, "AsyncClient", lambda **kwargs: calls.__setitem__("count", calls["count"] + 1))
+
+    result = asyncio.run(fetch_oi_map("VIX"))
+
+    assert result == stale_map
+    assert calls["count"] == 0
+
+
+def test_fetch_oi_map_hits_network_on_weekday(monkeypatch):
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: False)
+    payload = {"s": "ok", "strike": [15.0], "side": ["call"], "openInterest": [100]}
+    _patch_response(monkeypatch, _FakeResponse(200, payload))
+
+    result = asyncio.run(fetch_oi_map("VIX"))
+
+    assert result == {(15.0, "call"): 100}
 
 
 def test_fetch_oi_map_returns_none_without_api_key(monkeypatch):

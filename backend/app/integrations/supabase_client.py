@@ -123,6 +123,15 @@ async def fetch_available_dates(symbol: str, tz) -> list[str]:
         if not (DEFAULT_SESSION_START <= time_str <= DEFAULT_SESSION_END):
             continue
         dt = datetime.fromisoformat(row["created_at"]).astimezone(tz)
+        # Mismo filtro defensivo que el de horario, por DÍA -- confirmado
+        # en vivo un domingo: Schwab sirve la última chain conocida
+        # (viernes) 24/7, y el chequeo de horario de snapshot_writer no
+        # sabía qué día era, así que se colaron snapshots de fin de
+        # semana que "ganaban" como fecha más reciente acá. weekday()
+        # 5=sábado, 6=domingo -- no cubre feriados de mercado, pero
+        # soluciona el caso real visto.
+        if dt.weekday() >= 5:
+            continue
         date_str = dt.strftime("%Y-%m-%d")
         if date_str not in seen:
             seen.add(date_str)

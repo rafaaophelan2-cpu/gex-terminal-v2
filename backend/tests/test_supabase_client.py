@@ -110,6 +110,27 @@ def test_insert_gex_snapshot_scopes_dedup_check_to_today_not_all_time(monkeypatc
     assert ops_on_created_at == {"gte", "lt"}
 
 
+def test_fetch_available_dates_excludes_weekend_rows(monkeypatch):
+    # Bug real visto en producción un domingo: Schwab sigue sirviendo la
+    # última chain conocida (de un viernes) 24/7, y el filtro de horario
+    # (09:30-16:00 NY) por sí solo no distingue el día -- una fila de
+    # domingo dentro de ese rango horario "ganaba" como fecha más
+    # reciente, dejando LIVE GAMMA con una sesión de minutos en vez de la
+    # última sesión real. 2026-09-13 es domingo, 2026-09-11 es viernes.
+    from zoneinfo import ZoneInfo
+
+    fake_client = _FakeClient(existing_rows=[
+        {"created_at": "2026-09-13T16:30:00+00:00", "time": "12:30"},  # domingo, en horario
+        {"created_at": "2026-09-11T17:30:00+00:00", "time": "13:30"},  # viernes, en horario
+    ])
+    monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: fake_client)
+
+    dates = asyncio.run(supabase_client.fetch_available_dates("QQQ", ZoneInfo("America/New_York")))
+
+    assert "2026-09-13" not in dates
+    assert "2026-09-11" in dates
+
+
 def test_fetch_chat_history_scopes_by_username(monkeypatch):
     fake_client = _FakeClient(existing_rows=[
         {"role": "user", "content": "hola"},
