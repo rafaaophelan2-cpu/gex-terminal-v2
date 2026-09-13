@@ -22,6 +22,26 @@ import { nyWallClockToPlotlyString } from '../utils/time.js'
  * función para el panel de Charm Heatmap pasando 'Charm Exposure', ya que
  * el heatmap en sí es idéntico (mismo backend, mismo formato de
  * respuesta, ver domain/heatmap.py), solo cambia qué valor trae 'z'. */
+// Un rango [a, b] solo es válido para reusar como zoom preservado si
+// ambos extremos son números finitos y a < b -- confirmado en vivo el
+// bug real que esto previene: si Plotly llega a computar/heredar un
+// rango degenerado (ej. NaN, o a === b, típicamente por medir el
+// contenedor en un instante donde tenía ancho/alto 0), autorange:false
+// lo dejaba "trabado" en ese rango roto para SIEMPRE en cada refresco
+// siguiente -- el gráfico se veía un instante (autorange del primer
+// render) y después quedaba en blanco de forma permanente. Con esta
+// validación, un rango roto se descarta y Plotly vuelve a autorange en
+// vez de heredar el problema indefinidamente.
+function isValidRange(range) {
+  return (
+    Array.isArray(range) &&
+    range.length === 2 &&
+    Number.isFinite(range[0]) &&
+    Number.isFinite(range[1]) &&
+    range[0] < range[1]
+  )
+}
+
 export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metricLabel = 'Net GEX') {
   if (!heatmap.times || heatmap.times.length === 0) return
 
@@ -30,8 +50,10 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
   // Plotly.react volvía a autorange y el zoom que el usuario acababa de
   // aplicar se "reseteaba" solo a los pocos segundos. el.layout lo deja
   // Plotly ya pegado al elemento del DOM tras el primer render.
-  const prevXRange = el.layout?.xaxis?.range
-  const prevYRange = el.layout?.yaxis?.range
+  const rawXRange = el.layout?.xaxis?.range
+  const rawYRange = el.layout?.yaxis?.range
+  const prevXRange = isValidRange(rawXRange) ? rawXRange : undefined
+  const prevYRange = isValidRange(rawYRange) ? rawYRange : undefined
 
   const maxAbs = heatmap.z.reduce(
     (acc, row) => Math.max(acc, ...row.map((v) => Math.abs(v))),
@@ -196,6 +218,20 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
   // volver a medir el contenedor (confirmado en vivo: tras un cambio de
   // ancho por split-mode, el redibujado completo de arriba seguía dejando
   // el SVG con el ancho VIEJO) -- un resize() explícito justo después,
-  // sobre el chart recién redibujado, si fuerza el re-medido real.
-  Plotly.Plots.resize(el)?.catch(() => {})
+  // sobre el chart recién redibujado, sí fuerza el re-medido real.
+  //
+  // Bug real reproducido en vivo: si el contenedor acababa de pasar de
+  // oculto (display:none, al cambiar de pestaña) a visible en ESTE MISMO
+  // tick de JS, el navegador todavía no terminó de calcular su layout
+  // real -- resize() medía 0 (o un tamaño intermedio erróneo) y el chart
+  // quedaba con un SVG técnicamente presente (con rangos de eje
+  // "válidos") pero invisible, de forma permanente: "aparece una
+  // fracción de segundo y desaparece para siempre" era Plotly.react()
+  // pintando bien una vez con el tamaño viejo, y el resize() inmediato
+  // rompiéndolo con una medición prematura. requestAnimationFrame difiere
+  // el resize al siguiente frame, después de que el navegador ya pintó
+  // el layout real del contenedor recién visible.
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
 }

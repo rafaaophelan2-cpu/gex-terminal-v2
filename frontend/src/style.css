@@ -1189,6 +1189,19 @@ main {
      fraccionario que le da flexbox) -- overflow:hidden recorta ese
      sobrante en vez de dejarlo asomar por el borde redondeado. */
   overflow: hidden;
+  /* Bug real reproducido en vivo (LIVE GAMMA y Charm Heatmap, ambos
+     quedaban en blanco tras un primer flash): Plotly posiciona su SVG
+     principal (.main-svg) con position:absolute internamente -- sin una
+     altura explícita acá, el navegador calcula el alto "auto" de este
+     contenedor SOLO a partir de lo que queda en flujo normal (el modebar
+     de Plotly, ~26px), no del SVG absolutamente posicionado, y
+     overflow:hidden recortaba el chart entero a esos 26px. En GEX INFO
+     nunca pasó porque ese chart vive dentro de un contenedor flex
+     (.gex-info-charts-column) que le da alto por flex:1 1 auto, no por
+     "auto" de bloque -- acá no hay ese flex padre, así que hace falta
+     esta altura mínima explícita (mismo valor que layout.height en los
+     charts de Plotly, ver charts/liveGammaChart.js).*/
+  min-height: 650px;
 }
 
 @media (max-width: 720px) {
