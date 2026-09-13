@@ -35,8 +35,10 @@ const sidebarTitle = document.getElementById('sidebar-title')
 const iconRailBrandBtn = document.getElementById('icon-rail-brand-btn')
 const iconRailGexBtn = document.getElementById('icon-rail-gex-btn')
 const iconRailUtilidadBtn = document.getElementById('icon-rail-utilidad-btn')
+const iconRailChainBtn = document.getElementById('icon-rail-chain-btn')
 const gexAnalyticsView = document.getElementById('gex-analytics-view')
 const utilidadView = document.getElementById('utilidad-view')
+const chainAnalyticsView = document.getElementById('chain-analytics-view')
 const gammaPriceProfileChartEl = document.getElementById('gamma-price-profile-chart')
 const gexInfoViewToggleButtons = document.querySelectorAll('.gex-info-view-toggle .view-toggle-btn')
 const copyPineBtn = document.getElementById('copy-pine-btn')
@@ -213,23 +215,26 @@ sidebarTitle.addEventListener('keydown', (event) => {
 })
 iconRailBrandBtn.addEventListener('click', toggleSidebar)
 
-// --- Riel de íconos: apartados (GEX Analytics / Tools) ---------------
-// Por ahora solo hay dos apartados reales -- el resto de los íconos del
-// riel siguen deshabilitados ("Próximamente", ver index.html) hasta que
-// se agregue contenido ahí. Cambiar de apartado no toca el estado interno
-// de GEX Analytics (símbolo, pestaña activa, split-mode): solo se oculta
-// su vista y se muestra la de Tools, o viceversa.
+// --- Riel de íconos: apartados (GEX Analytics / Tools / Chain Analytics)
+// El último ícono sigue deshabilitado ("Próximamente", ver index.html)
+// hasta que se agregue contenido ahí. Cambiar de apartado no toca el
+// estado interno de los demás (símbolo, pestaña activa, split-mode):
+// solo se oculta la vista actual y se muestra la elegida.
 let currentApartado = 'gex-analytics'
 
-// Tools (#utilidad-view) puede vivir en DOS lugares: su posición normal
-// (apartado a pantalla completa) o reparenteado dentro del slot de
-// split-view (#tab-utilidad-slot, ver index.html) cuando se lo elige como
-// pestaña secundaria -- es el MISMO nodo movido de lugar, nunca una copia
-// (evita ids duplicados y que su estado -- scroll, el string ya cargado --
-// se desincronice entre dos copias). Se recuerda su posición original acá
-// arriba, antes de que cualquier reparenteo pueda moverlo.
+// Tools (#utilidad-view) y Chain Analytics (#chain-analytics-view) pueden
+// vivir en DOS lugares cada uno: su posición normal (apartado a pantalla
+// completa) o reparenteados dentro de su slot de split-view
+// (#tab-utilidad-slot / #tab-chain-analytics-slot, ver index.html) cuando
+// se los elige como pestaña secundaria -- es el MISMO nodo movido de
+// lugar, nunca una copia (evita ids duplicados y que su estado -- scroll,
+// el string ya cargado -- se desincronice entre dos copias). Se recuerda
+// la posición original de cada uno acá arriba, antes de que cualquier
+// reparenteo pueda moverlos.
 const utilidadHomeParent = utilidadView.parentElement
 const utilidadHomeNextSibling = utilidadView.nextSibling
+const chainAnalyticsHomeParent = chainAnalyticsView.parentElement
+const chainAnalyticsHomeNextSibling = chainAnalyticsView.nextSibling
 
 function moveUtilidadToSplitSlot() {
   document.getElementById('tab-utilidad-slot').appendChild(utilidadView)
@@ -238,6 +243,16 @@ function moveUtilidadToSplitSlot() {
 function moveUtilidadHome() {
   if (utilidadView.parentElement !== utilidadHomeParent) {
     utilidadHomeParent.insertBefore(utilidadView, utilidadHomeNextSibling)
+  }
+}
+
+function moveChainAnalyticsToSplitSlot() {
+  document.getElementById('tab-chain-analytics-slot').appendChild(chainAnalyticsView)
+}
+
+function moveChainAnalyticsHome() {
+  if (chainAnalyticsView.parentElement !== chainAnalyticsHomeParent) {
+    chainAnalyticsHomeParent.insertBefore(chainAnalyticsView, chainAnalyticsHomeNextSibling)
   }
 }
 
@@ -250,29 +265,55 @@ function syncUtilidadRefresh() {
   else stopTvStringRefresh()
 }
 
+// Mismo criterio para 3D SURFACE/3D VOL SURFACE -- su refresh periódico
+// sigue la visibilidad de Chain Analytics (apartado completo o panel
+// secundario de split), ya no la de una pestaña propia dentro de
+// GEX Analytics.
+function syncChainAnalyticsRefresh() {
+  if (!chainAnalyticsView.hidden) {
+    if (!surface3dRefreshTimer) startSurface3dRefresh()
+  } else {
+    stopSurface3dRefresh()
+    closeSurface3dDtePanel()
+  }
+}
+
 function switchIconRailSection(section) {
   currentApartado = section
+  const isGex = section === 'gex-analytics'
   const isUtilidad = section === 'utilidad'
-  iconRailGexBtn.classList.toggle('active', !isUtilidad)
-  iconRailGexBtn.setAttribute('aria-current', String(!isUtilidad))
+  const isChain = section === 'chain-analytics'
+
+  iconRailGexBtn.classList.toggle('active', isGex)
+  iconRailGexBtn.setAttribute('aria-current', String(isGex))
   iconRailUtilidadBtn.classList.toggle('active', isUtilidad)
   iconRailUtilidadBtn.setAttribute('aria-current', String(isUtilidad))
-  gexAnalyticsView.hidden = isUtilidad
+  iconRailChainBtn.classList.toggle('active', isChain)
+  iconRailChainBtn.setAttribute('aria-current', String(isChain))
+  gexAnalyticsView.hidden = !isGex
 
+  // Si Tools/Chain Analytics estaban reparenteados dentro de un panel de
+  // split-view, no tiene sentido mostrar el mismo nodo ahí Y como
+  // apartado de pantalla completa a la vez -- se cierra split-view en vez
+  // de dejar un panel roto (vacío, donde ese apartado solía estar).
   if (isUtilidad) {
-    // Si Tools estaba reparenteado dentro de un panel de split-view, no
-    // tiene sentido mostrar el mismo nodo ahí Y como apartado de pantalla
-    // completa a la vez -- se cierra split-view en vez de dejarlo roto
-    // (mostrando un panel vacío donde Tools solía estar).
     if (splitMode && splitSecondaryTab === 'utilidad') disableSplitMode()
     moveUtilidadHome()
   }
   utilidadView.hidden = !isUtilidad
   syncUtilidadRefresh()
+
+  if (isChain) {
+    if (splitMode && splitSecondaryTab === 'chain-analytics') disableSplitMode()
+    moveChainAnalyticsHome()
+  }
+  chainAnalyticsView.hidden = !isChain
+  syncChainAnalyticsRefresh()
 }
 
 iconRailGexBtn.addEventListener('click', () => switchIconRailSection('gex-analytics'))
 iconRailUtilidadBtn.addEventListener('click', () => switchIconRailSection('utilidad'))
+iconRailChainBtn.addEventListener('click', () => switchIconRailSection('chain-analytics'))
 
 // --- Tools: copiar el indicador de Pine / el string en vivo -----------
 async function copyToClipboard(text, btn) {
@@ -351,6 +392,7 @@ function splitDropdownGroups() {
     .map((key) => ({ value: key, label: TAB_LABELS[key] }))
   return [
     { key: 'gex-analytics', label: 'GEX Analytics', items: gexItems },
+    { key: 'chain-analytics', label: 'Chain Analytics', items: [{ value: 'chain-analytics', label: 'Chain Analytics' }] },
     { key: 'utilidad', label: 'Tools', items: [{ value: 'utilidad', label: 'Tools' }] },
   ]
 }
@@ -435,18 +477,25 @@ function applySplitSecondaryTab() {
   document.querySelectorAll('.tab-panel.split-secondary').forEach((p) => p.classList.remove('split-secondary'))
   moveUtilidadHome()
   utilidadView.hidden = currentApartado !== 'utilidad'
+  moveChainAnalyticsHome()
+  chainAnalyticsView.hidden = currentApartado !== 'chain-analytics'
 
   if (splitMode && splitSecondaryTab) {
     if (splitSecondaryTab === 'utilidad') {
       document.getElementById('tab-utilidad-slot').classList.add('split-secondary')
       moveUtilidadToSplitSlot()
       utilidadView.hidden = false
+    } else if (splitSecondaryTab === 'chain-analytics') {
+      document.getElementById('tab-chain-analytics-slot').classList.add('split-secondary')
+      moveChainAnalyticsToSplitSlot()
+      chainAnalyticsView.hidden = false
     } else {
       document.getElementById(`tab-${splitSecondaryTab}`)?.classList.add('split-secondary')
     }
   }
   syncTabLifecycle()
   syncUtilidadRefresh()
+  syncChainAnalyticsRefresh()
 }
 
 function enableSplitMode() {
@@ -469,8 +518,11 @@ function disableSplitMode() {
   document.querySelectorAll('.tab-panel.split-secondary').forEach((p) => p.classList.remove('split-secondary'))
   moveUtilidadHome()
   utilidadView.hidden = currentApartado !== 'utilidad'
+  moveChainAnalyticsHome()
+  chainAnalyticsView.hidden = currentApartado !== 'chain-analytics'
   syncTabLifecycle()
   syncUtilidadRefresh()
+  syncChainAnalyticsRefresh()
 }
 
 splitToggleBtn.addEventListener('click', () => {
@@ -509,13 +561,6 @@ function syncTabLifecycle() {
   } else {
     stopGridRefresh()
     closeGridDtePanel()
-  }
-
-  if (isTabVisible('surface3d')) {
-    if (!surface3dRefreshTimer) startSurface3dRefresh()
-  } else {
-    stopSurface3dRefresh()
-    closeSurface3dDtePanel()
   }
 
   if (isTabVisible('backgamma')) {

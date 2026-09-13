@@ -203,6 +203,9 @@ class _FakeMultiExpFeed:
             {"strike": 480.0, "exp_key": "2026-09-21:10", "exp_date": "2026-09-21", "dte": 10, "net_gex": 3_000_000.0},
             {"strike": 480.0, "exp_key": "2026-10-01:20", "exp_date": "2026-10-01", "dte": 20, "net_gex": 1_000_000.0},
         ])
+        # GRID/3D SURFACE/3D VOL SURFACE ahora leen deep_df (cadena ancha),
+        # no df (la angosta del tick en vivo) -- ver market_feed.py.
+        self.deep_df = self.df
 
 
 def test_expirations_requires_auth():
@@ -288,6 +291,7 @@ class _FakeManyExpFeed:
             for i in range(8)
         ]
         self.df = pd.DataFrame(rows)
+        self.deep_df = self.df
 
 
 def test_gamma_surface_default_count_differs_from_grid_default(authed_client, monkeypatch):
@@ -315,6 +319,7 @@ class _FakeVolSurfaceFeed:
             {"strike": 95.0, "exp_key": "2026-09-11:0", "exp_date": "2026-09-11", "dte": 0, "iv_c": 0.30, "iv_p": 0.35},
             {"strike": 105.0, "exp_key": "2026-09-11:0", "exp_date": "2026-09-11", "dte": 0, "iv_c": 0.28, "iv_p": 0.40},
         ])
+        self.deep_df = self.df
 
 
 def test_vol_surface_requires_auth():

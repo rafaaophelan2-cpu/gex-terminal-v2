@@ -51,10 +51,10 @@
               <path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l1 1 5.3-5.3a4 4 0 0 1 5.4-5.4l-2.6 2.6 1 1 2.6-2.6z" />
             </svg>
           </button>
-          <button type="button" class="icon-rail-btn" data-tooltip="Próximamente" disabled>
+          <button type="button" id="icon-rail-chain-btn" class="icon-rail-btn" data-tooltip="Chain Analytics">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 5h16" /><path d="M4 12h10" /><path d="M4 19h13" />
-              <circle cx="19" cy="5" r="1.4" /><circle cx="16" cy="12" r="1.4" /><circle cx="18" cy="19" r="1.4" />
+              <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
+              <path d="M12 12l8-4.5" /><path d="M12 12v9" /><path d="M12 12L4 7.5" />
             </svg>
           </button>
         </nav>
@@ -120,7 +120,6 @@
               <button class="tab-btn" data-tab="net-drift">NET DRIFT</button>
               <button class="tab-btn" data-tab="greeks">GREEKS</button>
               <button class="tab-btn" data-tab="backgamma">BACKGAMMA</button>
-              <button class="tab-btn" data-tab="surface3d">3D</button>
               <button class="tab-btn" data-tab="data">DATA</button>
             </nav>
 
@@ -176,7 +175,7 @@
             <div id="gamma-price-profile-chart" class="chart-container"></div>
 
             <div class="gex-info-section-heading">
-              <h3 class="signals-heading"><span class="signals-heading-bar"></span>Gamma Grid</h3>
+              <h3 class="signals-heading"><span class="signals-heading-bar"></span>Gamma Heatmap</h3>
               <p class="gex-info-section-sub">Net GEX real por strike x expiración -- elige qué DTEs mostrar.</p>
             </div>
             <div class="grid-toolbar">
@@ -251,28 +250,6 @@
             <div id="backgamma-strike-chart" class="chart-container"></div>
           </section>
 
-          <section id="tab-surface3d" class="tab-panel" data-label="3D">
-            <div class="grid-toolbar">
-              <div class="dte-selector">
-                <button id="surface3d-dte-btn" type="button">📅 DTEs <span id="surface3d-dte-count"></span></button>
-                <div id="surface3d-dte-panel" class="dte-panel" hidden>
-                  <div id="surface3d-dte-list" class="dte-list">
-                    <p class="dte-list-placeholder">Cargando expiraciones…</p>
-                  </div>
-                  <div class="dte-panel-actions">
-                    <button id="surface3d-dte-apply-btn" type="button">Aplicar</button>
-                  </div>
-                </div>
-              </div>
-              <span id="surface3d-status" class="grid-status"></span>
-            </div>
-            <nav id="surface3d-sub-nav">
-              <button class="tab-btn active" data-surface="gamma">3D SURFACE</button>
-              <button class="tab-btn" data-surface="vol">3D VOL SURFACE</button>
-            </nav>
-            <div id="surface3d-chart" class="chart-container surface3d-chart"></div>
-          </section>
-
           <section id="tab-data" class="tab-panel" data-label="DATA">
             <div class="data-summary-grid">
               <div class="metric"><span class="metric-label">Régimen de Gamma</span><span id="data-regime" class="metric-value">--</span></div>
@@ -314,7 +291,33 @@
                nodo, para no duplicar ids ni desincronizar su estado. Ver
                moveUtilidadToSplitSlot()/moveUtilidadHome() en main.js. -->
           <div id="tab-utilidad-slot" class="tab-panel" data-label="Tools"></div>
+          <!-- Mismo mecanismo que Tools: #chain-analytics-view se
+               reparentea acá cuando se lo elige como pestaña secundaria
+               de split-view. -->
+          <div id="tab-chain-analytics-slot" class="tab-panel" data-label="Chain Analytics"></div>
           </div>
+          </div>
+
+          <div id="chain-analytics-view" hidden>
+            <div class="grid-toolbar">
+              <div class="dte-selector">
+                <button id="surface3d-dte-btn" type="button">📅 DTEs <span id="surface3d-dte-count"></span></button>
+                <div id="surface3d-dte-panel" class="dte-panel" hidden>
+                  <div id="surface3d-dte-list" class="dte-list">
+                    <p class="dte-list-placeholder">Cargando expiraciones…</p>
+                  </div>
+                  <div class="dte-panel-actions">
+                    <button id="surface3d-dte-apply-btn" type="button">Aplicar</button>
+                  </div>
+                </div>
+              </div>
+              <span id="surface3d-status" class="grid-status"></span>
+            </div>
+            <nav id="surface3d-sub-nav">
+              <button class="tab-btn active" data-surface="gamma">3D SURFACE</button>
+              <button class="tab-btn" data-surface="vol">3D VOL SURFACE</button>
+            </nav>
+            <div id="surface3d-chart" class="chart-container surface3d-chart"></div>
           </div>
 
           <div id="utilidad-view" hidden>

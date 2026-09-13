@@ -19,6 +19,22 @@ TICK_INTERVAL_SECONDS = 2
 DEFAULT_IV = 0.20
 DEFAULT_T_EXP = 1 / 365
 
+# GRID/Gamma Heatmap/3D SURFACE/3D VOL SURFACE agregan MUCHAS expiraciones
+# a la vez (hasta 90 días out) -- el 'strikes_count' que llega de la UI
+# (el mismo que el filtro visual "Strike range" de GEX INFO, pensado para
+# UNA sola expiración cerca del spot) es demasiado angosto para eso: para
+# una expiración a 60-79 días, el open interest real suele estar repartido
+# en strikes bastante más lejos del spot actual de lo que ese rango
+# -- resultado real reportado por el usuario: "el nuestro sale con casi
+# nada de volumen en prácticamente todos los días" comparado con un
+# heatmap de referencia con datos densos en muchas más expiraciones.
+# Se pide una cadena aparte, bastante más ancha, en un fetch propio y
+# periódico (no atado al tick de 2s de GEX INFO/GREEKS/Signals, para no
+# multiplicar por ~4 el costo de Black-Scholes de CADA tick en el 0.1
+# vCPU del free tier -- ver domain/gex_math.py).
+DEEP_CHAIN_STRIKES_COUNT = 100
+DEEP_CHAIN_INTERVAL_SECONDS = 45
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +53,13 @@ class SymbolFeed:
         self.schwab_online: bool = False
         self.last_update: float = 0.0
         self.nearest_exp_key: str | None = None
+        # Cadena ANCHA/lenta para GRID/Gamma Heatmap/3D SURFACE/3D VOL
+        # SURFACE (ver DEEP_CHAIN_STRIKES_COUNT arriba) -- separada de
+        # self.df (angosta/rápida, la que ya usan GEX INFO/GREEKS/Signals
+        # en cada tick) para no pagar su costo de cálculo cada 2s.
+        self.deep_df: pd.DataFrame = pd.DataFrame()
+        self.deep_last_update: float = 0.0
+        self._deep_task: asyncio.Task | None = None
         # IV ATM / percentile: se recalculan UNA vez por tick acá (no por
         # conexión en gex_info_payload) porque no varían con el
         # strike_range de cada usuario -- son una lectura de mercado
@@ -69,11 +92,16 @@ class SymbolFeed:
     def start(self) -> None:
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run_loop())
+        if self._deep_task is None or self._deep_task.done():
+            self._deep_task = asyncio.create_task(self._deep_run_loop())
 
     def stop(self) -> None:
         if self._task is not None:
             self._task.cancel()
             self._task = None
+        if self._deep_task is not None:
+            self._deep_task.cancel()
+            self._deep_task = None
 
     async def _run_loop(self) -> None:
         while True:
@@ -92,6 +120,26 @@ class SymbolFeed:
                 logger.exception("Error en el tick de %s -- schwab_online=False hasta el próximo intento.", self.symbol)
                 self.schwab_online = False
             await asyncio.sleep(TICK_INTERVAL_SECONDS)
+
+    async def _deep_run_loop(self) -> None:
+        while True:
+            try:
+                await self._deep_tick_once()
+            except Exception:
+                logger.exception("Error en el tick DEEP (GRID/Gamma Heatmap/3D SURFACE) de %s -- se reintenta en el próximo ciclo.", self.symbol)
+            await asyncio.sleep(DEEP_CHAIN_INTERVAL_SECONDS)
+
+    async def _deep_tick_once(self) -> None:
+        chain = await fetch_option_chain(self.symbol, DEEP_CHAIN_STRIKES_COUNT)
+        df, _ = parse_schwab_chain(chain)
+        spot = float(chain.get('underlyingPrice') or 0.0) if isinstance(chain, dict) else 0.0
+        if df.empty or spot <= 0:
+            return
+        # Un solo recalculate_gex_for_spot alcanza -- GRID/Heatmap/3D
+        # SURFACE solo necesitan net_gex/call_gex/put_gex por strike, no
+        # las Griegas completas (eso sigue siendo exclusivo de self.df).
+        self.deep_df = recalculate_gex_for_spot(df, spot_t=spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
+        self.deep_last_update = time.time()
 
     async def _tick_once(self) -> None:
         chain = await fetch_option_chain(self.symbol, self.strikes_count)

@@ -172,23 +172,24 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
 @router.get("/expirations")
 async def get_expirations(symbol: str = "QQQ", _username: str = Depends(require_auth)):
     """Expiraciones disponibles (cualquier DTE, no solo la más cercana)
-    para el selector de DTEs del GRID -- lee el SymbolFeed activo, igual
-    que /ai-diagnosis y el chat (requiere una conexión WS ya suscrita a
-    ese símbolo)."""
+    para el selector de DTEs del GRID -- lee feed.deep_df (la cadena
+    ANCHA, ver market_feed.py), no feed.df (angosta, la del tick en vivo
+    de GEX INFO/GREEKS), para que las expiraciones lejanas también traigan
+    datos reales en vez de aparecer casi vacías."""
     feed = feed_registry.get(symbol)
-    if feed is None or feed.df.empty:
+    if feed is None or feed.deep_df.empty:
         return {"expirations": []}
-    return {"expirations": list_expirations(feed.df)}
+    return {"expirations": list_expirations(feed.deep_df)}
 
 
 @router.get("/gamma-grid")
 async def get_gamma_grid(symbol: str = "QQQ", exp_keys: str = "", _username: str = Depends(require_auth)):
-    """GRID: Net GEX real por strike x expiración para las DTE elegidas
-    (ver domain/gamma_grid.py) -- 'exp_keys' es una lista separada por
-    comas; si viene vacía, se preseleccionan las primeras
+    """Gamma Heatmap: Net GEX real por strike x expiración para las DTE
+    elegidas (ver domain/gamma_grid.py) -- 'exp_keys' es una lista
+    separada por comas; si viene vacía, se preseleccionan las primeras
     DEFAULT_GRID_EXPIRATION_COUNT expiraciones más cercanas."""
     feed = feed_registry.get(symbol)
-    if feed is None or feed.df.empty:
+    if feed is None or feed.deep_df.empty:
         raise HTTPException(
             status_code=409,
             detail=f"No hay datos en vivo para {symbol} todavía -- abre GEX INFO en ese símbolo primero.",
@@ -196,10 +197,10 @@ async def get_gamma_grid(symbol: str = "QQQ", exp_keys: str = "", _username: str
 
     selected = [k for k in exp_keys.split(",") if k]
     if not selected:
-        all_exps = list_expirations(feed.df)
+        all_exps = list_expirations(feed.deep_df)
         selected = [e["exp_key"] for e in all_exps[:DEFAULT_GRID_EXPIRATION_COUNT]]
 
-    return compute_gamma_grid(feed.df, selected)
+    return compute_gamma_grid(feed.deep_df, selected)
 
 
 @router.get("/gamma-surface")
@@ -209,7 +210,7 @@ async def get_gamma_surface(symbol: str = "QQQ", exp_keys: str = "", _username: 
     cuántas expiraciones se preseleccionan por defecto (más, para una
     malla 3D más completa) sin tocar el default del GRID tabular."""
     feed = feed_registry.get(symbol)
-    if feed is None or feed.df.empty:
+    if feed is None or feed.deep_df.empty:
         raise HTTPException(
             status_code=409,
             detail=f"No hay datos en vivo para {symbol} todavía -- abre GEX INFO en ese símbolo primero.",
@@ -217,10 +218,10 @@ async def get_gamma_surface(symbol: str = "QQQ", exp_keys: str = "", _username: 
 
     selected = [k for k in exp_keys.split(",") if k]
     if not selected:
-        all_exps = list_expirations(feed.df)
+        all_exps = list_expirations(feed.deep_df)
         selected = [e["exp_key"] for e in all_exps[:DEFAULT_SURFACE_EXPIRATION_COUNT]]
 
-    return compute_gamma_grid(feed.df, selected)
+    return compute_gamma_grid(feed.deep_df, selected)
 
 
 @router.get("/vol-surface")
@@ -228,7 +229,7 @@ async def get_vol_surface(symbol: str = "QQQ", exp_keys: str = "", _username: st
     """3D VOL SURFACE: IV% (convención OTM) por strike x expiración -- ver
     domain/vol_surface.py."""
     feed = feed_registry.get(symbol)
-    if feed is None or feed.df.empty:
+    if feed is None or feed.deep_df.empty:
         raise HTTPException(
             status_code=409,
             detail=f"No hay datos en vivo para {symbol} todavía -- abre GEX INFO en ese símbolo primero.",
@@ -236,7 +237,7 @@ async def get_vol_surface(symbol: str = "QQQ", exp_keys: str = "", _username: st
 
     selected = [k for k in exp_keys.split(",") if k]
     if not selected:
-        all_exps = list_expirations(feed.df)
+        all_exps = list_expirations(feed.deep_df)
         selected = [e["exp_key"] for e in all_exps[:DEFAULT_SURFACE_EXPIRATION_COUNT]]
 
-    return compute_vol_surface(feed.df, selected, feed.spot_price)
+    return compute_vol_surface(feed.deep_df, selected, feed.spot_price)

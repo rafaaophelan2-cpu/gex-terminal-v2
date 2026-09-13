@@ -65,6 +65,9 @@ wall_color = input.color(#FF9500, "Color / Ancho / Estilo", group=grp_wall, inli
 wall_width = input.int(3, "", minval=1, maxval=6, group=grp_wall, inline="wall")
 wall_style = input.string("Solid", "", options=["Solid", "Dashed", "Dotted"], group=grp_wall, inline="wall")
 
+grp_overlap = "Niveles Superpuestos"
+overlap_color = input.color(#FFEB3B, "Color de línea superpuesta", group=grp_overlap, tooltip="Cuando 2 o más niveles caen en el mismo precio convertido (ej. Call Wall 1 y Gamma Wall), se dibuja UNA sola línea con ambos nombres juntos ('Call Wall 1 / Gamma Wall') en vez de dos líneas pisándose -- siempre con este color, para que sea obvio a simple vista que ahí hay más de un nivel confluyendo.")
+
 // --- 3. CONVERSIÓN EN VIVO --------------------------------------------
 // Cuánto para atrás arranca cada línea -- a diferencia del script
 // original (que escaneaba hasta 1000 barras buscando la mitigación
@@ -148,19 +151,49 @@ if barstate.islast
         int start_time = time[math.min(bar_index, LOOKBACK_BARS)]
         int time_offset_ms = (time - time[1]) * LABEL_OFFSET_BARS
         int right_x_time = time + time_offset_ms
+        int n_levels = array.size(gen_strikes)
 
-        for i = 0 to array.size(gen_strikes) - 1
-            float val_in = array.get(gen_strikes, i)
-            string comment = array.get(gen_comments, i)
-            float val_out = round_tick(val_in * smoothed_diff, tick_size)
+        // Valor convertido de cada nivel, precomputado UNA vez -- se
+        // recorre varias veces abajo para agrupar los que coinciden.
+        float[] vals_out = array.new_float()
+        for i = 0 to n_levels - 1
+            array.push(vals_out, round_tick(array.get(gen_strikes, i) * smoothed_diff, tick_size))
 
-            color lvl_color = i < array.size(level_colors) ? array.get(level_colors, i) : color.gray
-            int lvl_width = i < array.size(level_widths) ? array.get(level_widths, i) : 2
-            string lvl_style = i < array.size(level_styles) ? array.get(level_styles, i) : "Solid"
+        // Cuando 2+ niveles caen en el MISMO precio convertido (ej. Call
+        // Wall 1 y Gamma Wall), se dibuja UNA sola línea con ambos
+        // nombres juntos ("Call Wall 1 / Gamma Wall") en vez de dos
+        // líneas pisándose -- siempre en overlap_color, con el ancho más
+        // grueso de los niveles que se fusionaron (para que se note que
+        // ahí hay más de un nivel, no solo el más angosto de los dos).
+        bool[] consumed = array.new_bool(n_levels, false)
 
-            line l = line.new(start_time, val_out, right_x_time, val_out, xloc=xloc.bar_time, color=lvl_color, width=lvl_width, style=get_line_style(lvl_style), extend=extend.right)
-            array.push(level_lines, l)
+        for i = 0 to n_levels - 1
+            if not array.get(consumed, i)
+                array.set(consumed, i, true)
+                float val_out_i = array.get(vals_out, i)
+                float val_in_i = array.get(gen_strikes, i)
+                string combined_label = array.get(gen_comments, i)
+                color lvl_color = i < array.size(level_colors) ? array.get(level_colors, i) : color.gray
+                int lvl_width = i < array.size(level_widths) ? array.get(level_widths, i) : 2
+                string lvl_style = i < array.size(level_styles) ? array.get(level_styles, i) : "Solid"
+                bool is_overlap = false
 
-            string label_txt = comment + "\n" + str.tostring(val_out, "#.##") + " (" + str.tostring(val_in, "#.##") + ")"
-            label lb = label.new(right_x_time, val_out, text=label_txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.black, 100), textcolor=lvl_color, size=size.small, text_font_family=font.family_monospace)
-            array.push(level_labels, lb)
+                for j = i + 1 to n_levels - 1
+                    if not array.get(consumed, j) and array.get(vals_out, j) == val_out_i
+                        combined_label := combined_label + " / " + array.get(gen_comments, j)
+                        array.set(consumed, j, true)
+                        is_overlap := true
+                        int j_width = j < array.size(level_widths) ? array.get(level_widths, j) : 2
+                        if j_width > lvl_width
+                            lvl_width := j_width
+
+                if is_overlap
+                    lvl_color := overlap_color
+                    lvl_style := "Solid"
+
+                line l = line.new(start_time, val_out_i, right_x_time, val_out_i, xloc=xloc.bar_time, color=lvl_color, width=lvl_width, style=get_line_style(lvl_style), extend=extend.right)
+                array.push(level_lines, l)
+
+                string label_txt = combined_label + "\n" + str.tostring(val_out_i, "#.##") + " (" + str.tostring(val_in_i, "#.##") + ")"
+                label lb = label.new(right_x_time, val_out_i, text=label_txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.black, 100), textcolor=lvl_color, size=size.small, text_font_family=font.family_monospace)
+                array.push(level_labels, lb)
