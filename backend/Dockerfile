@@ -1,4 +1,9 @@
-FROM python:3.11-slim
+# slim-bookworm fijo a propósito (no solo "python:3.11-slim"): esa
+# etiqueta ahora resuelve a Debian trixie, que playwright install
+# --with-deps todavía no reconoce -- falla buscando paquetes con nombres
+# viejos (ttf-unifont) que ya no existen ahí. bookworm es la versión de
+# Debian que sí soporta oficialmente.
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
