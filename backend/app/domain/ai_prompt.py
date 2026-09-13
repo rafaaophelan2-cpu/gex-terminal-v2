@@ -103,6 +103,7 @@ def build_system_prompt(
     vix_term_structure: dict | None = None,
     ndx_cross_check: str = "",
     implied_range: dict | None = None,
+    oi_is_volume_proxy: bool = False,
 ) -> str:
     """Port ampliado del system_prompt de consultar_ia en app.py (~línea
     2066): mismos datos de mercado y mismas reglas duras de coherencia
@@ -174,8 +175,26 @@ def build_system_prompt(
     implied_range_line = format_implied_range(implied_range, ticker)
     ndx_cross_check_section = f"\n{ndx_cross_check}\n" if ndx_cross_check else ""
 
+    # NDX/SPX/VIX (productos de índice exclusivos de CBOE): Schwab no da
+    # Open Interest real para estos -- confirmado en vivo, 0 de cientos
+    # de contratos con OI>0 en el mismo instante en que QQQ/SPY sí lo
+    # tenían (no es un tema de horario). Sin esta advertencia el modelo
+    # analizaría un GEX basado en volumen del día como si fuera
+    # posicionamiento acumulado real, una distinción que cambia por
+    # completo cuánto peso merece cada nivel.
+    oi_proxy_warning = (
+        f"\n⚠️ ADVERTENCIA DE CALIDAD DE DATO PARA {ticker}: Schwab no publica Open Interest real para este símbolo "
+        f"(confirmado, no es un problema de horario). Todo el GEX/niveles de abajo está calculado usando VOLUMEN DEL "
+        f"DÍA como aproximación en vez de posicionamiento acumulado real -- es decir, refleja la actividad de HOY, no "
+        f"cuánta exposición tienen los dealers acumulada de días/semanas anteriores. Tratá estos niveles con MENOS "
+        f"convicción que los de un símbolo con OI real (QQQ/SPY): aclaralo explícitamente en tu análisis, y exigí "
+        f"confirmación de order flow más estricta antes de operar cualquier setup basado en ellos.\n"
+        if oi_is_volume_proxy else ""
+    )
+
     return f"""
     Eres un analista senior de order flow, derivados y microestructura de mercado, especializado en gamma exposure (GEX) de opciones sobre Nasdaq y en scalping de futuros NQ/MNQ, operando dentro del GEX Quant Terminal. {dte_note}
+    {oi_proxy_warning}
 
     ================================================================
     CONOCIMIENTO BASE QUE DEBES APLICAR EN CADA ANÁLISIS (no lo repitas como texto de relleno, RAZONA con él)

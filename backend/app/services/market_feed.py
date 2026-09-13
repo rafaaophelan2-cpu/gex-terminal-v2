@@ -7,6 +7,7 @@ import pandas as pd
 from app.domain.gamma_price_profile import compute_gamma_price_profile
 from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
+from app.domain.oi_fallback import apply_volume_fallback_if_no_oi
 from app.domain.signals import compute_signals, compute_squeeze_screener
 from app.integrations.schwab_client import fetch_option_chain
 from app.domain.parsing import parse_schwab_chain
@@ -66,6 +67,13 @@ class SymbolFeed:
         self.schwab_online: bool = False
         self.last_update: float = 0.0
         self.nearest_exp_key: str | None = None
+        # True cuando Schwab no da Open Interest real para este símbolo
+        # (confirmado en vivo: NDX/SPX/VIX vuelven con OI=0 en TODA la
+        # cadena, aunque QQQ/SPY sí lo tienen -- ver oi_fallback.py) y se
+        # está usando volumen del día como aproximación en su lugar. La
+        # UI/el prompt de la IA lo muestran como advertencia, no como
+        # GEX real basado en posicionamiento acumulado.
+        self.oi_is_volume_proxy: bool = False
         # Cadena ANCHA/lenta para GRID/Gamma Heatmap/3D SURFACE/3D VOL
         # SURFACE (ver DEEP_CHAIN_STRIKES_COUNT arriba) -- separada de
         # self.df (angosta/rápida, la que ya usan GEX INFO/GREEKS/Signals
@@ -148,6 +156,10 @@ class SymbolFeed:
         spot = float(chain.get('underlyingPrice') or 0.0) if isinstance(chain, dict) else 0.0
         if df.empty or spot <= 0:
             return
+        # Mismo fallback de OI->volumen que _tick_once (ver comentario ahí
+        # abajo) -- sin esto, GRID/Gamma Heatmap/3D SURFACE quedan igual
+        # de vacíos que GEX INFO para NDX/SPX/VIX.
+        df, _ = apply_volume_fallback_if_no_oi(df)
         # Un solo recalculate_gex_for_spot alcanza -- GRID/Heatmap/3D
         # SURFACE solo necesitan net_gex/call_gex/put_gex por strike, no
         # las Griegas completas (eso sigue siendo exclusivo de self.df).
@@ -162,6 +174,15 @@ class SymbolFeed:
         if df.empty or spot <= 0:
             self.schwab_online = False
             return
+
+        # NDX/SPX/VIX (productos de índice exclusivos de CBOE) no traen
+        # Open Interest real de Schwab -- confirmado en vivo, 0 de
+        # cientos de contratos con OI>0, mismo instante en que QQQ/SPY sí
+        # lo tenían. Sin esto, gamma * OI da cero en TODOS los strikes:
+        # GEX INFO se veía completamente vacío para esos símbolos. Se
+        # sustituye por volumen del día como aproximación (no es lo mismo
+        # que posicionamiento real, se marca explícitamente el flag).
+        df, self.oi_is_volume_proxy = apply_volume_fallback_if_no_oi(df)
 
         df = recalculate_gex_for_spot(df, spot_t=spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
         df = compute_greeks_exposures(df, spot_price=spot, t_exp=DEFAULT_T_EXP, atm_iv=DEFAULT_IV)
@@ -204,6 +225,7 @@ class SymbolFeed:
                 "iv_str": "--", "iv_rank_str": "N/A",
                 "by_strike": [],
                 "price_profile": {"prices": [], "net_gamma": []},
+                "oi_is_volume_proxy": self.oi_is_volume_proxy,
             }
 
         df_nearest_full = get_nearest_dte_subset(self.df)
@@ -234,6 +256,7 @@ class SymbolFeed:
                 for r in by_strike.itertuples()
             ],
             "price_profile": price_profile,
+            "oi_is_volume_proxy": self.oi_is_volume_proxy,
         }
 
     def signals_payload(self) -> dict:

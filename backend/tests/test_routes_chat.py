@@ -39,6 +39,7 @@ class _FakeFeed:
     def __init__(self):
         self.spot_price = 481.23
         self.nearest_exp_key = "2026-09-11:0"
+        self.oi_is_volume_proxy = False
         self.df = pd.DataFrame([
             {"strike": 475.0, "exp_key": "2026-09-11:0", "dte": 0, "net_gex": -5.0, "call_gex": 1.0, "put_gex": -6.0,
              "net_dex": 1.0, "net_tex": -1.0, "net_vex": 1.0, "net_chex": -1.0, "net_vanna": 1.0},

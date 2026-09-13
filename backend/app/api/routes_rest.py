@@ -219,6 +219,7 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         vix_term_structure=ctx.get("vix_term_structure"),
         ndx_cross_check=ctx.get("ndx_cross_check"),
         implied_range=ctx.get("implied_range"),
+        oi_is_volume_proxy=ctx.get("oi_is_volume_proxy", False),
     )
     user_prompt = build_default_user_prompt(body.tipo_analisis)
 

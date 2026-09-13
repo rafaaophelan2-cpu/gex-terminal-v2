@@ -75,4 +75,5 @@ async def build_ai_context(symbol: str) -> dict:
         "vix_term_structure": vix_term_structure,
         "ndx_cross_check": ndx_cross_check,
         "implied_range": implied_range,
+        "oi_is_volume_proxy": feed.oi_is_volume_proxy,
     }

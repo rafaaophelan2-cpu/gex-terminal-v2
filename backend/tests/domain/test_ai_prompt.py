@@ -165,3 +165,22 @@ def test_build_system_prompt_includes_ndx_cross_check_and_implied_range():
     assert "Contango" in prompt
     assert "475.00" in prompt
     assert "CRUCE CON NDX" in prompt
+
+
+def test_build_system_prompt_warns_when_oi_is_volume_proxy():
+    prompt = build_system_prompt(
+        ticker="NDX", spot=29368.44, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        oi_is_volume_proxy=True,
+    )
+    assert "ADVERTENCIA DE CALIDAD DE DATO" in prompt
+    assert "VOLUMEN DEL" in prompt
+
+
+def test_build_system_prompt_no_warning_when_oi_is_real():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        oi_is_volume_proxy=False,
+    )
+    assert "ADVERTENCIA DE CALIDAD DE DATO" not in prompt
