@@ -178,6 +178,20 @@ class SymbolFeed:
         if not self._iv_rank_is_real:
             self.iv_rank_str = metrics['iv_rank_str']
 
+    def nearest_dte_strikes(self) -> list[float]:
+        """Strikes únicos (ordenados) de la expiración más cercana -- lo
+        usa ws_market.ConnectionState.strike_window() para convertir
+        'strike_range' (pensado como "N strikes arriba/abajo del ATM",
+        el mismo significado que ya tiene como strikes_count del fetch a
+        Schwab) en un rango de PRECIO real por RANGO/POSICIÓN, nunca por
+        una resta de dólares fija -- un ±25 en dólares tiene sentido para
+        QQQ (strikes de ~1 USD) pero deja el gráfico vacío en NDX (strikes
+        de 25-100 USD) o distorsionado en VIX (strikes de 0.5-1 USD)."""
+        if self.df.empty:
+            return []
+        df_nearest = get_nearest_dte_subset(self.df)
+        return sorted(df_nearest['strike'].unique().tolist())
+
     def gex_info_payload(self, min_strike: float | None = None, max_strike: float | None = None) -> dict:
         """Slice ya agrupado/filtrado listo para mandar por WS: nearest-DTE
         por defecto, opcionalmente recortado a [min_strike, max_strike]."""

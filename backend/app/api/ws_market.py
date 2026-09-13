@@ -71,9 +71,26 @@ class ConnectionState:
             self.feed = None
 
     def strike_window(self) -> tuple[float, float] | tuple[None, None]:
+        """'strike_range' es una CANTIDAD de strikes arriba/abajo del ATM
+        (mismo significado que ya tiene como strikes_count del fetch a
+        Schwab, ver FeedRegistry.subscribe), no una resta de dólares --
+        se resuelve por POSICIÓN contra los strikes reales de la
+        expiración más cercana, así el ancho de la ventana se adapta solo
+        al incremento real de cada símbolo (1 USD en QQQ, 25-100 en NDX,
+        0.5-1 en VIX) en vez de romperse en cualquiera que no sea QQQ."""
         if self.feed is None or self.feed.spot_price <= 0:
             return None, None
-        return self.feed.spot_price - self.strike_range, self.feed.spot_price + self.strike_range
+
+        spot = self.feed.spot_price
+        strikes = self.feed.nearest_dte_strikes()
+        if not strikes:
+            return spot - self.strike_range, spot + self.strike_range
+
+        below = [s for s in strikes if s <= spot]
+        above = [s for s in strikes if s > spot]
+        min_strike = below[-self.strike_range] if len(below) >= self.strike_range else (below[0] if below else spot)
+        max_strike = above[self.strike_range - 1] if len(above) >= self.strike_range else (above[-1] if above else spot)
+        return min_strike, max_strike
 
 
 @router.websocket("/ws/market")
