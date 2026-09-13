@@ -23,44 +23,54 @@ NY_TZ = ZoneInfo("America/New_York")
 NEWS_CACHE_TTL_SECONDS = 300
 
 # Solo USD -- eventos de otros países (EUR, GBP, etc.) no mueven NQ/MNQ ni
-# SPX/QQQ de forma directa, y solo agregarían ruido al prompt de la IA
-# (ver Aleks Rosme: "CPI at 8:30 sent tech higher" -- siempre sus propios
-# ejemplos son datos de EE.UU.).
+# SPX/QQQ de forma directa, y solo agregarían ruido al prompt de la IA.
 RELEVANT_COUNTRY = "US"
-# 'low' queda afuera a propósito -- son decenas de datos menores por
-# semana (ej. subastas de bonos) que Rosme nunca menciona; solo folder
-# naranja/rojo (medium/high) es lo que de verdad mueve el mercado que
-# opera este usuario.
-RELEVANT_IMPACT = {"medium", "high"}
+# Los 3 niveles de Finnhub, SIN excluir 'low' -- pedido explícito: se
+# muestran los 3 con un símbolo de color propio en vez de descartar el
+# de menor impacto (ver domain/news_filter... no, ver frontend/newsPanel.js
+# para el mapeo de color -- acá solo se decide QUÉ nivel de impacto entra).
+RELEVANT_IMPACT = {"low", "medium", "high"}
 
 _cache: dict[str, tuple[float, list[dict]]] = {}
 
 
-async def fetch_economic_calendar(days_ahead: int = 0) -> list[dict]:
-    """Eventos macro de EE.UU. de impacto medio/alto desde HOY hasta
-    'days_ahead' días adelante (hora de Nueva York) -- calendario
-    económico de Aleks Rosme (CPI/FOMC/NFP con folder rojo/naranja, ver
-    ejemplos que pegó el usuario: "CPI at 8:30 sent tech higher"). None/[]
-    si no hay API key configurada o el fetch falla -- opcional igual que
-    MarketData.app (ver marketdata_client.py): nunca debe bloquear el
-    resto del diagnóstico de la IA.
+def _relevant_week_range(today):
+    """Lunes-domingo de la semana relevante -- pedido explícito del
+    usuario: en fin de semana (sábado/domingo) no tiene sentido mostrar
+    una semana que ya terminó, así que se muestra la semana SIGUIENTE; en
+    día hábil se muestra la semana ACTUAL completa (lunes a domingo,
+    incluye los días que ya pasaron -- útil para revisar qué ya salió
+    antes de ver qué falta, igual que cualquier calendario económico
+    normal)."""
+    monday = today - timedelta(days=today.weekday())
+    if today.weekday() >= 5:  # sábado=5, domingo=6 (Monday=0 en Python)
+        monday += timedelta(days=7)
+    return monday, monday + timedelta(days=6)
 
-    'days_ahead=0' (default, usado por el prompt de la IA -- "¿qué hay
-    HOY?") mantiene el comportamiento de siempre, solo eventos de hoy.
-    'days_ahead>0' (usado por GET /market/economic-calendar para la
-    pestaña News) suma los días siguientes -- cada item trae su propio
-    campo "date" para que el frontend pueda agrupar por día.
+
+async def fetch_economic_calendar() -> list[dict]:
+    """Eventos macro de EE.UU. de la semana relevante (ver
+    _relevant_week_range -- semana actual en día hábil, semana siguiente
+    en fin de semana), hora de Nueva York. Usado tanto por GET
+    /market/economic-calendar (pestaña News) como por el prompt de la IA
+    (ver services/ai_context.py) -- mismo calendario para ambos, así el
+    bot puede razonar sobre catalizadores de DÍAS por delante (no solo
+    los de hoy), igual que un analista de order flow real.
+
+    None/[] si no hay API key configurada o el fetch falla -- opcional
+    igual que MarketData.app (ver marketdata_client.py): nunca debe
+    bloquear el resto del diagnóstico de la IA.
 
     Cada item: {"date": "2026-09-14", "time": "08:30" (hora NY o "" si es
-    todo el día), "event": str, "impact": "medium"|"high",
+    todo el día), "event": str, "impact": "low"|"medium"|"high",
     "actual": str|None, "forecast": str|None, "previous": str|None}."""
     settings = get_settings()
     if not settings.finnhub_api_key:
         return []
 
     today = datetime.now(NY_TZ).date()
-    last_day = today + timedelta(days=days_ahead)
-    cache_key = f"{today.isoformat()}:{days_ahead}"
+    week_start, week_end = _relevant_week_range(today)
+    cache_key = f"week:{week_start.isoformat()}"
     cached = _cache.get(cache_key)
     if cached is not None:
         return cached[1]
@@ -71,8 +81,8 @@ async def fetch_economic_calendar(days_ahead: int = 0) -> list[dict]:
                 CALENDAR_URL,
                 params={
                     "token": settings.finnhub_api_key,
-                    "from": today.isoformat(),
-                    "to": (last_day + timedelta(days=1)).isoformat(),
+                    "from": week_start.isoformat(),
+                    "to": (week_end + timedelta(days=1)).isoformat(),
                 },
             )
             resp.raise_for_status()
@@ -85,8 +95,8 @@ async def fetch_economic_calendar(days_ahead: int = 0) -> list[dict]:
     if not isinstance(raw_events, list):
         return []
 
-    today_str = today.isoformat()
-    last_day_str = last_day.isoformat()
+    week_start_str = week_start.isoformat()
+    week_end_str = week_end.isoformat()
     events: list[dict] = []
     for item in raw_events:
         if not isinstance(item, dict):
@@ -97,14 +107,14 @@ async def fetch_economic_calendar(days_ahead: int = 0) -> list[dict]:
         if impact not in RELEVANT_IMPACT:
             continue
         # Finnhub trae 'time' como "YYYY-MM-DD HH:MM:SS" en hora de NY --
-        # se descarta cualquier evento fuera de [hoy, last_day] (el rango
-        # from/to de arriba puede traer alguno de un día extra por huso
-        # horario).
+        # se descarta cualquier evento fuera de [week_start, week_end] (el
+        # rango from/to de arriba puede traer alguno de un día extra por
+        # huso horario).
         raw_time = str(item.get("time") or "")
         if " " not in raw_time:
             continue
         date_part, time_part = raw_time.split(" ", 1)
-        if not (today_str <= date_part <= last_day_str):
+        if not (week_start_str <= date_part <= week_end_str):
             continue
 
         events.append({
@@ -118,12 +128,12 @@ async def fetch_economic_calendar(days_ahead: int = 0) -> list[dict]:
         })
 
     events.sort(key=lambda e: (e["date"], e["time"]))
-    # Cachea por el resto del día -- el calendario de HOY (+ los días
-    # siguientes pedidos) no cambia salvo que salga el dato 'actual' de un
-    # evento ya pasado, y no vale la pena golpear la API de nuevo por cada
-    # pedido (mismo espíritu de cuidado de cuota que MarketData.app).
+    # Cachea por semana -- no vale la pena golpear la API de nuevo por
+    # cada pedido dentro de la misma semana (mismo espíritu de cuidado de
+    # cuota que MarketData.app); el 'actual' de un evento recién publicado
+    # puede tardar hasta este TTL en reflejarse, aceptable para este uso.
     _cache[cache_key] = (0.0, events)
-    if len(_cache) > 6:
+    if len(_cache) > 4:
         oldest_key = min(_cache.keys())
         del _cache[oldest_key]
     return events

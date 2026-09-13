@@ -218,10 +218,10 @@ def test_build_system_prompt_includes_economic_calendar_events():
         ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
         intraday_context="contexto de prueba",
         economic_calendar=[
-            {"time": "08:30", "event": "CPI m/m", "impact": "high", "actual": None, "forecast": "0.3%", "previous": "0.2%"},
+            {"date": "2026-09-13", "time": "08:30", "event": "CPI m/m", "impact": "high", "actual": None, "forecast": "0.3%", "previous": "0.2%"},
         ],
     )
-    assert "Calendario económico de hoy" in prompt
+    assert "Calendario económico de esta semana" in prompt
     assert "CPI m/m" in prompt
     assert "impacto ALTO" in prompt
 
@@ -232,23 +232,41 @@ def test_build_system_prompt_omits_economic_calendar_line_when_empty():
         intraday_context="contexto de prueba",
         economic_calendar=[],
     )
-    assert "sin eventos de impacto medio/alto" in prompt
+    assert "sin eventos relevantes en EE.UU." in prompt
 
 
-def test_format_economic_calendar_with_events():
-    text = format_economic_calendar([
-        {"time": "08:30", "event": "CPI m/m", "impact": "high", "actual": None, "forecast": "0.3%", "previous": "0.2%"},
-        {"time": "10:00", "event": "ISM Services PMI", "impact": "medium", "actual": "54.2", "forecast": "54.1", "previous": "54.0"},
-    ])
+def test_format_economic_calendar_with_events_groups_by_day_and_precomputes_days_until():
+    text = format_economic_calendar(
+        [
+            {"date": "2026-09-13", "time": "08:30", "event": "CPI m/m", "impact": "high", "actual": None, "forecast": "0.3%", "previous": "0.2%"},
+            {"date": "2026-09-13", "time": "10:00", "event": "ISM Services PMI", "impact": "medium", "actual": "54.2", "forecast": "54.1", "previous": "54.0"},
+            {"date": "2026-09-16", "time": "14:00", "event": "FOMC Rate Decision", "impact": "high", "actual": None, "forecast": None, "previous": None},
+        ],
+        today_str="2026-09-13",
+    )
+    assert "HOY (2026-09-13):" in text
     assert "08:30 NY -- CPI m/m [impacto ALTO]" in text
     assert "esperado=0.3%" in text
     assert "10:00 NY -- ISM Services PMI [impacto medio]" in text
     assert "real=54.2" in text
+    # El evento futuro trae los días ya calculados EN PYTHON, no se le
+    # pide al modelo que reste fechas (mismo motivo que el resto de la
+    # aritmética de este prompt).
+    assert "en 3 días (2026-09-16):" in text
+    assert "FOMC Rate Decision" in text
+
+
+def test_format_economic_calendar_low_impact_is_included_with_its_own_label():
+    text = format_economic_calendar(
+        [{"date": "2026-09-13", "time": "09:00", "event": "Minor Data", "impact": "low", "actual": None, "forecast": None, "previous": None}],
+        today_str="2026-09-13",
+    )
+    assert "[impacto bajo]" in text
 
 
 def test_format_economic_calendar_empty_is_normal_not_an_error():
     text = format_economic_calendar(None)
-    assert "sin eventos de impacto medio/alto" in text
+    assert "sin eventos relevantes en EE.UU." in text
     assert format_economic_calendar([]) == text
 
 

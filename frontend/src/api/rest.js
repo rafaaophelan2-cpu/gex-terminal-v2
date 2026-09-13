@@ -110,8 +110,8 @@ export async function fetchVolSurface(symbol, expKeys) {
   return resp.json()
 }
 
-export async function fetchEconomicCalendar(daysAhead = 1) {
-  const resp = await apiFetch(`/market/economic-calendar?days_ahead=${encodeURIComponent(daysAhead)}`)
+export async function fetchEconomicCalendar() {
+  const resp = await apiFetch('/market/economic-calendar')
   if (!resp.ok) throw new Error(`Error ${resp.status}`)
   const data = await resp.json()
   return data.events

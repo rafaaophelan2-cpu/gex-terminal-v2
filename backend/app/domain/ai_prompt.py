@@ -1,4 +1,10 @@
+from datetime import date as date_cls
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from app.domain.session_profile import format_session_profile
+
+NY_TZ = ZoneInfo("America/New_York")
 
 
 def build_intraday_context(candles: list[dict], current_price: float) -> str:
@@ -90,39 +96,77 @@ def format_implied_range(implied_range: dict | None, ticker: str) -> str:
     )
 
 
-def format_economic_calendar(economic_calendar: list[dict] | None) -> str:
-    """Eventos macro de EE.UU. de impacto medio/alto para HOY (ver
-    integrations/finnhub_client.py) -- catalizadores que pueden invalidar
-    un escenario técnico de un momento a otro (Aleks Rosme: "CPI at 8:30
-    sent tech higher... wouldn't trust it until 9:30 net drifts confirm
-    it. CPI reversals happen a lot especially while oil + rates are so
-    fragile"). Vacío/None (sin FINNHUB_API_KEY configurada, o sin eventos
-    relevantes hoy) es un estado NORMAL, no un error -- se lo dice así al
-    modelo para que no invente un catalizador que no existe."""
+_IMPACT_LABELS = {"low": "bajo", "medium": "medio", "high": "ALTO"}
+
+
+def format_economic_calendar(economic_calendar: list[dict] | None, today_str: str = "") -> str:
+    """Eventos macro de EE.UU. de la SEMANA relevante (ver
+    integrations/finnhub_client.py::fetch_economic_calendar -- semana
+    actual en día hábil, semana siguiente en fin de semana), no solo hoy:
+    un analista real de order flow razona con catalizadores de DÍAS por
+    delante, no solo el de la mañana (ej.: "IV se mantiene alta, lo cual
+    tiene sentido con el FOMC en tres días" -- ese tipo de frase necesita
+    ver el calendario completo de la semana, no solo hoy). Vacío/None
+    (sin FINNHUB_API_KEY configurada, o sin eventos esta semana) es un
+    estado NORMAL, no un error -- se lo dice así al modelo para que no
+    invente un catalizador que no existe.
+
+    'today_str' (ISO, ej. "2026-09-13"): para precomputar "en N días" por
+    evento EN PYTHON -- nunca se le pide al modelo que reste dos fechas
+    él mismo (mismo motivo que el resto de la aritmética de este prompt,
+    ver REGLAS DURAS DE COHERENCIA DE PRECIOS más abajo: un LLM no resta
+    fechas de forma confiable, las aproxima por patrón de texto)."""
     if not economic_calendar:
-        return "Calendario económico de hoy: sin eventos de impacto medio/alto en EE.UU. (o sin esta fuente configurada)."
+        return "Calendario económico de esta semana: sin eventos relevantes en EE.UU. (o sin esta fuente configurada)."
+
+    today_date = None
+    if today_str:
+        try:
+            today_date = date_cls.fromisoformat(today_str)
+        except ValueError:
+            today_date = None
 
     lines = []
+    last_date = None
     for ev in economic_calendar:
+        date_str = ev.get("date") or ""
+        if date_str != last_date:
+            if date_str == today_str:
+                day_label = f"HOY ({date_str})"
+            elif today_date is not None and date_str:
+                try:
+                    delta = (date_cls.fromisoformat(date_str) - today_date).days
+                    day_label = f"en {delta} día{'s' if delta != 1 else ''} ({date_str})" if delta > 0 else date_str
+                except ValueError:
+                    day_label = date_str
+            else:
+                day_label = date_str or "fecha sin confirmar"
+            lines.append(f"  {day_label}:")
+            last_date = date_str
+
         time_str = ev.get("time") or "hora sin confirmar"
-        impact = "ALTO" if ev.get("impact") == "high" else "medio"
+        impact = _IMPACT_LABELS.get(ev.get("impact"), str(ev.get("impact") or "?"))
         actual = ev.get("actual")
         forecast = ev.get("forecast")
         previous = ev.get("previous")
         detail = f" (real={actual}, esperado={forecast}, anterior={previous})" if actual not in (None, "") else (
             f" (esperado={forecast}, anterior={previous})" if forecast not in (None, "") else ""
         )
-        lines.append(f"  - {time_str} NY -- {ev.get('event')} [impacto {impact}]{detail}")
+        lines.append(f"    - {time_str} NY -- {ev.get('event')} [impacto {impact}]{detail}")
 
     joined = "\n".join(lines)
     return (
-        "Calendario económico de hoy (EE.UU., impacto medio/alto):\n"
+        "Calendario económico de esta semana (EE.UU., los 3 niveles de impacto -- bajo/medio/ALTO):\n"
         f"{joined}\n"
-        "Un evento AÚN NO PUBLICADO (sin 'real' todavía) es un catalizador de riesgo binario -- bajale la convicción a "
-        "cualquier escenario que dependa de que el régimen actual se sostenga hasta después de esa hora, y subí la vara "
-        "de confirmación de order flow alrededor de ese horario. Un evento YA PUBLICADO ('real' presente) que sorprendió "
-        "fuerte contra lo esperado puede invalidar de golpe el contexto de gamma/VIX de antes -- no lo ignores solo "
-        "porque el régimen de gamma no cambió todavía, el precio puede tardar unos minutos en reflejarlo."
+        "Un evento de HOY AÚN NO PUBLICADO (sin 'real' todavía) es un catalizador de riesgo binario -- bajale la "
+        "convicción a cualquier escenario que dependa de que el régimen actual se sostenga hasta después de esa hora. "
+        "Un evento YA PUBLICADO ('real' presente) que sorprendió fuerte contra lo esperado puede invalidar de golpe el "
+        "contexto de gamma/VIX de antes. Un evento de un día FUTURO (no hoy) es un catalizador que puede explicar POR "
+        "QUÉ la IV está elevada o por qué el mercado se comporta cauteloso incluso sin movimiento de precio visible "
+        "todavía -- mencionalo así cuando aplique (ej. \"la IV se mantiene alta, consistente con el <evento> en N "
+        "días\", usando el 'en N días' YA CALCULADO arriba, nunca restando las fechas vos mismo). Impacto bajo es "
+        "ruido menor, casi nunca cambia el análisis por sí solo; impacto medio pesa como contexto; impacto ALTO puede "
+        "invalidar de golpe el régimen de gamma/VIX vigente."
     )
 
 
@@ -260,7 +304,8 @@ def build_system_prompt(
             f"CONTRARIO en {ticker} aunque no haya catalizador visible todavía en el precio de {ticker}."
         )
 
-    economic_calendar_line = format_economic_calendar(economic_calendar)
+    today_str = datetime.now(NY_TZ).date().isoformat()
+    economic_calendar_line = format_economic_calendar(economic_calendar, today_str)
 
     # NDX/VIX (productos de índice exclusivos de CBOE) no traen Open
     # Interest real de Schwab -- para esos se pide a MarketData.app (ver
@@ -310,17 +355,30 @@ def build_system_prompt(
     CÓMO DECIDIR EL FORMATO DE TU RESPUESTA (leer con atención, esto es tan importante como el análisis mismo)
     ================================================================
     - Si el último mensaje del usuario es conversacional (saludo, agradecimiento, una pregunta general sobre cómo funciona algo, una aclaración sobre tu respuesta anterior, charla casual, o cualquier cosa que NO sea un pedido explícito o implícito de análisis/niveles/trade) -- responde de forma NATURAL, breve y cercana, como lo haría un analista humano con criterio propio. Puedes mencionar brevemente el estado del mercado si viene al caso, pero NO fuerces la estructura de 5 secciones ni la tabla de escenarios si no te la están pidiendo. Tienes memoria de los mensajes anteriores de esta conversación (te llegan como parte del historial) --úsala para mantener continuidad real, no trates cada mensaje como aislado.
-    - Si el usuario pide específicamente un BRIEFING DIARIO CORTO (lo vas a reconocer porque el pedido dice explícitamente "briefing corto" o equivalente) -- usa el formato de la sección "ESTILO DE BRIEFING DIARIO (Aleks Rosme)" de más abajo, NUNCA la estructura de 5 secciones ni la tabla. Esto tiene prioridad sobre la regla siguiente.
+    - Si el usuario pide específicamente un BRIEFING DIARIO CORTO (lo vas a reconocer porque el pedido dice explícitamente "briefing corto" o equivalente) -- usa el formato de la sección "ESTILO DE BRIEFING DIARIO" de más abajo, NUNCA la estructura de 5 secciones ni la tabla. Esto tiene prioridad sobre la regla siguiente.
+    - Si el usuario pide específicamente un ANÁLISIS DE CORTO PLAZO/INTERNO (lo vas a reconocer porque el pedido dice explícitamente "corto plazo" o equivalente) -- usa el formato de la sección "ESTILO CORTO PLAZO" de más abajo, NUNCA la estructura de 5 secciones completa ni los niveles extremos del rango. Misma prioridad que la regla anterior.
     - Si el usuario pide un análisis, un trade, una lectura del mercado, "qué hago", niveles, un diagnóstico, o cualquier variante que busque una decisión operable -- ahí SÍ aplica el framework completo (secciones 1-5, los tres setups: Rebote / Ruptura y Retesteo / Ruptura y Retesteo Fallido -> Entrada Contraria, tabla resumen) definido más abajo, con el mismo rigor de siempre.
     - Ante la duda, prioriza ser útil y conversacional antes que imponer un informe extenso que nadie pidió.
 
     ================================================================
-    ESTILO DE BRIEFING DIARIO (Aleks Rosme) -- SOLO cuando el usuario pide explícitamente el briefing corto (ver regla arriba)
+    ESTILO DE BRIEFING DIARIO -- SOLO cuando el usuario pide explícitamente el briefing corto (ver regla arriba)
     ================================================================
-    Esto NO es el informe completo. Es la nota corta que se manda ANTES de la apertura o entre catalizadores, en el tono real de Aleks Rosme: 2 a 4 oraciones cortas por instrumento ({ticker}, VIX, y NDX/SPX si el dato está disponible), sin encabezados de sección, sin checklist de order flow, sin tabla. Mencioná explícitamente: (1) el Pivot Point del día y el próximo obstáculo/pared en cada dirección (usa CW1/PW1 de arriba), (2) el rango en el que está "atrapado" el VIX ahora mismo y por qué (catalizador macro si hay uno cerca -- FOMC, CPI, vencimiento de VIX, datos económicos -- o directamente que no hay ninguno visible), (3) el régimen de gamma actual en una frase, sin explicar el mecanismo en detalle (ya lo hiciste, acá no hace falta). Ejemplos reales de este tono (traducilos al español conceptualmente, no los copies literal, son solo referencia de estructura y longitud):
+    Esto NO es el informe completo. Es la nota corta que se manda ANTES de la apertura o entre catalizadores: 2 a 4 oraciones cortas por instrumento ({ticker}, VIX, y NDX/SPX si el dato está disponible), sin encabezados de sección, sin checklist de order flow, sin tabla. Mencioná explícitamente: (1) el Pivot Point del día y el próximo obstáculo/pared en cada dirección (usa CW1/PW1 de arriba), (2) el rango en el que está "atrapado" el VIX ahora mismo y por qué (catalizador macro si hay uno cerca -- FOMC, CPI, vencimiento de VIX, datos económicos -- o directamente que no hay ninguno visible), (3) el régimen de gamma actual en una frase, sin explicar el mecanismo en detalle (ya lo hiciste, acá no hace falta). Ejemplos reales de este tono (referencia de estructura y longitud, no los copies literal):
       - "715 en QQQ actúa como pivot point, 717 es el obstáculo más grande al alza. A la baja, 711 es el primer objetivo. VIX recuperó la zona 17-16.5 y por ahora queda encerrado en ese rango con 15.5 como objetivo a la baja. La IV sigue alta, lo cual tiene sentido con el FOMC en tres días -- no esperaría un IV crush todavía."
       - "QQQ vuelve al rango 713-717 con 715 como pivot point de hoy. Un retest de 717 sería ideal mientras el net drift siga negativo. Vence VIX hoy, el nivel de 19 anterior quedó descartado -- ahora la expiración del 16/09 está llena de gamma positivo, lo que encierra a VIX entre 17 y 15.50 al menos hasta el CPI. La IV luce elevada porque VIX está intentando romper al alza."
     Cerrá siempre con una frase de precaución/condición si corresponde (ej. "mientras el régimen de gamma no cambie", "si no hay sorpresa en el dato de hoy").
+
+    ================================================================
+    ESTILO CORTO PLAZO -- SOLO cuando el usuario pide explícitamente el análisis de corto plazo (ver regla arriba)
+    ================================================================
+    El trader YA conoce los extremos grandes del rango del día (Rango Semanal/Macro, CW3/PW3) -- este análisis es justo lo contrario a eso: encontrar EL nivel interno más convincente, cerca del precio, para un trade de 5-15 minutos. Reglas estrictas de esta sección:
+    - USÁ SOLO CW1/PW1/Zero Gamma (y Gamma Wall si coincide con CW1 o PW1) como niveles operables. NUNCA CW2/CW3/PW2/PW3 ni el Rango Semanal/Macro como entrada o TP -- si alguno de esos coincide con un nivel compuesto de NDX o un POC/VAH/VAL de sesión, podés mencionarlo como REFUERZO de un nivel interno cercano, nunca como nivel operable en sí mismo.
+    - Formato: SIN tabla, sin encabezados "1./2./3." numerados. Estructura en prosa breve:
+      1. Una frase de contexto (régimen de gamma + VIX, sin repetir el mecanismo que ya explicaste antes).
+      2. Cuál es el nivel interno elegido (CW1, PW1 o Zero Gamma) y por qué es el más convincente AHORA MISMO (dominancia del Net GEX ahí, refuerzo de volumen/nivel compuesto si aplica).
+      3. UN solo setup operable (Rebote / Ruptura y Retesteo / Ruptura y Retesteo Fallido -> Entrada Contraria, mismo nombre exacto que siempre) con entrada, TP e invalidación numéricos, coherentes con las REGLAS DURAS de abajo.
+      4. Qué confirmar en order flow antes de entrar (mismo criterio que el resto del framework).
+    - Mencioná los extremos grandes del día SOLO si hace falta aclarar que quedan fuera de alcance para este trade puntual (ej. "el techo estructural del día está en X, pero para 5-15 min el nivel real a vigilar es Y") -- nunca como parte del setup en sí.
 
     PERFIL DEL TRADER AL QUE ASESORAS (cuando sí corresponda el análisis completo -- esta es SU estrategia real, no una genérica):
     - Opera intradía puro en MNQ Futures: sus trades duran entre 5 y 30 minutos, NUNCA "swing". Sus niveles de referencia (Call/Put Walls, Zero Gamma) están en {ticker} -- factor de conversión: {conversion_ratio:.4f}.
@@ -413,7 +471,22 @@ def build_daily_briefing_user_prompt() -> str:
     texto exacto "briefing corto" es lo que esa sección busca para
     activarse -- no cambiarlo sin actualizar la regla ahí."""
     return (
-        "Dame el briefing corto de hoy, en el estilo real de Aleks Rosme (ver la sección ESTILO DE BRIEFING DIARIO "
-        "de tus instrucciones) -- la nota breve que se manda antes de la apertura, NO el informe completo de 5 "
-        "secciones ni la tabla de escenarios."
+        "Dame el briefing corto de hoy (ver la sección ESTILO DE BRIEFING DIARIO de tus instrucciones) -- la nota "
+        "breve que se manda antes de la apertura, NO el informe completo de 5 secciones ni la tabla de escenarios."
+    )
+
+
+def build_short_term_user_prompt() -> str:
+    """Botón 'Corto Plazo' de Briefings -- pedido explícito del usuario:
+    no quiere los extremos grandes del rango del día (ej. 705/722 en un
+    ejemplo real que dio) como referencia de entrada/TP, solo el soporte/
+    resistencia INTERNO más convincente cerca del spot. Dispara el modo
+    descrito en la sección 'ESTILO CORTO PLAZO' de build_system_prompt --
+    el texto exacto "corto plazo" es lo que esa sección busca para
+    activarse, no cambiarlo sin actualizar la regla ahí."""
+    return (
+        "Dame un análisis de CORTO PLAZO (ver la sección ESTILO CORTO PLAZO de tus instrucciones) -- el soporte o "
+        "resistencia INTERNO más convincente cerca del precio actual, nunca los extremos grandes del rango del día "
+        "(Rango Semanal/Macro, CW3/PW3). Quiero UN setup operable de 5-15 minutos sobre ese nivel cercano, no el "
+        "informe completo de 5 secciones."
     )

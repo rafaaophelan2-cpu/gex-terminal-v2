@@ -130,33 +130,15 @@ def test_economic_calendar_requires_auth():
     assert resp.status_code == 401
 
 
-def test_economic_calendar_forwards_days_ahead_and_returns_events(authed_client, monkeypatch):
-    seen = {}
-
-    async def _fake_fetch_economic_calendar(days_ahead=0):
-        seen["days_ahead"] = days_ahead
+def test_economic_calendar_returns_events_from_finnhub_client(authed_client, monkeypatch):
+    async def _fake_fetch_economic_calendar():
         return [{"date": "2026-09-14", "time": "08:30", "event": "CPI", "impact": "high", "actual": None, "forecast": "0.3", "previous": "0.2"}]
-
-    monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_fetch_economic_calendar)
-
-    resp = authed_client.get("/market/economic-calendar?days_ahead=2")
-    assert resp.status_code == 200
-    assert seen["days_ahead"] == 2
-    assert resp.json()["events"][0]["event"] == "CPI"
-
-
-def test_economic_calendar_defaults_to_one_day_ahead(authed_client, monkeypatch):
-    seen = {}
-
-    async def _fake_fetch_economic_calendar(days_ahead=0):
-        seen["days_ahead"] = days_ahead
-        return []
 
     monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_fetch_economic_calendar)
 
     resp = authed_client.get("/market/economic-calendar")
     assert resp.status_code == 200
-    assert seen["days_ahead"] == 1
+    assert resp.json()["events"][0]["event"] == "CPI"
 
 
 def test_news_requires_auth():
@@ -417,6 +399,29 @@ def test_ai_diagnosis_daily_briefing_uses_short_user_prompt(authed_client, monke
     resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ", "tipo_analisis": "Análisis para el día"})
     assert resp.status_code == 200
     assert resp.json()["text"] == "briefing corto de groq"
+
+
+def test_ai_diagnosis_short_term_uses_focused_user_prompt(authed_client, monkeypatch):
+    # Botón "Corto Plazo" de Briefings -- debe armar el user_prompt de
+    # build_short_term_user_prompt (foco en niveles internos), no el
+    # informe completo ni el briefing diario.
+    monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
+
+    async def _fake_query_groq(system_prompt, user_prompt):
+        assert "CORTO PLAZO" in user_prompt
+        assert "extremos grandes del rango del día" in user_prompt
+        assert "informe cuantitativo completo" not in user_prompt
+        assert "briefing corto de hoy" not in user_prompt
+        return "análisis corto plazo de groq"
+
+    monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
+
+    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ", "tipo_analisis": "Corto Plazo"})
+    assert resp.status_code == 200
+    assert resp.json()["text"] == "análisis corto plazo de groq"
 
 
 def test_ai_diagnosis_manual_conversion_ratio_overrides_default(authed_client, monkeypatch):

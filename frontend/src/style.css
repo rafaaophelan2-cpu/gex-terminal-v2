@@ -2330,6 +2330,29 @@ main {
   color: #d1d5db;
 }
 
+/* Símbolo de color por nivel de impacto -- pedido explícito: amarillo
+   (leve), naranja (considerable), rojo (super grave). */
+.news-impact-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.news-impact-dot.news-impact-low {
+  background: #eab308;
+}
+
+.news-impact-dot.news-impact-medium {
+  background: #f59e0b;
+}
+
+.news-impact-dot.news-impact-high {
+  background: #ef4444;
+}
+
 .news-calendar-row.upcoming .news-calendar-row-event {
   color: #f0f6fc;
   font-weight: 600;

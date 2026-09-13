@@ -75,6 +75,7 @@ const backgammaCaption = document.getElementById('backgamma-caption')
 const backgammaSpotChartEl = document.getElementById('backgamma-spot-chart')
 const backgammaStrikeChartEl = document.getElementById('backgamma-strike-chart')
 const briefingDailyBtn = document.getElementById('briefing-daily-btn')
+const briefingShortTermBtn = document.getElementById('briefing-short-term-btn')
 const briefingScenariosBtn = document.getElementById('briefing-scenarios-btn')
 const aiStatusEl = document.getElementById('ai-status')
 const aiResultEl = document.getElementById('ai-diagnosis-result')
@@ -416,7 +417,7 @@ function stopTvStringRefresh() {
 async function loadNews() {
   try {
     const [events, articles] = await Promise.all([
-      fetchEconomicCalendar(1),
+      fetchEconomicCalendar(),
       fetchNews(),
     ])
     renderNewsCalendar(newsCalendarEl, events)
@@ -1677,11 +1678,18 @@ function marcarDireccionEnTabla(container) {
   })
 }
 
+const BRIEFING_STATUS_TEXT = {
+  'Análisis para el día': 'Generando briefing…',
+  'Corto Plazo': 'Buscando el nivel interno más convincente…',
+  'Posibles Escenarios': 'Generando escenarios…',
+}
+
 async function runBriefing(tipoAnalisis) {
   const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
   briefingDailyBtn.disabled = true
+  briefingShortTermBtn.disabled = true
   briefingScenariosBtn.disabled = true
-  aiStatusEl.textContent = tipoAnalisis === 'Análisis para el día' ? 'Generando briefing…' : 'Generando escenarios…'
+  aiStatusEl.textContent = BRIEFING_STATUS_TEXT[tipoAnalisis] || 'Generando…'
   aiStatusEl.className = 'ai-status'
 
   try {
@@ -1700,11 +1708,13 @@ async function runBriefing(tipoAnalisis) {
     aiStatusEl.className = 'ai-status error'
   } finally {
     briefingDailyBtn.disabled = false
+    briefingShortTermBtn.disabled = false
     briefingScenariosBtn.disabled = false
   }
 }
 
 briefingDailyBtn.addEventListener('click', () => runBriefing('Análisis para el día'))
+briefingShortTermBtn.addEventListener('click', () => runBriefing('Corto Plazo'))
 briefingScenariosBtn.addEventListener('click', () => runBriefing('Posibles Escenarios'))
 
 let sessionExpiredHandled = false

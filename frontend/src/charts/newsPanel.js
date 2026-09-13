@@ -39,11 +39,21 @@ function formatCalendarValues(ev) {
   return parts.join(' · ')
 }
 
+// Símbolo de color por nivel de impacto -- pedido explícito: amarillo
+// (leve), naranja (considerable), rojo (super grave). 'IMPACT_LABELS' es
+// el texto accesible (title="...") del punto de color.
+const IMPACT_LABELS = { low: 'Impacto leve', medium: 'Impacto considerable', high: 'Impacto alto' }
+
+function impactDot(impact) {
+  const cls = IMPACT_LABELS[impact] ? impact : 'low'
+  return `<span class="news-impact-dot news-impact-${cls}" title="${escapeHtml(IMPACT_LABELS[impact] || 'Impacto')}"></span>`
+}
+
 /** 'events': lista ya ordenada por fecha/hora (ver GET /market/economic-calendar,
  * domain -> integrations/finnhub_client.py::fetch_economic_calendar). */
 export function renderNewsCalendar(container, events) {
   if (!events || events.length === 0) {
-    container.innerHTML = '<p class="news-placeholder">Sin eventos económicos de impacto medio/alto en este rango.</p>'
+    container.innerHTML = '<p class="news-placeholder">Sin eventos económicos relevantes en este rango.</p>'
     return
   }
 
@@ -75,7 +85,7 @@ export function renderNewsCalendar(container, events) {
       <div class="news-calendar-row${i === upcomingIndex ? ' upcoming' : ''}">
         <span class="news-calendar-row-time">${escapeHtml(ev.time || '--:--')}</span>
         <span class="news-calendar-row-body">
-          <span class="news-calendar-row-event">${escapeHtml(ev.event)}</span>
+          <span class="news-calendar-row-event">${impactDot(ev.impact)}${escapeHtml(ev.event)}</span>
           ${values ? `<span class="news-calendar-row-values">${values}</span>` : ''}
         </span>
       </div>

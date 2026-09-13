@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
-from app.domain.ai_prompt import build_daily_briefing_user_prompt, build_default_user_prompt, build_system_prompt, classify_vix
+from app.domain.ai_prompt import build_daily_briefing_user_prompt, build_default_user_prompt, build_short_term_user_prompt, build_system_prompt, classify_vix
 from app.domain.drift import compute_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
 from app.domain.heatmap import (
@@ -143,12 +143,13 @@ async def get_vix(_username: str = Depends(require_auth)):
 
 
 @router.get("/economic-calendar")
-async def get_economic_calendar(days_ahead: int = 1, _username: str = Depends(require_auth)):
-    """Calendario económico de EE.UU. (CPI/FOMC/NFP, impacto medio/alto)
-    para la pestaña News -- ver integrations/finnhub_client.py. 1 día
-    adelante por defecto (hoy + mañana, igual que la captura de
-    referencia del usuario); [] si no hay FINNHUB_API_KEY configurada."""
-    events = await fetch_economic_calendar(days_ahead=days_ahead)
+async def get_economic_calendar(_username: str = Depends(require_auth)):
+    """Calendario económico de EE.UU. (CPI/FOMC/NFP, los 3 niveles de
+    impacto) de la semana relevante -- ver
+    integrations/finnhub_client.py::fetch_economic_calendar (semana
+    actual en día hábil, semana siguiente en fin de semana); []
+    si no hay FINNHUB_API_KEY configurada."""
+    events = await fetch_economic_calendar()
     return {"events": events}
 
 
@@ -298,16 +299,18 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         vix_gamma_levels=ctx.get("vix_gamma_levels"),
         economic_calendar=ctx.get("economic_calendar"),
     )
-    # Briefings tiene 2 botones: "Análisis para el día" dispara el modo
-    # corto/en prosa (ver ESTILO DE BRIEFING DIARIO en ai_prompt.py);
-    # cualquier otro valor (incluido "Posibles Escenarios", o un
+    # Briefings tiene 3 botones: "Análisis para el día" dispara el modo
+    # corto/en prosa (ver ESTILO DE BRIEFING DIARIO en ai_prompt.py),
+    # "Corto Plazo" dispara el foco en niveles internos (ver ESTILO CORTO
+    # PLAZO); cualquier otro valor (incluido "Posibles Escenarios", o un
     # tipo_analisis viejo cacheado en el cliente de alguien) cae al
     # informe completo de siempre -- degrada sin romper.
-    user_prompt = (
-        build_daily_briefing_user_prompt()
-        if body.tipo_analisis == "Análisis para el día"
-        else build_default_user_prompt(body.tipo_analisis)
-    )
+    if body.tipo_analisis == "Análisis para el día":
+        user_prompt = build_daily_briefing_user_prompt()
+    elif body.tipo_analisis == "Corto Plazo":
+        user_prompt = build_short_term_user_prompt()
+    else:
+        user_prompt = build_default_user_prompt(body.tipo_analisis)
 
     ai_text = await query_groq(system_prompt, user_prompt)
     if ai_text:

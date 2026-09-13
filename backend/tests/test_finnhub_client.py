@@ -1,10 +1,24 @@
 import asyncio
+from datetime import date, datetime, tzinfo
 
 import httpx
 import pytest
 
 from app.integrations import finnhub_client
 from app.integrations.finnhub_client import fetch_economic_calendar, fetch_market_news
+
+
+class _FixedDatetime(datetime):
+    _fixed: "datetime | None" = None
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None):
+        return cls._fixed if tz is None else cls._fixed.astimezone(tz)
+
+
+def _install_fixed_now(monkeypatch, fixed: datetime):
+    _FixedDatetime._fixed = fixed
+    monkeypatch.setattr(finnhub_client, "datetime", _FixedDatetime)
 
 
 class _FakeResponse:
@@ -68,16 +82,43 @@ def test_fetch_economic_calendar_returns_empty_on_network_failure(monkeypatch):
     assert result == []
 
 
-def test_fetch_economic_calendar_filters_to_us_medium_high_impact_today(monkeypatch):
-    monkeypatch.setattr(finnhub_client, "get_settings", lambda: _FakeSettings())
+def test_relevant_week_range_weekday_returns_current_week():
+    # Miércoles 2026-09-09 -> semana actual: lunes 07 a domingo 13.
+    monday, sunday = finnhub_client._relevant_week_range(date(2026, 9, 9))
+    assert monday == date(2026, 9, 7)
+    assert sunday == date(2026, 9, 13)
 
-    today_str = finnhub_client.datetime.now(finnhub_client.NY_TZ).date().isoformat()
+
+def test_relevant_week_range_friday_still_returns_current_week():
+    monday, sunday = finnhub_client._relevant_week_range(date(2026, 9, 11))
+    assert monday == date(2026, 9, 7)
+    assert sunday == date(2026, 9, 13)
+
+
+def test_relevant_week_range_saturday_rolls_to_next_week():
+    # Sábado -- pedido explícito del usuario: no tiene sentido mostrar una
+    # semana que ya terminó, se muestra la SIGUIENTE.
+    monday, sunday = finnhub_client._relevant_week_range(date(2026, 9, 12))
+    assert monday == date(2026, 9, 14)
+    assert sunday == date(2026, 9, 20)
+
+
+def test_relevant_week_range_sunday_rolls_to_next_week():
+    monday, sunday = finnhub_client._relevant_week_range(date(2026, 9, 13))
+    assert monday == date(2026, 9, 14)
+    assert sunday == date(2026, 9, 20)
+
+
+def test_fetch_economic_calendar_includes_all_three_impact_levels_and_excludes_other_countries(monkeypatch):
+    monkeypatch.setattr(finnhub_client, "get_settings", lambda: _FakeSettings())
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=finnhub_client.NY_TZ))  # miércoles
+
     payload = {
         "economicCalendar": [
-            {"country": "US", "impact": "high", "event": "CPI m/m", "time": f"{today_str} 08:30:00", "actual": None, "estimate": "0.3", "prev": "0.2"},
-            {"country": "US", "impact": "low", "event": "Bond Auction", "time": f"{today_str} 11:00:00", "actual": None, "estimate": None, "prev": None},
-            {"country": "DE", "impact": "high", "event": "German ZEW", "time": f"{today_str} 05:00:00", "actual": None, "estimate": None, "prev": None},
-            {"country": "US", "impact": "medium", "event": "ISM Services PMI", "time": f"{today_str} 10:00:00", "actual": "54.2", "estimate": "54.1", "prev": "54.0"},
+            {"country": "US", "impact": "high", "event": "CPI m/m", "time": "2026-09-09 08:30:00", "actual": None, "estimate": "0.3", "prev": "0.2"},
+            {"country": "US", "impact": "low", "event": "Bond Auction", "time": "2026-09-09 11:00:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "DE", "impact": "high", "event": "German ZEW", "time": "2026-09-09 05:00:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "US", "impact": "medium", "event": "ISM Services PMI", "time": "2026-09-09 10:00:00", "actual": "54.2", "estimate": "54.1", "prev": "54.0"},
         ],
     }
     monkeypatch.setattr(
@@ -87,24 +128,26 @@ def test_fetch_economic_calendar_filters_to_us_medium_high_impact_today(monkeypa
 
     result = asyncio.run(fetch_economic_calendar())
 
-    assert [e["event"] for e in result] == ["CPI m/m", "ISM Services PMI"]  # ordenado por hora, sin low impact ni DE
+    # 'low' AHORA se incluye (pedido explícito: 3 símbolos de color en vez
+    # de descartarlo), 'DE' (no US) sigue afuera. Ordenado por hora.
+    assert [e["event"] for e in result] == ["CPI m/m", "ISM Services PMI", "Bond Auction"]
     assert result[0] == {
-        "date": today_str, "time": "08:30", "event": "CPI m/m", "impact": "high",
+        "date": "2026-09-09", "time": "08:30", "event": "CPI m/m", "impact": "high",
         "actual": None, "forecast": "0.3", "previous": "0.2",
     }
+    assert result[2]["impact"] == "low"
 
 
-def test_fetch_economic_calendar_days_ahead_includes_future_days(monkeypatch):
+def test_fetch_economic_calendar_covers_the_whole_week_monday_to_sunday(monkeypatch):
     monkeypatch.setattr(finnhub_client, "get_settings", lambda: _FakeSettings())
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=finnhub_client.NY_TZ))  # miércoles -> semana 07-13
 
-    today = finnhub_client.datetime.now(finnhub_client.NY_TZ).date()
-    tomorrow = today + finnhub_client.timedelta(days=1)
-    after_tomorrow = today + finnhub_client.timedelta(days=2)
     payload = {
         "economicCalendar": [
-            {"country": "US", "impact": "high", "event": "Today Event", "time": f"{today.isoformat()} 08:30:00", "actual": None, "estimate": None, "prev": None},
-            {"country": "US", "impact": "high", "event": "Tomorrow Event", "time": f"{tomorrow.isoformat()} 07:30:00", "actual": None, "estimate": None, "prev": None},
-            {"country": "US", "impact": "high", "event": "Day After Event (fuera de rango)", "time": f"{after_tomorrow.isoformat()} 07:30:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "US", "impact": "high", "event": "Monday Event (ya paso, sigue incluido)", "time": "2026-09-07 08:30:00", "actual": "1.0", "estimate": "1.0", "prev": "0.9"},
+            {"country": "US", "impact": "high", "event": "Sunday Event (borde final de la semana)", "time": "2026-09-13 08:30:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "US", "impact": "high", "event": "Next Monday Event (fuera de rango)", "time": "2026-09-14 08:30:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "US", "impact": "high", "event": "Prev Sunday Event (fuera de rango)", "time": "2026-09-06 08:30:00", "actual": None, "estimate": None, "prev": None},
         ],
     }
     monkeypatch.setattr(
@@ -112,22 +155,22 @@ def test_fetch_economic_calendar_days_ahead_includes_future_days(monkeypatch):
         lambda *a, **kw: _FakeAsyncClient(response=_FakeResponse(200, payload)),
     )
 
-    result = asyncio.run(fetch_economic_calendar(days_ahead=1))
+    result = asyncio.run(fetch_economic_calendar())
 
-    assert [e["event"] for e in result] == ["Today Event", "Tomorrow Event"]
-    assert result[1]["date"] == tomorrow.isoformat()
+    assert [e["event"] for e in result] == [
+        "Monday Event (ya paso, sigue incluido)",
+        "Sunday Event (borde final de la semana)",
+    ]
 
 
-def test_fetch_economic_calendar_days_ahead_zero_matches_default(monkeypatch):
-    # días_ahead=0 (default, usado por el prompt de la IA) no debe traer
-    # ningún evento de mañana, ni con days_ahead explícito en 0.
+def test_fetch_economic_calendar_on_weekend_shows_next_week(monkeypatch):
     monkeypatch.setattr(finnhub_client, "get_settings", lambda: _FakeSettings())
-    today = finnhub_client.datetime.now(finnhub_client.NY_TZ).date()
-    tomorrow = today + finnhub_client.timedelta(days=1)
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 12, 10, 0, tzinfo=finnhub_client.NY_TZ))  # sábado -> semana 14-20
+
     payload = {
         "economicCalendar": [
-            {"country": "US", "impact": "high", "event": "Today Event", "time": f"{today.isoformat()} 08:30:00", "actual": None, "estimate": None, "prev": None},
-            {"country": "US", "impact": "high", "event": "Tomorrow Event", "time": f"{tomorrow.isoformat()} 07:30:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "US", "impact": "high", "event": "This Week Event (fuera de rango, ya paso)", "time": "2026-09-09 08:30:00", "actual": None, "estimate": None, "prev": None},
+            {"country": "US", "impact": "high", "event": "Next Week Event", "time": "2026-09-16 08:30:00", "actual": None, "estimate": None, "prev": None},
         ],
     }
     monkeypatch.setattr(
@@ -135,9 +178,9 @@ def test_fetch_economic_calendar_days_ahead_zero_matches_default(monkeypatch):
         lambda *a, **kw: _FakeAsyncClient(response=_FakeResponse(200, payload)),
     )
 
-    result = asyncio.run(fetch_economic_calendar(days_ahead=0))
+    result = asyncio.run(fetch_economic_calendar())
 
-    assert [e["event"] for e in result] == ["Today Event"]
+    assert [e["event"] for e in result] == ["Next Week Event"]
 
 
 def test_fetch_economic_calendar_caches_within_the_same_day(monkeypatch):
