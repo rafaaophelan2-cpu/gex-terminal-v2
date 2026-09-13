@@ -1,0 +1,73 @@
+import asyncio
+import logging
+import time
+
+import httpx
+
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+BASE_URL = "https://api.marketdata.app/v1/options/chain"
+
+# El Open Interest real no varia intradia -- se actualiza UNA vez por
+# noche via OCC (Options Clearing Corporation), no en cada trade. Por eso
+# no hace falta pedirlo en cada tick de 2s como el spot: refrescarlo cada
+# 15 min ya sobra de margen, y de paso deja el consumo MUY por debajo del
+# limite de 100 requests/dia del plan Free Forever de MarketData.app (2
+# simbolos * ~26 refrescos en una sesion de mercado completa).
+REFRESH_INTERVAL_SECONDS = 900
+
+_cache: dict[str, tuple[float, dict[tuple[float, str], int]]] = {}
+_locks: dict[str, asyncio.Lock] = {}
+
+
+async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
+    """Open Interest real por strike para la expiracion mas proxima de
+    `symbol`, como {(strike, 'call'|'put'): open_interest} -- pieza que le
+    faltaba a Schwab para NDX/VIX (productos de indice exclusivos de CBOE,
+    ver oi_fallback.py). Se fusiona en market_feed.py con el spot EN VIVO
+    de Schwab para calcular gamma exposure real, no aproximado por
+    volumen. None si no hay API key configurada o el fetch fallo sin
+    cache previo para devolver -- el caller debe caer al fallback de
+    volumen en ese caso."""
+    settings = get_settings()
+    if not settings.marketdata_api_key:
+        return None
+
+    lock = _locks.setdefault(symbol, asyncio.Lock())
+    async with lock:
+        cached = _cache.get(symbol)
+        if cached is not None and (time.time() - cached[0]) < REFRESH_INTERVAL_SECONDS:
+            return cached[1]
+
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                resp = await client.get(
+                    f"{BASE_URL}/{symbol}/",
+                    params={"token": settings.marketdata_api_key, "dte": 0},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            logger.exception("fetch_oi_map(%s) fallo -- se mantiene el cache anterior si hay.", symbol)
+            return cached[1] if cached is not None else None
+
+        if not isinstance(data, dict) or data.get("s") != "ok":
+            logger.warning("fetch_oi_map(%s) respuesta no-ok de MarketData.app: %s", symbol, data)
+            return cached[1] if cached is not None else None
+
+        strikes = data.get("strike") or []
+        sides = data.get("side") or []
+        open_interests = data.get("openInterest") or []
+        if not strikes or not sides or not open_interests:
+            return cached[1] if cached is not None else None
+
+        oi_map: dict[tuple[float, str], int] = {}
+        for strike, side, oi in zip(strikes, sides, open_interests):
+            key = (float(strike), side)
+            oi_map[key] = oi_map.get(key, 0) + int(oi or 0)
+
+        _cache[symbol] = (time.time(), oi_map)
+        logger.info("fetch_oi_map(%s): %d strikes actualizados desde MarketData.app.", symbol, len(oi_map))
+        return oi_map

@@ -3,8 +3,10 @@ import logging
 from app.domain.compounded_levels import CompoundedLevel, find_compounded_levels
 from app.domain.gex_math import compute_call_put_walls, compute_zero_gamma, recalculate_gex_for_spot
 from app.domain.metrics import get_nearest_dte_subset
+from app.domain.oi_fallback import merge_external_oi
 from app.domain.parsing import parse_schwab_chain
 from app.domain.tradingview_string import compute_dominant_gamma_wall
+from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_option_chain
 from app.services.market_feed import DEFAULT_IV, DEFAULT_T_EXP
 
@@ -33,6 +35,14 @@ async def fetch_ndx_compounded_levels(primary_symbol: str, primary_spot: float, 
         ndx_spot = float(chain.get("underlyingPrice") or 0.0) if isinstance(chain, dict) else 0.0
         if df.empty or ndx_spot <= 0:
             return None
+
+        # Schwab no da OI real para NDX (ver oi_fallback.py) -- se fusiona
+        # el mismo OI real de MarketData.app que usa el SymbolFeed de NDX,
+        # si no el cruce compara contra una cadena con gamma exposure
+        # vacía y nunca encuentra coincidencias.
+        oi_map = await fetch_oi_map("NDX")
+        if oi_map:
+            df = merge_external_oi(df, oi_map)
 
         df = recalculate_gex_for_spot(df, spot_t=ndx_spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
         df_nearest = get_nearest_dte_subset(df)

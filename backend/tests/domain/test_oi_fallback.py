@@ -1,6 +1,6 @@
 import pandas as pd
 
-from app.domain.oi_fallback import apply_volume_fallback_if_no_oi
+from app.domain.oi_fallback import apply_volume_fallback_if_no_oi, merge_external_oi
 
 
 def test_keeps_real_oi_when_present():
@@ -52,3 +52,40 @@ def test_does_not_mutate_input_df():
     assert used_fallback is True
     assert df["openInterest_c"].tolist() == [0]  # original intacto
     assert out["openInterest_c"].tolist() == [3]
+
+
+def test_merge_external_oi_overwrites_by_strike():
+    df = pd.DataFrame([
+        {"strike": 25.0, "openInterest_c": 0, "openInterest_p": 0},
+        {"strike": 26.0, "openInterest_c": 0, "openInterest_p": 0},
+    ])
+    oi_map = {(25.0, "call"): 3952, (25.0, "put"): 10, (26.0, "put"): 5}
+    out = merge_external_oi(df, oi_map)
+    assert out["openInterest_c"].tolist() == [3952, 0]
+    assert out["openInterest_p"].tolist() == [10, 5]
+
+
+def test_merge_external_oi_missing_strike_defaults_to_zero():
+    df = pd.DataFrame([{"strike": 100.0, "openInterest_c": 0, "openInterest_p": 0}])
+    out = merge_external_oi(df, {(200.0, "call"): 50})
+    assert out["openInterest_c"].tolist() == [0]
+    assert out["openInterest_p"].tolist() == [0]
+
+
+def test_merge_external_oi_empty_map_passthrough():
+    df = pd.DataFrame([{"strike": 100.0, "openInterest_c": 7, "openInterest_p": 3}])
+    out = merge_external_oi(df, {})
+    assert out["openInterest_c"].tolist() == [7]
+    assert out["openInterest_p"].tolist() == [3]
+
+
+def test_merge_external_oi_empty_df_passthrough():
+    out = merge_external_oi(pd.DataFrame(), {(25.0, "call"): 100})
+    assert out.empty
+
+
+def test_merge_external_oi_does_not_mutate_input_df():
+    df = pd.DataFrame([{"strike": 25.0, "openInterest_c": 0, "openInterest_p": 0}])
+    out = merge_external_oi(df, {(25.0, "call"): 3952})
+    assert df["openInterest_c"].tolist() == [0]  # original intacto
+    assert out["openInterest_c"].tolist() == [3952]

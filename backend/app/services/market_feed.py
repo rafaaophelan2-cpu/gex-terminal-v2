@@ -7,8 +7,9 @@ import pandas as pd
 from app.domain.gamma_price_profile import compute_gamma_price_profile
 from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
-from app.domain.oi_fallback import apply_volume_fallback_if_no_oi
+from app.domain.oi_fallback import apply_volume_fallback_if_no_oi, merge_external_oi
 from app.domain.signals import compute_signals, compute_squeeze_screener
+from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_option_chain
 from app.domain.parsing import parse_schwab_chain
 
@@ -43,6 +44,13 @@ DEEP_CHAIN_INTERVAL_SECONDS = 45
 # "limpio" (sin "$") en todos lados -- este mapeo es la ÚNICA frontera
 # donde se traduce, justo antes de llamarlo a Schwab.
 INDEX_SYMBOLS = {"NDX", "SPX", "VIX"}
+
+# Subconjunto de INDEX_SYMBOLS con fuente de Open Interest real disponible
+# via MarketData.app (ver integrations/marketdata_client.py) -- SPX queda
+# afuera hasta confirmar en vivo que ese simbolo tambien responde ahi, no
+# se probo todavia. Para estos se fusiona OI real + spot en vivo de
+# Schwab; el resto sigue con el fallback de volumen (oi_fallback.py).
+MARKETDATA_OI_SYMBOLS = {"NDX", "VIX"}
 
 
 def _schwab_query_symbol(display_symbol: str) -> str:
@@ -156,10 +164,18 @@ class SymbolFeed:
         spot = float(chain.get('underlyingPrice') or 0.0) if isinstance(chain, dict) else 0.0
         if df.empty or spot <= 0:
             return
-        # Mismo fallback de OI->volumen que _tick_once (ver comentario ahí
-        # abajo) -- sin esto, GRID/Gamma Heatmap/3D SURFACE quedan igual
+        # Mismo criterio que _tick_once (ver comentario ahí abajo): OI real
+        # de MarketData.app si el símbolo lo soporta, si no el fallback de
+        # volumen -- sin esto, GRID/Gamma Heatmap/3D SURFACE quedan igual
         # de vacíos que GEX INFO para NDX/SPX/VIX.
-        df, _ = apply_volume_fallback_if_no_oi(df)
+        if self.symbol in MARKETDATA_OI_SYMBOLS:
+            oi_map = await fetch_oi_map(self.symbol)
+            if oi_map:
+                df = merge_external_oi(df, oi_map)
+            else:
+                df, _ = apply_volume_fallback_if_no_oi(df)
+        else:
+            df, _ = apply_volume_fallback_if_no_oi(df)
         # Un solo recalculate_gex_for_spot alcanza -- GRID/Heatmap/3D
         # SURFACE solo necesitan net_gex/call_gex/put_gex por strike, no
         # las Griegas completas (eso sigue siendo exclusivo de self.df).
@@ -179,10 +195,24 @@ class SymbolFeed:
         # Open Interest real de Schwab -- confirmado en vivo, 0 de
         # cientos de contratos con OI>0, mismo instante en que QQQ/SPY sí
         # lo tenían. Sin esto, gamma * OI da cero en TODOS los strikes:
-        # GEX INFO se veía completamente vacío para esos símbolos. Se
-        # sustituye por volumen del día como aproximación (no es lo mismo
-        # que posicionamiento real, se marca explícitamente el flag).
-        df, self.oi_is_volume_proxy = apply_volume_fallback_if_no_oi(df)
+        # GEX INFO se veía completamente vacío para esos símbolos.
+        # Para NDX/VIX se fusiona el OI REAL de MarketData.app (gratis,
+        # sin tarjeta, sin KYC de USA -- ver integrations/marketdata_client.py)
+        # con la estructura de la cadena + spot EN VIVO de Schwab: el OI
+        # no necesita ser en vivo (se actualiza una sola vez por noche vía
+        # OCC), así que fusionarlo cada 15 min con el spot que sí se
+        # actualiza cada 2s da un GEX tan real como el de QQQ/SPY. Si esa
+        # fuente falla (rate limit, caída, símbolo sin key configurada) se
+        # cae al viejo fallback de volumen del día como aproximación.
+        if self.symbol in MARKETDATA_OI_SYMBOLS:
+            oi_map = await fetch_oi_map(self.symbol)
+            if oi_map:
+                df = merge_external_oi(df, oi_map)
+                self.oi_is_volume_proxy = False
+            else:
+                df, self.oi_is_volume_proxy = apply_volume_fallback_if_no_oi(df)
+        else:
+            df, self.oi_is_volume_proxy = apply_volume_fallback_if_no_oi(df)
 
         df = recalculate_gex_for_spot(df, spot_t=spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
         df = compute_greeks_exposures(df, spot_price=spot, t_exp=DEFAULT_T_EXP, atm_iv=DEFAULT_IV)

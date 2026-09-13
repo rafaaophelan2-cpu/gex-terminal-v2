@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # IA (solo Groq; Gemini no se usa)
     groq_api_key: str = ""
 
+    # MarketData.app -- fuente de Open Interest REAL para NDX/VIX (Schwab
+    # no lo tiene para indices, ver domain/oi_fallback.py). Free tier sin
+    # tarjeta ni KYC de USA -- ver integrations/marketdata_client.py.
+    marketdata_api_key: str = ""
+
     # Auth -- 720 min (12h) cubre una sesión de mercado completa sin
     # desloguear al usuario a mitad de uso. Antes eran 20 min sin ningún
     # refresh silencioso: cualquier request después de esos 20 min (ej.

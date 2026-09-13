@@ -34,3 +34,18 @@ def apply_volume_fallback_if_no_oi(df: pd.DataFrame) -> tuple[pd.DataFrame, bool
     df_out['openInterest_c'] = df_out['volume_c']
     df_out['openInterest_p'] = df_out['volume_p']
     return df_out, True
+
+
+def merge_external_oi(df: pd.DataFrame, oi_map: dict[tuple[float, str], int]) -> pd.DataFrame:
+    """Pisa openInterest_c/openInterest_p con Open Interest real de una
+    fuente externa (MarketData.app -- ver integrations/marketdata_client.py),
+    matcheando por strike. La estructura de la cadena (strikes, griegas,
+    IV) sigue viniendo de Schwab en vivo para NDX/VIX (que trae OI=0, ver
+    apply_volume_fallback_if_no_oi arriba); acá se fusiona solo el OI,
+    strike a strike, con la fuente que sí lo tiene real."""
+    if df.empty or not oi_map:
+        return df
+    df_out = df.copy()
+    df_out['openInterest_c'] = df_out['strike'].map(lambda s: oi_map.get((float(s), 'call'), 0))
+    df_out['openInterest_p'] = df_out['strike'].map(lambda s: oi_map.get((float(s), 'put'), 0))
+    return df_out
