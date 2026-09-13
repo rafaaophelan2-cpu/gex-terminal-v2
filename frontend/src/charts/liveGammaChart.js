@@ -187,4 +187,10 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
   }
 
   Plotly.react(el, traces, layout, { responsive: true, displaylogo: false, scrollZoom: true })
+  // Plotly.react() reusa el ancho ya cacheado en el chart en vez de
+  // volver a medir el contenedor (confirmado en vivo: tras un cambio de
+  // ancho por split-mode, el redibujado completo de arriba seguía dejando
+  // el SVG con el ancho VIEJO) -- un resize() explícito justo después,
+  // sobre el chart recién redibujado, si fuerza el re-medido real.
+  Plotly.Plots.resize(el)?.catch(() => {})
 }

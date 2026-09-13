@@ -211,6 +211,13 @@ body {
 .icon-rail-brand:hover {
   background: rgba(255, 255, 255, 0.06);
   transform: scale(1.05);
+  /* El transform de acá arriba crea un contexto de apilamiento nuevo
+     mientras el mouse está encima -- sin esto, el z-index:60 del tooltip
+     (ver ::after más abajo) queda atrapado DENTRO de ese contexto local,
+     y el botón entero (ya con contexto propio) vuelve a competir contra
+     <main> (donde vive el nuevo dropdown de Symbol) con z-index:auto,
+     así que <main> le ganaba por venir después en el DOM. */
+  z-index: 65;
 }
 
 .icon-rail-brand:active {

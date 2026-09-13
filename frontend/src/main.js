@@ -541,12 +541,24 @@ splitCloseBtn.addEventListener('click', disableSplitMode)
 function syncTabLifecycle() {
   if (isTabVisible('net-drift')) {
     if (!driftRefreshTimer) startDriftRefresh()
+    // NET DRIFT usa Lightweight Charts (no Plotly) con su propio
+    // ResizeObserver ya escuchando el contenedor (ver netDriftChart.js)
+    // -- se redimensiona solo con cualquier cambio de ancho, split-mode
+    // incluido, sin necesitar un redibujado forzado desde acá.
   } else {
     stopDriftRefresh()
   }
 
   if (isTabVisible('live-gamma')) {
     if (!liveGammaRefreshTimer) startLiveGammaRefresh()
+    // Este es el caso que reportó el usuario: LIVE GAMMA se quedaba con
+    // el ancho angosto de split-mode después de cerrar la vista dividida.
+    // Plotly.react() por sí solo reusa el ancho ya cacheado del chart en
+    // vez de volver a medir el contenedor -- volver a pedir los datos y
+    // renderizar (lo que loadLiveGamma ya hace, y que a su vez llama a un
+    // resize() explícito después del react(), ver renderLiveGammaChart)
+    // es lo que de verdad recalcula el layout bien.
+    else loadLiveGamma()
   } else {
     stopLiveGammaRefresh()
   }
