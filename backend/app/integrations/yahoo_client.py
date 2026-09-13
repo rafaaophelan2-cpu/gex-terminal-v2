@@ -41,13 +41,19 @@ async def fetch_yahoo_option_chain_raw(symbol: str) -> dict | None:
                 page = await browser.new_page()
                 page.on("response", _on_response)
                 await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                await page.wait_for_timeout(4000)
+                await page.wait_for_timeout(12000)
             finally:
                 await browser.close()
-    except Exception:
+    except Exception as exc:
+        # PRUEBA: print() además de logger -- el logger de este módulo no
+        # estaba apareciendo en los logs de Render (a diferencia de otros
+        # loggers del proyecto), print(flush=True) va directo a stdout sin
+        # depender de esa configuración mientras se diagnostica por qué.
+        print(f"[yahoo_client] EXCEPCION en fetch_yahoo_option_chain_raw({symbol}): {exc!r}", flush=True)
         logger.exception("fetch_yahoo_option_chain_raw(%s) falló.", symbol)
         return None
 
     elapsed = time.monotonic() - start
+    print(f"[yahoo_client] fetch_yahoo_option_chain_raw({symbol}) tardó {elapsed:.1f}s -- encontró data={'json' in captured}", flush=True)
     logger.info("fetch_yahoo_option_chain_raw(%s) tardó %.1fs -- encontró data=%s", symbol, elapsed, "json" in captured)
     return captured.get("json")
