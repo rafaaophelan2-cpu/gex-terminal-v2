@@ -55,6 +55,7 @@ class _FakeAsyncClient:
 @pytest.fixture(autouse=True)
 def _reset_module_state():
     forexfactory_client._cache.clear()
+    forexfactory_client._last_attempt = 0.0
 
 
 def test_relevant_week_range_weekday_returns_current_week():
@@ -187,3 +188,45 @@ def test_fetch_raw_week_caches_within_ttl(monkeypatch):
     asyncio.run(fetch_economic_calendar())
 
     assert calls["count"] == 1
+
+
+def test_fetch_raw_week_does_not_retry_immediately_after_a_failure(monkeypatch):
+    # Bug real confirmado en vivo en Render (13-sep-2026): un solo 429 de
+    # ForexFactory dejaba _cache sin actualizar, así que CADA pedido
+    # siguiente reintentaba de inmediato y volvía a pisar el rate limit
+    # externo (2 req/5 min) -- nunca se recuperaba solo. FAILURE_COOLDOWN_SECONDS
+    # evita ese reintento inmediato.
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))
+    calls = {"count": 0}
+
+    def _fake_async_client(*a, **kw):
+        calls["count"] += 1
+        return _FakeAsyncClient(exc=httpx.ConnectError("boom"))
+
+    monkeypatch.setattr(forexfactory_client.httpx, "AsyncClient", _fake_async_client)
+
+    asyncio.run(fetch_economic_calendar())
+    asyncio.run(fetch_economic_calendar())
+    asyncio.run(fetch_economic_calendar())
+
+    assert calls["count"] == 1  # el primer fallo activa el cooldown -- los siguientes ni intentan la red
+
+
+def test_fetch_raw_week_retries_after_cooldown_elapses(monkeypatch):
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))
+    calls = {"count": 0}
+
+    def _fake_async_client(*a, **kw):
+        calls["count"] += 1
+        return _FakeAsyncClient(exc=httpx.ConnectError("boom"))
+
+    monkeypatch.setattr(forexfactory_client.httpx, "AsyncClient", _fake_async_client)
+
+    asyncio.run(fetch_economic_calendar())
+    assert calls["count"] == 1
+
+    # Simula que ya pasó el cooldown corriendo el reloj hacia adelante.
+    forexfactory_client._last_attempt -= forexfactory_client.FAILURE_COOLDOWN_SECONDS + 1
+
+    asyncio.run(fetch_economic_calendar())
+    assert calls["count"] == 2

@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -45,4 +48,12 @@ async def query_groq(system_prompt: str, user_prompt: str, history: list[dict] |
     try:
         return await asyncio.to_thread(_call)
     except Exception:
+        # Antes se tragaba en silencio -- confirmado en vivo que eso hacía
+        # IMPOSIBLE diagnosticar por qué el diagnóstico caía al fallback
+        # local (ni siquiera se sabía si la excepción era por key inválida,
+        # modelo deprecado, rate limit de Groq, o timeout de red) -- mismo
+        # motivo que ya se corrigió antes en marketdata_client.py y
+        # forexfactory_client.py: sin loggear ACÁ, un fallo sostenido de
+        # Groq es indistinguible de "no hay API key configurada".
+        logger.exception("query_groq() falló -- cae al diagnóstico local por plantilla.")
         return None

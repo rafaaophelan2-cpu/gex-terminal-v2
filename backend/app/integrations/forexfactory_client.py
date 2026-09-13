@@ -25,6 +25,19 @@ THISWEEK_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 # pidiendo el mismo dato.
 CACHE_TTL_SECONDS = 1800
 
+# Cooldown mínimo entre INTENTOS (éxito o fallo) -- confirmado en vivo en
+# Render (13-sep-2026, "429 Too Many Requests" en CADA pedido): sin esto,
+# un solo fallo dejaba _cache sin actualizar, así que el próximo pedido a
+# /market/economic-calendar (segundos después, otro usuario o el mismo
+# refresco periódico) reintentaba de inmediato, volvía a pisar el límite
+# de 2 req/5 min, y así indefinidamente -- un bucle que nunca dejaba
+# pasar el tiempo suficiente para que el límite externo se liberara.
+# MISMO bug/arreglo que FAILURE_COOLDOWN_SECONDS en marketdata_client.py.
+# 600s (10 min), más ancho que la ventana real de 5 min de ForexFactory
+# por margen -- el feed IP puede ser compartida con otros servicios de
+# Render, así que un solo intento fallido no debe insistir enseguida.
+FAILURE_COOLDOWN_SECONDS = 600
+
 RELEVANT_CURRENCY = "USD"
 # Los 3 niveles reales de ForexFactory -- 'Holiday' (feriados bancarios,
 # sin dato) y vacío ("Non-Economic"/eventos sin impacto asignado) quedan
@@ -32,6 +45,7 @@ RELEVANT_CURRENCY = "USD"
 RELEVANT_IMPACT = {"low", "medium", "high"}
 
 _cache: dict[str, tuple[float, list[dict]]] = {}
+_last_attempt: float = 0.0
 
 
 def _relevant_week_range(today: date) -> tuple[date, date]:
@@ -54,11 +68,22 @@ async def _fetch_raw_week() -> list[dict]:
     porque el feed en sí es SIEMPRE "esta semana calendario" según
     ForexFactory (domingo a sábado), y el recorte a la semana relevante
     del usuario (lunes-domingo, con el corrimiento de fin de semana) se
-    hace aparte, sobre el mismo payload cacheado."""
+    hace aparte, sobre el mismo payload cacheado.
+
+    Respeta FAILURE_COOLDOWN_SECONDS entre intentos (éxito o fallo) --
+    sin esto, un 429 dejaba _cache sin actualizar, así que el próximo
+    pedido reintentaba de inmediato y volvía a pisar el límite externo,
+    sin nunca dejar pasar tiempo suficiente para que se liberara."""
+    global _last_attempt
+
     cache_key = "raw"
     cached = _cache.get(cache_key)
     if cached is not None and (time.time() - cached[0]) < CACHE_TTL_SECONDS:
         return cached[1]
+
+    if (time.time() - _last_attempt) < FAILURE_COOLDOWN_SECONDS:
+        return cached[1] if cached is not None else []
+    _last_attempt = time.time()
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
