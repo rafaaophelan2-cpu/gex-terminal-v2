@@ -332,13 +332,35 @@
           </div>
 
           <div id="briefings-view" hidden>
-            <div class="ai-toolbar">
-              <button id="briefing-daily-btn" type="button">📊 Análisis para el día</button>
-              <button id="briefing-scenarios-btn" type="button">🎯 Posibles Escenarios</button>
-              <span id="ai-status" class="ai-status"></span>
+            <div class="briefings-header">
+              <h2 class="briefings-title">Briefings</h2>
+              <p class="briefings-subtitle">Diagnóstico de IA con el marco de gamma exposure de Aleks Rosme -- niveles cercanos, pensado para trades de 5-30 min.</p>
             </div>
-            <div id="ai-diagnosis-result" class="ai-diagnosis-result">
-              <p class="ai-placeholder">Elegí "Análisis para el día" para un briefing corto (estilo Aleks Rosme, previo a la apertura) o "Posibles Escenarios" para el informe completo con los tres setups.</p>
+            <div class="briefings-layout">
+              <div class="briefings-main-column">
+                <div id="ai-diagnosis-result" class="ai-diagnosis-result">
+                  <p class="ai-placeholder">Elegí una acción a la derecha para generar el diagnóstico.</p>
+                </div>
+              </div>
+              <aside class="signals-panel briefings-action-panel">
+                <button id="briefing-daily-btn" type="button" class="briefing-action-card">
+                  <span class="briefing-action-icon">📊</span>
+                  <span class="briefing-action-text">
+                    <span class="briefing-action-title">Análisis para el Día</span>
+                    <span class="briefing-action-desc">Briefing corto pre-apertura: pivot point, próximo obstáculo, rango de VIX y catalizador del día.</span>
+                  </span>
+                </button>
+                <button id="briefing-scenarios-btn" type="button" class="briefing-action-card">
+                  <span class="briefing-action-icon">🎯</span>
+                  <span class="briefing-action-text">
+                    <span class="briefing-action-title">Posibles Escenarios</span>
+                    <span class="briefing-action-desc">Informe completo: régimen de gamma, niveles operativos, order flow a vigilar y los tres setups con entrada/TP/invalidación.</span>
+                  </span>
+                </button>
+                <div class="signals-section briefings-status-card">
+                  <span id="ai-status" class="ai-status"></span>
+                </div>
+              </aside>
             </div>
           </div>
 

@@ -1547,6 +1547,22 @@ chatForm.addEventListener('submit', async (event) => {
   }
 })
 
+// La tabla "Resumen Rápido" del informe completo tiene una columna
+// Dirección con texto plano LONG/SHORT -- se lo envuelve en el mismo
+// badge visual que ya usa Signals (.badge-bullish/.badge-strong) para
+// que salte a la vista en vez de perderse como texto monocromo más.
+function marcarDireccionEnTabla(container) {
+  const rows = container.querySelectorAll('table tbody tr')
+  rows.forEach((row) => {
+    const cell = row.cells?.[1]
+    if (!cell) return
+    const text = cell.textContent.trim().toUpperCase()
+    if (text === 'LONG' || text === 'SHORT') {
+      cell.innerHTML = `<span class="badge ${text === 'LONG' ? 'badge-long' : 'badge-short'}">${text}</span>`
+    }
+  })
+}
+
 async function runBriefing(tipoAnalisis) {
   const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
   briefingDailyBtn.disabled = true
@@ -1557,6 +1573,7 @@ async function runBriefing(tipoAnalisis) {
   try {
     const result = await postAiDiagnosis(symbol, tipoAnalisis, getConversionRatio())
     aiResultEl.innerHTML = marked.parse(result.text)
+    marcarDireccionEnTabla(aiResultEl)
     if (result.source === 'local') {
       aiStatusEl.textContent = '⚠ IA no disponible ahora mismo — diagnóstico local por plantilla'
       aiStatusEl.className = 'ai-status local'

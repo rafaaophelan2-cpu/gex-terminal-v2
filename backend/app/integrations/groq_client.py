@@ -34,6 +34,11 @@ async def query_groq(system_prompt: str, user_prompt: str, history: list[dict] |
             model=GROQ_MODEL,
             messages=messages,
             temperature=0.3,
+            # El informe completo (5 secciones + tabla final) es largo --
+            # confirmado en vivo que sin esto la tabla del punto 5 salía
+            # incompleta (1 de 3 filas, celdas vacías), muy probablemente
+            # cortada por el máximo default del modelo en Groq.
+            max_tokens=4096,
         )
         return completion.choices[0].message.content
 

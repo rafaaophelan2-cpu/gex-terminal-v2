@@ -1021,56 +1021,6 @@ main {
   margin-bottom: 16px;
 }
 
-.ai-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.ai-toolbar label {
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #8b949e;
-  text-transform: uppercase;
-}
-
-.ai-toolbar select {
-  background: #0e131f;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 7px 10px;
-  color: #f0f6fc;
-  font-family: var(--mono);
-  font-size: 0.8rem;
-}
-
-#ai-diagnosis-btn {
-  background: linear-gradient(135deg, #1e2640 0%, #0f172a 100%);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  border-radius: 8px;
-  color: #60a5fa;
-  font-family: var(--mono);
-  font-weight: 700;
-  font-size: 0.72rem;
-  padding: 9px 16px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-#ai-diagnosis-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  color: #fff;
-}
-
-#ai-diagnosis-btn:disabled {
-  opacity: 0.55;
-  cursor: wait;
-}
-
 .ai-status {
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -1089,9 +1039,9 @@ main {
   background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 22px 26px;
+  padding: 26px 30px;
   font-size: 0.88rem;
-  line-height: 1.65;
+  line-height: 1.7;
   color: #d1d5db;
 }
 
@@ -1102,19 +1052,45 @@ main {
   margin: 20px 0;
 }
 
+/* Prosa (párrafos, listas) se lee mejor en un ancho de línea acotado
+   incluso en pantallas anchas -- pero la tabla (más abajo) sí aprovecha
+   el ancho completo del panel, que es lo que faltaba usar. */
+.ai-diagnosis-result > p,
+.ai-diagnosis-result > ul,
+.ai-diagnosis-result > ol {
+  max-width: 78ch;
+}
+
 .ai-diagnosis-result h1,
 .ai-diagnosis-result h2,
 .ai-diagnosis-result h3 {
   font-family: var(--mono);
   color: #60a5fa;
   letter-spacing: 0.3px;
-  margin: 18px 0 8px;
+  margin: 24px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.2);
 }
 
 .ai-diagnosis-result h1:first-child,
 .ai-diagnosis-result h2:first-child,
 .ai-diagnosis-result h3:first-child {
   margin-top: 0;
+}
+
+.ai-diagnosis-result p {
+  margin: 10px 0;
+}
+
+/* El modelo suele abrir cada sección con "**1. Título**" en vez de un
+   header real de Markdown -- un párrafo que ES enteramente un <strong>
+   se destaca como si fuera un subtítulo real, en vez de perderse con el
+   mismo tamaño que el resto de la prosa. */
+.ai-diagnosis-result p:has(> strong:first-child:last-child) {
+  margin-top: 22px;
+  font-size: 0.95rem;
+  color: #f0f6fc;
+  letter-spacing: 0.2px;
 }
 
 .ai-diagnosis-result strong {
@@ -1127,31 +1103,70 @@ main {
   margin: 8px 0;
 }
 
+.ai-diagnosis-result li {
+  margin: 4px 0;
+}
+
 .ai-diagnosis-result table {
   width: 100%;
-  border-collapse: collapse;
-  margin: 14px 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 16px 0 6px;
   font-family: var(--mono);
   font-size: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .ai-diagnosis-result th,
 .ai-diagnosis-result td {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 12px;
   text-align: left;
+  vertical-align: top;
+}
+
+.ai-diagnosis-result th:last-child,
+.ai-diagnosis-result td:last-child {
+  border-right: none;
+}
+
+.ai-diagnosis-result tr:last-child td {
+  border-bottom: none;
 }
 
 .ai-diagnosis-result th {
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(59, 130, 246, 0.15);
   color: #60a5fa;
   text-transform: uppercase;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   letter-spacing: 0.5px;
+  font-weight: 800;
 }
 
 .ai-diagnosis-result tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.02);
+}
+
+.ai-diagnosis-result tbody tr:hover td {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+/* Insertados por JS (ver marcarDireccionEnTabla en main.js) sobre la
+   celda de "Dirección" de la tabla de resumen -- mismo lenguaje visual
+   que .badge-bullish/.badge-strong ya usado en Signals. */
+.ai-diagnosis-result .badge-long {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
+.ai-diagnosis-result .badge-short {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
 }
 
 .chart-subheading {
@@ -2042,10 +2057,122 @@ main {
 
 /* --- Briefings: Análisis para el día / Posibles Escenarios --- */
 #briefings-view {
-  max-width: 900px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.briefings-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.briefings-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #f0f6fc;
+  letter-spacing: 0.3px;
+}
+
+.briefings-subtitle {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #8b949e;
+}
+
+/* Mismo patrón que .gex-info-layout: columna principal elástica + panel
+   fijo a la derecha -- así el resultado usa TODO el ancho disponible en
+   vez de quedar encajonado en un max-width angosto con un hueco vacío al
+   lado (el problema real reportado en vivo). */
+.briefings-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.briefings-main-column {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.briefings-action-panel {
+  flex: 0 0 340px;
+}
+
+.briefing-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  width: 100%;
+}
+
+.briefing-action-card:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: linear-gradient(180deg, rgba(30, 38, 64, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
+  transform: translateY(-1px);
+}
+
+.briefing-action-card:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.briefing-action-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.briefing-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.briefing-action-title {
+  font-family: var(--mono);
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #f0f6fc;
+}
+
+.briefing-action-desc {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #8b949e;
+}
+
+.briefings-status-card {
+  padding: 12px 14px;
+}
+
+@media (max-width: 1000px) {
+  .briefings-layout {
+    flex-direction: column;
+  }
+
+  .briefings-action-panel {
+    flex: 0 0 auto;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .briefings-action-panel .briefing-action-card {
+    flex: 1 1 260px;
+  }
 }
 
 /* --- Utilidad: Indicadores + Strings --- */
