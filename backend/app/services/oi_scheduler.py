@@ -3,6 +3,7 @@ import logging
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from app.integrations import marketdata_client
 from app.integrations.marketdata_client import fetch_oi_map
 from app.services.market_feed import MARKETDATA_OI_SYMBOLS
 
@@ -21,12 +22,23 @@ NY_TZ = ZoneInfo("America/New_York")
 WINDOW_START = "09:00"
 WINDOW_END = "09:30"
 
-# Mismo intervalo que FAILURE_COOLDOWN_SECONDS de marketdata_client.py --
-# no tiene sentido chequear más seguido, un intento fallido igual no
-# reintenta la red hasta que pase ese cooldown.
-CHECK_INTERVAL_SECONDS = 300
+# Pedido explícito: si TODOS los intentos de la ventana de arriba
+# fallaron, un último intento garantizado ~1 min después de la apertura
+# (09:31 NY) en vez de quedarse sin OI real el resto del día hasta el
+# próximo refresco por hora. Ventana chica (hasta 09:35) para absorber
+# el jitter de CHECK_INTERVAL_SECONDS sin depender de pegarle al minuto
+# exacto -- _final_retry_done igual lo acota a un único intento por día.
+FINAL_RETRY_START = "09:31"
+FINAL_RETRY_END = "09:35"
+
+# 1 min, no 5 -- con la ventana normal ya throttleada por
+# FAILURE_COOLDOWN_SECONDS de fetch_oi_map, revisar más seguido acá no
+# gasta requests de más (la mayoría de los chequeos son no-ops), y es lo
+# que permite pescar la ventana angosta del intento final de arriba.
+CHECK_INTERVAL_SECONDS = 60
 
 _last_success_date: dict[str, date] = {}
+_final_retry_done: dict[str, date] = {}
 
 
 async def _try_refresh(symbol: str, today: date) -> None:
@@ -36,6 +48,25 @@ async def _try_refresh(symbol: str, today: date) -> None:
     if oi_map:
         _last_success_date[symbol] = today
         logger.info("oi_scheduler: refresco de pre-mercado de %s OK para %s (%d strikes).", symbol, today, len(oi_map))
+
+
+async def _try_final_retry(symbol: str, today: date) -> None:
+    if _last_success_date.get(symbol) == today or _final_retry_done.get(symbol) == today:
+        return
+    _final_retry_done[symbol] = today  # se marca ANTES de intentar -- un único intento final, haya salido bien o mal.
+
+    # fetch_oi_map(force=True) saltea el corte de fin de semana y el
+    # "cache todavía fresco", pero a propósito NO el cooldown de fallos
+    # (para blindar /market/refresh-oi de un doble-click accidental) --
+    # acá sí conviene saltearlo: es un único intento extra más, acotado a
+    # una vez por día por symbol, no una puerta abierta a ráfagas.
+    marketdata_client._last_attempt[symbol] = 0.0
+    oi_map = await fetch_oi_map(symbol, force=True)
+    if oi_map:
+        _last_success_date[symbol] = today
+        logger.info("oi_scheduler: intento final (post-apertura) de %s OK para %s (%d strikes).", symbol, today, len(oi_map))
+    else:
+        logger.warning("oi_scheduler: intento final (post-apertura) de %s FALLÓ para %s -- se cae al proxy de volumen hasta el próximo refresco por hora.", symbol, today)
 
 
 async def oi_daily_refresh_loop() -> None:
@@ -52,8 +83,9 @@ async def oi_daily_refresh_loop() -> None:
 
     Costo real: 2 símbolos, como mucho un puñado de reintentos dentro de
     la ventana de 30 min (bloqueados entre sí por FAILURE_COOLDOWN_SECONDS
-    de todas formas) -- una fracción mínima del cupo diario, dejando
-    margen de sobra para refrescos manuales (ver /market/refresh-oi)."""
+    de todas formas) + el intento final de post-apertura -- una fracción
+    mínima del cupo diario, dejando margen de sobra para refrescos
+    manuales (ver /market/refresh-oi)."""
     while True:
         try:
             now_ny = datetime.now(NY_TZ)
@@ -61,9 +93,13 @@ async def oi_daily_refresh_loop() -> None:
             time_str = now_ny.strftime("%H:%M")
             is_weekday = now_ny.weekday() < 5
 
-            if is_weekday and WINDOW_START <= time_str <= WINDOW_END:
-                for symbol in MARKETDATA_OI_SYMBOLS:
-                    await _try_refresh(symbol, today)
+            if is_weekday:
+                if WINDOW_START <= time_str <= WINDOW_END:
+                    for symbol in MARKETDATA_OI_SYMBOLS:
+                        await _try_refresh(symbol, today)
+                elif FINAL_RETRY_START <= time_str <= FINAL_RETRY_END:
+                    for symbol in MARKETDATA_OI_SYMBOLS:
+                        await _try_final_retry(symbol, today)
         except Exception:
             logger.exception("oi_scheduler: error en el ciclo de refresco de pre-mercado.")
 
