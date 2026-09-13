@@ -30,7 +30,11 @@ function baseLayout(spot, viewMode) {
       title: isCallPut ? 'GEX ($)' : 'Net GEX ($)', gridcolor: 'rgba(255,255,255,0.05)',
       zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)',
     },
-    barmode: isCallPut ? 'group' : undefined,
+    // 'overlay' en vez de 'group': las barras de Calls y Puts van a todo
+    // el ancho del strike, una arriba (calls, siempre >=0) y otra abajo
+    // (puts, siempre <=0) -- una sola columna por strike, sin el hueco
+    // horizontal que 'group' dejaba entre ambas.
+    barmode: isCallPut ? 'overlay' : undefined,
     shapes: spotLineShape(spot),
     hoverlabel: {
       font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },

@@ -61,7 +61,10 @@ export function renderGammaPriceProfileChart(el, priceProfile) {
       bordercolor: 'rgba(255,255,255,0.15)',
     },
     margin: { l: 70, r: 30, t: 20, b: 50 },
-    height: 380,
+    // Mismo alto que el gráfico de Net GEX Profile (gexInfoChart.js) --
+    // antes era más bajo (380) y dejaba un hueco vacío grande en el
+    // contenedor de abajo.
+    height: 600,
   }
 
   Plotly.react(el, traces, layout, { responsive: true, displaylogo: false })
