@@ -18,7 +18,18 @@ BASE_URL = "https://api.marketdata.app/v1/options/chain"
 # simbolos * ~26 refrescos en una sesion de mercado completa).
 REFRESH_INTERVAL_SECONDS = 900
 
+# Cooldown mínimo entre INTENTOS (éxito o fallo) -- confirmado en vivo en
+# Render: sin esto, un solo fallo (ej. 429 rate limit) dejaba _cache sin
+# actualizar, así que el próximo tick de 2s reintentaba de inmediato, ese
+# reintento volvía a fallar, y así indefinidamente -- un bucle que
+# mantenía el rate limit pisado para siempre y nunca dejaba pasar el
+# tiempo suficiente para que se liberara. Con este cooldown, un fallo
+# espera igual antes de volver a intentar, dándole tiempo real a
+# MarketData.app para levantar el límite.
+FAILURE_COOLDOWN_SECONDS = 60
+
 _cache: dict[str, tuple[float, dict[tuple[float, str], int]]] = {}
+_last_attempt: dict[str, float] = {}
 _locks: dict[str, asyncio.Lock] = {}
 
 
@@ -40,6 +51,11 @@ async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
         cached = _cache.get(symbol)
         if cached is not None and (time.time() - cached[0]) < REFRESH_INTERVAL_SECONDS:
             return cached[1]
+
+        last_attempt = _last_attempt.get(symbol, 0.0)
+        if (time.time() - last_attempt) < FAILURE_COOLDOWN_SECONDS:
+            return cached[1] if cached is not None else None
+        _last_attempt[symbol] = time.time()
 
         try:
             async with httpx.AsyncClient(timeout=25.0) as client:
