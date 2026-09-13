@@ -148,7 +148,15 @@
               <button type="button" class="view-toggle-btn" data-view="callput">CALL VS PUT</button>
             </div>
             <div class="gex-info-layout">
-              <div id="gex-info-chart" class="chart-container gex-info-chart"></div>
+              <div class="gex-info-charts-column">
+                <div id="gex-info-chart" class="chart-container gex-info-chart"></div>
+
+                <div class="gex-info-section-heading">
+                  <h3 class="signals-heading"><span class="signals-heading-bar"></span>Gamma Price Profile</h3>
+                  <p class="gex-info-section-sub">Proyección del Net Gamma en distintos niveles de precio hipotéticos. Asume IV constante.</p>
+                </div>
+                <div id="gamma-price-profile-chart" class="chart-container"></div>
+              </div>
               <aside class="signals-panel">
                 <div class="signals-section">
                   <h3 class="signals-heading"><span class="signals-heading-bar"></span>Signals</h3>
@@ -167,12 +175,6 @@
                 </div>
               </aside>
             </div>
-
-            <div class="gex-info-section-heading">
-              <h3 class="signals-heading"><span class="signals-heading-bar"></span>Gamma Price Profile</h3>
-              <p class="gex-info-section-sub">Proyección del Net Gamma en distintos niveles de precio hipotéticos. Asume IV constante.</p>
-            </div>
-            <div id="gamma-price-profile-chart" class="chart-container"></div>
 
             <div class="gex-info-section-heading">
               <h3 class="signals-heading"><span class="signals-heading-bar"></span>Gamma Heatmap</h3>

@@ -1572,6 +1572,20 @@ main {
   align-items: flex-start;
 }
 
+/* Columna izquierda: Net GEX Profile + Gamma Price Profile apilados --
+   antes Gamma Price Profile vivía FUERA de .gex-info-layout, así que
+   solo empezaba después de que el panel de Signals (más alto que un
+   único gráfico) terminaba del todo, dejando un hueco vacío enorme al
+   lado de Signals/Gamma Squeeze Screener mientras tanto. Metiéndolo acá
+   adentro, la columna de gráficos pasa a ser tan alta como Signals, y
+   ese hueco desaparece. */
+.gex-info-charts-column {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .gex-info-chart {
   flex: 1 1 auto;
   min-width: 0;

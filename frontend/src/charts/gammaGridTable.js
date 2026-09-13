@@ -51,7 +51,11 @@ export function renderGammaGridTable(el, grid) {
   html += '</tr></thead><tbody>'
 
   for (const { strike, idx } of rowOrder) {
-    html += `<tr><td class="grid-strike-col">${strike % 1 === 0 ? strike.toFixed(0) : strike.toFixed(2)}</td>`
+    // data-strike -- para que main.js pueda encontrar la fila más cercana
+    // al spot (centrar el scroll ahí al abrir) y saber qué strikes están
+    // visibles en cada momento (para sincronizar el Gamma Volume Profile
+    // con el scroll de esta tabla).
+    html += `<tr data-strike="${strike}"><td class="grid-strike-col">${strike % 1 === 0 ? strike.toFixed(0) : strike.toFixed(2)}</td>`
     for (let c = 0; c < grid.columns.length; c++) {
       const value = grid.values[idx][c]
       const weight = grid.weights[idx][c]

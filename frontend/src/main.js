@@ -8,7 +8,7 @@ import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/b
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
 import { renderGammaPriceProfileChart } from './charts/gammaPriceProfileChart.js'
 import { renderGammaSurfaceChart } from './charts/gammaSurfaceChart.js'
-import { renderGammaVolumeProfile } from './charts/gammaVolumeProfile.js'
+import { renderGammaVolumeProfile, setGammaVolumeProfileVisibleRange } from './charts/gammaVolumeProfile.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderLiveGammaChart } from './charts/liveGammaChart.js'
@@ -82,6 +82,7 @@ const gridDtePanel = document.getElementById('grid-dte-panel')
 const gridDteList = document.getElementById('grid-dte-list')
 const gridDteApplyBtn = document.getElementById('grid-dte-apply-btn')
 const gridStatusEl = document.getElementById('grid-status')
+const gammaGridWrapperEl = document.getElementById('gamma-grid-wrapper')
 const gammaGridTableEl = document.getElementById('gamma-grid-table')
 const gammaVolumeProfileEl = document.getElementById('gamma-volume-profile')
 const surface3dDteBtn = document.getElementById('surface3d-dte-btn')
@@ -148,6 +149,11 @@ let backgammaPlayTimer = null
 let gridExpirations = []
 let gridSelectedExpKeys = null
 let gridRefreshTimer = null
+// Se pone en false cada vez que cambia el símbolo o la selección de DTEs
+// -- la próxima vez que lleguen datos frescos, la tabla se centra sola en
+// el spot UNA vez (no en cada refresh de 15s, para no pelearle al scroll
+// manual del usuario).
+let gridScrolledToSpot = false
 let surface3dExpirations = []
 let surface3dSelectedExpKeys = null
 let surface3dRefreshTimer = null
@@ -753,6 +759,64 @@ function applyGridDteSelection() {
   loadGammaGrid()
 }
 
+// Centra el scroll de la tabla de Gamma Heatmap en la fila del strike más
+// cercano al spot -- por defecto arrancaba mostrando el extremo superior
+// (el strike más alto, ver gammaGridTable.js: filas de mayor a menor),
+// que casi nunca es donde está la actividad real relevante.
+function scrollGammaGridToSpot(spot) {
+  if (!spot) return
+  const rows = gammaGridWrapperEl.querySelectorAll('tr[data-strike]')
+  if (rows.length === 0) return
+
+  let closestRow = null
+  let closestDiff = Infinity
+  rows.forEach((row) => {
+    const diff = Math.abs(parseFloat(row.dataset.strike) - spot)
+    if (diff < closestDiff) {
+      closestDiff = diff
+      closestRow = row
+    }
+  })
+  if (!closestRow) return
+
+  const wrapperRect = gammaGridWrapperEl.getBoundingClientRect()
+  const rowRect = closestRow.getBoundingClientRect()
+  const offset = (rowRect.top - wrapperRect.top) - (gammaGridWrapperEl.clientHeight / 2) + (rowRect.height / 2)
+  gammaGridWrapperEl.scrollTop += offset
+}
+
+// Qué strikes están REALMENTE visibles ahora mismo en el viewport de la
+// tabla (no toda la lista) -- se usa para "recortar" el Gamma Volume
+// Profile al mismo rango, así los dos se mueven juntos con el scroll.
+function syncVolumeProfileToGridScroll() {
+  const rows = gammaGridWrapperEl.querySelectorAll('tr[data-strike]')
+  if (rows.length === 0) return
+  const wrapperRect = gammaGridWrapperEl.getBoundingClientRect()
+
+  let minStrike = null
+  let maxStrike = null
+  rows.forEach((row) => {
+    const rowRect = row.getBoundingClientRect()
+    if (rowRect.bottom > wrapperRect.top && rowRect.top < wrapperRect.bottom) {
+      const strike = parseFloat(row.dataset.strike)
+      if (minStrike === null || strike < minStrike) minStrike = strike
+      if (maxStrike === null || strike > maxStrike) maxStrike = strike
+    }
+  })
+  setGammaVolumeProfileVisibleRange(gammaVolumeProfileEl, minStrike, maxStrike)
+}
+
+let gridScrollSyncFrame = null
+gammaGridWrapperEl.addEventListener('scroll', () => {
+  // rAF-throttled -- el evento scroll puede disparar decenas de veces por
+  // segundo, y cada sync hace un Plotly.relayout (no es gratis).
+  if (gridScrollSyncFrame) return
+  gridScrollSyncFrame = requestAnimationFrame(() => {
+    gridScrollSyncFrame = null
+    syncVolumeProfileToGridScroll()
+  })
+})
+
 async function loadGammaGrid() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
@@ -760,6 +824,15 @@ async function loadGammaGrid() {
     const grid = await fetchGammaGrid(symbol, gridSelectedExpKeys)
     renderGammaGridTable(gammaGridTableEl, grid)
     renderGammaVolumeProfile(gammaVolumeProfileEl, grid)
+
+    if (!gridScrolledToSpot && latestSpot) {
+      scrollGammaGridToSpot(latestSpot)
+      gridScrolledToSpot = true
+    }
+    // Con o sin scroll nuevo, el profile siempre arranca sincronizado al
+    // rango que quedó visible en la tabla (recién centrado, o el que el
+    // usuario ya tenía si esto es solo un refresh periódico).
+    syncVolumeProfileToGridScroll()
 
     // Si todavía no hubo selección manual, adopta las columnas que el
     // backend eligió por defecto -- así el selector de DTEs, al abrirse,
@@ -959,6 +1032,11 @@ function showDashboard(username) {
   setDefaultDriftDate()
   connectMarketFeed()
   startVixRefresh()
+  // GEX INFO ya arranca .active en el HTML estático -- sin este llamado,
+  // el refresh de Gamma Heatmap (atado a isTabVisible('gex-info'), ver
+  // syncTabLifecycle) nunca se disparaba al entrar por primera vez, solo
+  // si el usuario cambiaba de pestaña y volvía al menos una vez.
+  syncTabLifecycle()
 }
 
 function showLogin() {
@@ -985,6 +1063,7 @@ function showLogin() {
   stopSurface3dRefresh()
   gridExpirations = []
   gridSelectedExpKeys = null
+  gridScrolledToSpot = false
   surface3dExpirations = []
   surface3dSelectedExpKeys = null
   latestGammaSurface = null
@@ -1162,6 +1241,7 @@ applySymbolBtn.addEventListener('click', () => {
   gridExpirations = []
   gridSelectedExpKeys = null
   gridDteCount.textContent = ''
+  gridScrolledToSpot = false
   surface3dExpirations = []
   surface3dSelectedExpKeys = null
   surface3dDteCount.textContent = ''
