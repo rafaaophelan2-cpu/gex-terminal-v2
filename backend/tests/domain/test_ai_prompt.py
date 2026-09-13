@@ -1,4 +1,6 @@
 from app.domain.ai_prompt import (
+    build_daily_briefing_user_prompt,
+    build_default_user_prompt,
     build_intraday_context,
     build_system_prompt,
     classify_vix,
@@ -217,6 +219,28 @@ def test_build_system_prompt_skew_omitted_when_none():
         intraday_context="contexto de prueba",
     )
     assert "Skew Put/Call" not in prompt
+
+
+def test_build_daily_briefing_user_prompt_requests_short_mode():
+    prompt = build_daily_briefing_user_prompt()
+    assert "briefing corto" in prompt
+    assert "informe completo" in prompt
+
+
+def test_build_default_user_prompt_requests_full_report_with_three_setups():
+    prompt = build_default_user_prompt("Posibles Escenarios")
+    assert "Posibles Escenarios" in prompt
+    assert "Rebote" in prompt
+    assert "Ruptura y Retesteo Fallido" in prompt
+
+
+def test_build_system_prompt_includes_daily_briefing_style_section():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "ESTILO DE BRIEFING DIARIO" in prompt
+    assert "Pivot Point" in prompt
 
 
 def test_build_system_prompt_warns_when_oi_is_volume_proxy():

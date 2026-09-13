@@ -235,11 +235,32 @@ def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
 
     monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
 
-    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ", "tipo_analisis": "Intradía"})
+    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ", "tipo_analisis": "Posibles Escenarios"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["source"] == "groq"
     assert body["text"] == "diagnóstico narrativo de groq"
+
+
+def test_ai_diagnosis_daily_briefing_uses_short_user_prompt(authed_client, monkeypatch):
+    # Botón "Análisis para el día" de Briefings -- debe armar el user_prompt
+    # corto (build_daily_briefing_user_prompt), no el informe completo de
+    # siempre (build_default_user_prompt).
+    monkeypatch.setattr(ai_context.feed_registry, "get", lambda symbol: _FakeFeed())
+    monkeypatch.setattr(ai_context, "fetch_price_history", _fake_candles)
+    monkeypatch.setattr(ai_context, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(ai_context, "fetch_session_profile", _fake_session_profile)
+
+    async def _fake_query_groq(system_prompt, user_prompt):
+        assert "briefing corto" in user_prompt
+        assert "informe cuantitativo completo" not in user_prompt
+        return "briefing corto de groq"
+
+    monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
+
+    resp = authed_client.post("/market/ai-diagnosis", json={"symbol": "QQQ", "tipo_analisis": "Análisis para el día"})
+    assert resp.status_code == 200
+    assert resp.json()["text"] == "briefing corto de groq"
 
 
 def test_ai_diagnosis_manual_conversion_ratio_overrides_default(authed_client, monkeypatch):

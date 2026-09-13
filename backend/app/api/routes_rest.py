@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
-from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt, classify_vix
+from app.domain.ai_prompt import build_daily_briefing_user_prompt, build_default_user_prompt, build_system_prompt, classify_vix
 from app.domain.drift import compute_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
 from app.domain.heatmap import compute_charm_heatmap_matrix, compute_heatmap_matrix
@@ -234,7 +234,16 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         macro_levels=ctx.get("macro_levels"),
         vix_gamma_levels=ctx.get("vix_gamma_levels"),
     )
-    user_prompt = build_default_user_prompt(body.tipo_analisis)
+    # Briefings tiene 2 botones: "Análisis para el día" dispara el modo
+    # corto/en prosa (ver ESTILO DE BRIEFING DIARIO en ai_prompt.py);
+    # cualquier otro valor (incluido "Posibles Escenarios", o un
+    # tipo_analisis viejo cacheado en el cliente de alguien) cae al
+    # informe completo de siempre -- degrada sin romper.
+    user_prompt = (
+        build_daily_briefing_user_prompt()
+        if body.tipo_analisis == "Análisis para el día"
+        else build_default_user_prompt(body.tipo_analisis)
+    )
 
     ai_text = await query_groq(system_prompt, user_prompt)
     if ai_text:

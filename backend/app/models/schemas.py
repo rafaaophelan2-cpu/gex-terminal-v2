@@ -19,7 +19,7 @@ class MeResponse(BaseModel):
 
 class AiDiagnosisRequest(BaseModel):
     symbol: str = "QQQ"
-    tipo_analisis: str = "Intradía"
+    tipo_analisis: str = "Posibles Escenarios"
     conversion_ratio: float | None = None
 
 

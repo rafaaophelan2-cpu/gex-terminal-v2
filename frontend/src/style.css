@@ -71,6 +71,7 @@ body {
 .dte-panel[hidden],
 #utilidad-view[hidden],
 #chain-analytics-view[hidden],
+#briefings-view[hidden],
 .split-dropdown-group-items[hidden] {
   display: none;
 }
@@ -2037,6 +2038,14 @@ main {
   font-size: 0.76rem;
   color: #8b949e;
   margin: 2px 0 12px;
+}
+
+/* --- Briefings: Análisis para el día / Posibles Escenarios --- */
+#briefings-view {
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 /* --- Utilidad: Indicadores + Strings --- */

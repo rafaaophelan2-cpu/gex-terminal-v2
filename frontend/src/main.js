@@ -34,9 +34,11 @@ const iconRailBrandBtn = document.getElementById('icon-rail-brand-btn')
 const iconRailGexBtn = document.getElementById('icon-rail-gex-btn')
 const iconRailUtilidadBtn = document.getElementById('icon-rail-utilidad-btn')
 const iconRailChainBtn = document.getElementById('icon-rail-chain-btn')
+const iconRailBriefingsBtn = document.getElementById('icon-rail-briefings-btn')
 const gexAnalyticsView = document.getElementById('gex-analytics-view')
 const utilidadView = document.getElementById('utilidad-view')
 const chainAnalyticsView = document.getElementById('chain-analytics-view')
+const briefingsView = document.getElementById('briefings-view')
 const gammaPriceProfileChartEl = document.getElementById('gamma-price-profile-chart')
 const gexInfoViewToggleButtons = document.querySelectorAll('.gex-info-view-toggle .view-toggle-btn')
 const oiProxyWarningEl = document.getElementById('oi-proxy-warning')
@@ -64,8 +66,8 @@ const backgammaScrubber = document.getElementById('backgamma-scrubber')
 const backgammaCaption = document.getElementById('backgamma-caption')
 const backgammaSpotChartEl = document.getElementById('backgamma-spot-chart')
 const backgammaStrikeChartEl = document.getElementById('backgamma-strike-chart')
-const aiTipoSelect = document.getElementById('ai-tipo-select')
-const aiDiagnosisBtn = document.getElementById('ai-diagnosis-btn')
+const briefingDailyBtn = document.getElementById('briefing-daily-btn')
+const briefingScenariosBtn = document.getElementById('briefing-scenarios-btn')
 const aiStatusEl = document.getElementById('ai-status')
 const aiResultEl = document.getElementById('ai-diagnosis-result')
 const chatToggleBtn = document.getElementById('chat-toggle-btn')
@@ -285,6 +287,7 @@ function switchIconRailSection(section) {
   const isGex = section === 'gex-analytics'
   const isUtilidad = section === 'utilidad'
   const isChain = section === 'chain-analytics'
+  const isBriefings = section === 'briefings'
 
   iconRailGexBtn.classList.toggle('active', isGex)
   iconRailGexBtn.setAttribute('aria-current', String(isGex))
@@ -292,7 +295,13 @@ function switchIconRailSection(section) {
   iconRailUtilidadBtn.setAttribute('aria-current', String(isUtilidad))
   iconRailChainBtn.classList.toggle('active', isChain)
   iconRailChainBtn.setAttribute('aria-current', String(isChain))
+  iconRailBriefingsBtn.classList.toggle('active', isBriefings)
+  iconRailBriefingsBtn.setAttribute('aria-current', String(isBriefings))
   gexAnalyticsView.hidden = !isGex
+  // Briefings no participa de vista dividida (es un panel de acción, no
+  // un gráfico para comparar lado a lado) -- a diferencia de Tools/Chain
+  // Analytics, no necesita reparenteo a ningún slot de split.
+  briefingsView.hidden = !isBriefings
 
   // Si Tools/Chain Analytics estaban reparenteados dentro de un panel de
   // split-view, no tiene sentido mostrar el mismo nodo ahí Y como
@@ -316,6 +325,7 @@ function switchIconRailSection(section) {
 iconRailGexBtn.addEventListener('click', () => switchIconRailSection('gex-analytics'))
 iconRailUtilidadBtn.addEventListener('click', () => switchIconRailSection('utilidad'))
 iconRailChainBtn.addEventListener('click', () => switchIconRailSection('chain-analytics'))
+iconRailBriefingsBtn.addEventListener('click', () => switchIconRailSection('briefings'))
 
 // --- Tools: copiar el indicador de Pine / el string en vivo -----------
 async function copyToClipboard(text, btn) {
@@ -1537,14 +1547,15 @@ chatForm.addEventListener('submit', async (event) => {
   }
 })
 
-aiDiagnosisBtn.addEventListener('click', async () => {
+async function runBriefing(tipoAnalisis) {
   const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-  aiDiagnosisBtn.disabled = true
-  aiStatusEl.textContent = 'Generando diagnóstico…'
+  briefingDailyBtn.disabled = true
+  briefingScenariosBtn.disabled = true
+  aiStatusEl.textContent = tipoAnalisis === 'Análisis para el día' ? 'Generando briefing…' : 'Generando escenarios…'
   aiStatusEl.className = 'ai-status'
 
   try {
-    const result = await postAiDiagnosis(symbol, aiTipoSelect.value, getConversionRatio())
+    const result = await postAiDiagnosis(symbol, tipoAnalisis, getConversionRatio())
     aiResultEl.innerHTML = marked.parse(result.text)
     if (result.source === 'local') {
       aiStatusEl.textContent = '⚠ IA no disponible ahora mismo — diagnóstico local por plantilla'
@@ -1557,9 +1568,13 @@ aiDiagnosisBtn.addEventListener('click', async () => {
     aiStatusEl.textContent = err.message || 'Error generando el diagnóstico.'
     aiStatusEl.className = 'ai-status error'
   } finally {
-    aiDiagnosisBtn.disabled = false
+    briefingDailyBtn.disabled = false
+    briefingScenariosBtn.disabled = false
   }
-})
+}
+
+briefingDailyBtn.addEventListener('click', () => runBriefing('Análisis para el día'))
+briefingScenariosBtn.addEventListener('click', () => runBriefing('Posibles Escenarios'))
 
 let sessionExpiredHandled = false
 

@@ -46,15 +46,20 @@
               <path d="M7 15l3.5-5 3 3L19 6" />
             </svg>
           </button>
-          <button type="button" id="icon-rail-utilidad-btn" class="icon-rail-btn" data-tooltip="Tools">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l1 1 5.3-5.3a4 4 0 0 1 5.4-5.4l-2.6 2.6 1 1 2.6-2.6z" />
-            </svg>
-          </button>
           <button type="button" id="icon-rail-chain-btn" class="icon-rail-btn" data-tooltip="Chain Analytics">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
               <path d="M12 12l8-4.5" /><path d="M12 12v9" /><path d="M12 12L4 7.5" />
+            </svg>
+          </button>
+          <button type="button" id="icon-rail-briefings-btn" class="icon-rail-btn" data-tooltip="Briefings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4h13l3 3v13H4z" /><path d="M17 4v3h3" /><path d="M8 11h8" /><path d="M8 15h8" /><path d="M8 19h5" />
+            </svg>
+          </button>
+          <button type="button" id="icon-rail-utilidad-btn" class="icon-rail-btn" data-tooltip="Tools">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l1 1 5.3-5.3a4 4 0 0 1 5.4-5.4l-2.6 2.6 1 1 2.6-2.6z" />
             </svg>
           </button>
         </nav>
@@ -289,21 +294,6 @@
                 <span id="data-iv-rank" class="metric-sub"></span>
               </div>
             </div>
-
-            <div class="ai-toolbar">
-              <label for="ai-tipo-select">Tipo de análisis</label>
-              <select id="ai-tipo-select">
-                <option value="Intradía" selected>Intradía</option>
-                <option value="Premarket">Premarket</option>
-                <option value="Análisis DTE">Análisis DTE</option>
-              </select>
-              <button id="ai-diagnosis-btn">🤖 Generar Diagnóstico IA</button>
-              <span id="ai-status" class="ai-status"></span>
-            </div>
-
-            <div id="ai-diagnosis-result" class="ai-diagnosis-result">
-              <p class="ai-placeholder">Pulsa "Generar Diagnóstico IA" para un análisis de escenarios basado en los niveles de gamma en vivo.</p>
-            </div>
           </section>
 
           <!-- Slot vacío: cuando Tools se elige como pestaña secundaria de
@@ -339,6 +329,17 @@
               <button class="tab-btn" data-surface="vol">3D VOL SURFACE</button>
             </nav>
             <div id="surface3d-chart" class="chart-container surface3d-chart"></div>
+          </div>
+
+          <div id="briefings-view" hidden>
+            <div class="ai-toolbar">
+              <button id="briefing-daily-btn" type="button">📊 Análisis para el día</button>
+              <button id="briefing-scenarios-btn" type="button">🎯 Posibles Escenarios</button>
+              <span id="ai-status" class="ai-status"></span>
+            </div>
+            <div id="ai-diagnosis-result" class="ai-diagnosis-result">
+              <p class="ai-placeholder">Elegí "Análisis para el día" para un briefing corto (estilo Aleks Rosme, previo a la apertura) o "Posibles Escenarios" para el informe completo con los tres setups.</p>
+            </div>
           </div>
 
           <div id="utilidad-view" hidden>

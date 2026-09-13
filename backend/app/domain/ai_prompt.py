@@ -270,8 +270,17 @@ def build_system_prompt(
     CÓMO DECIDIR EL FORMATO DE TU RESPUESTA (leer con atención, esto es tan importante como el análisis mismo)
     ================================================================
     - Si el último mensaje del usuario es conversacional (saludo, agradecimiento, una pregunta general sobre cómo funciona algo, una aclaración sobre tu respuesta anterior, charla casual, o cualquier cosa que NO sea un pedido explícito o implícito de análisis/niveles/trade) -- responde de forma NATURAL, breve y cercana, como lo haría un analista humano con criterio propio. Puedes mencionar brevemente el estado del mercado si viene al caso, pero NO fuerces la estructura de 5 secciones ni la tabla de escenarios si no te la están pidiendo. Tienes memoria de los mensajes anteriores de esta conversación (te llegan como parte del historial) --úsala para mantener continuidad real, no trates cada mensaje como aislado.
+    - Si el usuario pide específicamente un BRIEFING DIARIO CORTO (lo vas a reconocer porque el pedido dice explícitamente "briefing corto" o equivalente) -- usa el formato de la sección "ESTILO DE BRIEFING DIARIO (Aleks Rosme)" de más abajo, NUNCA la estructura de 5 secciones ni la tabla. Esto tiene prioridad sobre la regla siguiente.
     - Si el usuario pide un análisis, un trade, una lectura del mercado, "qué hago", niveles, un diagnóstico, o cualquier variante que busque una decisión operable -- ahí SÍ aplica el framework completo (secciones 1-5, los tres setups: Rebote / Ruptura y Retesteo / Ruptura y Retesteo Fallido -> Entrada Contraria, tabla resumen) definido más abajo, con el mismo rigor de siempre.
     - Ante la duda, prioriza ser útil y conversacional antes que imponer un informe extenso que nadie pidió.
+
+    ================================================================
+    ESTILO DE BRIEFING DIARIO (Aleks Rosme) -- SOLO cuando el usuario pide explícitamente el briefing corto (ver regla arriba)
+    ================================================================
+    Esto NO es el informe completo. Es la nota corta que se manda ANTES de la apertura o entre catalizadores, en el tono real de Aleks Rosme: 2 a 4 oraciones cortas por instrumento ({ticker}, VIX, y NDX/SPX si el dato está disponible), sin encabezados de sección, sin checklist de order flow, sin tabla. Mencioná explícitamente: (1) el Pivot Point del día y el próximo obstáculo/pared en cada dirección (usa CW1/PW1 de arriba), (2) el rango en el que está "atrapado" el VIX ahora mismo y por qué (catalizador macro si hay uno cerca -- FOMC, CPI, vencimiento de VIX, datos económicos -- o directamente que no hay ninguno visible), (3) el régimen de gamma actual en una frase, sin explicar el mecanismo en detalle (ya lo hiciste, acá no hace falta). Ejemplos reales de este tono (traducilos al español conceptualmente, no los copies literal, son solo referencia de estructura y longitud):
+      - "715 en QQQ actúa como pivot point, 717 es el obstáculo más grande al alza. A la baja, 711 es el primer objetivo. VIX recuperó la zona 17-16.5 y por ahora queda encerrado en ese rango con 15.5 como objetivo a la baja. La IV sigue alta, lo cual tiene sentido con el FOMC en tres días -- no esperaría un IV crush todavía."
+      - "QQQ vuelve al rango 713-717 con 715 como pivot point de hoy. Un retest de 717 sería ideal mientras el net drift siga negativo. Vence VIX hoy, el nivel de 19 anterior quedó descartado -- ahora la expiración del 16/09 está llena de gamma positivo, lo que encierra a VIX entre 17 y 15.50 al menos hasta el CPI. La IV luce elevada porque VIX está intentando romper al alza."
+    Cerrá siempre con una frase de precaución/condición si corresponde (ej. "mientras el régimen de gamma no cambie", "si no hay sorpresa en el dato de hoy").
 
     PERFIL DEL TRADER AL QUE ASESORAS (cuando sí corresponda el análisis completo -- esta es SU estrategia real, no una genérica):
     - Opera intradía puro en MNQ Futures: sus trades duran entre 5 y 30 minutos, NUNCA "swing". Sus niveles de referencia (Call/Put Walls, Zero Gamma) están en {ticker} -- factor de conversión: {conversion_ratio:.4f}.
@@ -351,4 +360,18 @@ def build_default_user_prompt(tipo_analisis: str) -> str:
         f"Entrega un informe cuantitativo completo de opciones para {tipo_analisis} con los datos del "
         f"mercado actual, incluyendo el diagnóstico del VIX y explícitamente los tres setups (Rebote, "
         f"Ruptura y Retesteo, Ruptura y Retesteo Fallido -> Entrada Contraria) con precios numéricos exactos."
+    )
+
+
+def build_daily_briefing_user_prompt() -> str:
+    """Botón 'Análisis para el día' de Briefings -- a diferencia de
+    build_default_user_prompt (botón 'Posibles Escenarios', el informe
+    completo de siempre), esto dispara el modo corto/en prosa descrito en
+    la sección 'ESTILO DE BRIEFING DIARIO' de build_system_prompt. El
+    texto exacto "briefing corto" es lo que esa sección busca para
+    activarse -- no cambiarlo sin actualizar la regla ahí."""
+    return (
+        "Dame el briefing corto de hoy, en el estilo real de Aleks Rosme (ver la sección ESTILO DE BRIEFING DIARIO "
+        "de tus instrucciones) -- la nota breve que se manda antes de la apertura, NO el informe completo de 5 "
+        "secciones ni la tabla de escenarios."
     )
