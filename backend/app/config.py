@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # tarjeta ni KYC de USA -- ver integrations/marketdata_client.py.
     marketdata_api_key: str = ""
 
+    # Finnhub -- calendario económico (CPI/FOMC/NFP) para el prompt de la
+    # IA, ver integrations/finnhub_client.py. Igual que MarketData.app:
+    # tier gratis sin tarjeta ni restricción de país, opcional -- vacío
+    # simplemente deja el calendario fuera del contexto de la IA.
+    finnhub_api_key: str = ""
+
     # Auth -- 720 min (12h) cubre una sesión de mercado completa sin
     # desloguear al usuario a mitad de uso. Antes eran 20 min sin ningún
     # refresh silencioso: cualquier request después de esos 20 min (ej.

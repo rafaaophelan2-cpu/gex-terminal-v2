@@ -3,6 +3,7 @@ import pandas as pd
 from app.domain.gex_math import (
     compute_call_put_walls,
     compute_greeks_exposures,
+    compute_zero_crossing,
     compute_zero_gamma,
     recalculate_gex_for_spot,
 )
@@ -84,3 +85,20 @@ def test_compute_zero_gamma_crossing():
 
 def test_compute_zero_gamma_empty_uses_spot_fallback():
     assert compute_zero_gamma(pd.DataFrame(), spot_ref=123.45) == 123.45
+
+
+def test_compute_zero_crossing_is_generic_over_value_col():
+    # Misma matemática que compute_zero_gamma, pero con una columna
+    # distinta (net_chex) -- confirma que la generalización (usada para
+    # el Charm Zero de la línea de tendencia) da el mismo resultado que
+    # daría compute_zero_gamma con esos mismos números.
+    df = pd.DataFrame({
+        'strike': [95.0, 100.0, 105.0],
+        'net_chex': [5.0, -3.0, -10.0],
+    })
+    assert compute_zero_crossing(df, 'net_chex', spot_ref=100.0) == 100.0
+
+
+def test_compute_zero_crossing_missing_column_uses_spot_fallback():
+    df = pd.DataFrame({'strike': [95.0, 100.0], 'net_gex': [1.0, -1.0]})
+    assert compute_zero_crossing(df, 'net_chex', spot_ref=42.0) == 42.0

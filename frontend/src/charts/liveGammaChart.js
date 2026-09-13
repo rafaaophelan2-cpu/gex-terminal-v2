@@ -2,6 +2,11 @@ import Plotly from 'plotly.js-dist-min'
 import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
 import { nyWallClockToPlotlyString } from '../utils/time.js'
 
+// Amarillo para Gamma Trough -- no es parte de la paleta compartida de
+// theme.js (solo se usa acá, para replicar las 3 líneas de tendencia del
+// panel de Gamma de Aleks Rosme: verde/amarillo/azul).
+const COLOR_GAMMA_TROUGH = '#EAB308'
+
 /** LIVE GAMMA llega por REST (igual que NET DRIFT), cada render es un
  * redibujado completo -- no hay distinción react/restyle acá.
  * 'candles' (opcional): velas reales de 1 minuto de Schwab
@@ -84,6 +89,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
       ],
       hovertemplate: `Hora: %{x|%H:%M}<br>Strike: $%{y}<br>${metricLabel}: %{z:,.0f}<extra></extra>`,
       colorbar: { title: { text: metricLabel, side: 'top' }, x: -0.08 },
+      showlegend: false,
     },
   ]
 
@@ -99,6 +105,7 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
       close: candles.map((c) => c.close),
       increasing: { line: { color: COLOR_POSITIVE }, fillcolor: COLOR_POSITIVE },
       decreasing: { line: { color: COLOR_NEGATIVE }, fillcolor: COLOR_NEGATIVE },
+      showlegend: false,
     })
   } else {
     // Fallback: sin velas de Schwab disponibles, al menos la línea de
@@ -106,6 +113,45 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
     traces.push({
       type: 'scatter', mode: 'lines', name: 'Spot', x: heatmapX, y: heatmap.spot,
       line: { color: COLOR_ACCENT, width: 2 },
+    })
+  }
+
+  // Líneas de tendencia estilo Aleks Rosme: a diferencia de los shapes
+  // CW1-3/PW1-3/Gamma Flip de abajo (horizontales, fijos al valor ACTUAL
+  // nada más), estas son series reales que evolucionan strike a strike a
+  // lo largo del día -- Call Wall/Put Wall/Zero Gamma dominante de CADA
+  // instante (ver domain/heatmap.py::compute_gamma_trend_lines para el
+  // panel de Gamma, compute_charm_trend_line para el de Charm). Ambos
+  // paneles reusan esta misma función (ver metricLabel más arriba), así
+  // que se detecta cuál trend line corresponde por qué campo trae
+  // 'heatmap' -- gamma_peak/gamma_trough/gamma_zero para LIVE GAMMA,
+  // charm_zero para el panel de Charm.
+  if (heatmap.gamma_peak && heatmap.gamma_peak.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Gamma Peak', x: heatmapX, y: heatmap.gamma_peak,
+      line: { color: COLOR_POSITIVE, width: 1.5 },
+      hovertemplate: 'Gamma Peak: $%{y}<extra></extra>',
+    })
+  }
+  if (heatmap.gamma_trough && heatmap.gamma_trough.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Gamma Trough', x: heatmapX, y: heatmap.gamma_trough,
+      line: { color: COLOR_GAMMA_TROUGH, width: 1.5 },
+      hovertemplate: 'Gamma Trough: $%{y}<extra></extra>',
+    })
+  }
+  if (heatmap.gamma_zero && heatmap.gamma_zero.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Gamma Zero', x: heatmapX, y: heatmap.gamma_zero,
+      line: { color: COLOR_ACCENT, width: 1.5 },
+      hovertemplate: 'Gamma Zero: $%{y}<extra></extra>',
+    })
+  }
+  if (heatmap.charm_zero && heatmap.charm_zero.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Charm Zero', x: heatmapX, y: heatmap.charm_zero,
+      line: { color: COLOR_ACCENT, width: 1.5 },
+      hovertemplate: 'Charm Zero: $%{y}<extra></extra>',
     })
   }
 
@@ -204,12 +250,25 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
       bgcolor: '#0E131F',
       bordercolor: 'rgba(255,255,255,0.15)',
     },
-    showlegend: false,
+    // true (antes false): las líneas de tendencia Gamma Peak/Trough/Zero
+    // (y Charm Zero) recién agregadas necesitan leyenda para distinguirse
+    // -- heatmap/velas ya se marcaron showlegend:false por trace arriba,
+    // así que la leyenda queda limpia (solo Spot + las líneas nuevas que
+    // vengan en esta respuesta).
+    showlegend: true,
+    legend: {
+      orientation: 'h', x: 0, y: 1.08,
+      font: { size: 10, color: '#D1D5DB', family: 'JetBrains Mono, monospace' },
+      bgcolor: 'rgba(0,0,0,0)',
+    },
     // 'pan' por defecto -- con 'zoom' (default de Plotly), el primer
     // click-y-arrastre del usuario recortaba/hacía zoom sin querer en
     // vez de simplemente mover la vista.
     dragmode: 'pan',
-    margin: { l: 80, r: 150, t: 30, b: 50 },
+    // t: 55 (antes 30) -- la leyenda horizontal nueva (y:1.08, fuera del
+    // área de ploteo) necesita ese margen extra arriba para no quedar
+    // recortada contra el borde del contenedor.
+    margin: { l: 80, r: 150, t: 55, b: 50 },
     height: 650,
   }
 

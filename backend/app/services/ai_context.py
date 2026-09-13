@@ -6,6 +6,7 @@ from app.domain.ai_prompt import build_intraday_context
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.session_profile import SESSION_TZ, cash_key_for, overnight_key_for
+from app.integrations.finnhub_client import fetch_economic_calendar
 from app.integrations.firebase_client import fetch_session_profile
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
 from app.services.cross_check import fetch_ndx_compounded_levels, fetch_vix_gamma_levels, format_ndx_cross_check_text
@@ -53,7 +54,7 @@ async def build_ai_context(symbol: str) -> dict:
 
     today = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     now_lima = datetime.now(SESSION_TZ)
-    candles, vix_val, overnight_profile, cash_profile, vix_term_structure, ndx_compounded, vix_gamma_levels = await asyncio.gather(
+    candles, vix_val, overnight_profile, cash_profile, vix_term_structure, ndx_compounded, vix_gamma_levels, economic_calendar = await asyncio.gather(
         fetch_price_history(symbol, today),
         fetch_vix(),
         fetch_session_profile(overnight_key_for(now_lima)),
@@ -61,6 +62,7 @@ async def build_ai_context(symbol: str) -> dict:
         fetch_vix_term_structure(),
         fetch_ndx_compounded_levels(symbol, feed.spot_price, metrics),
         fetch_vix_gamma_levels(symbol),
+        fetch_economic_calendar(),
     )
     intraday_context = build_intraday_context(candles, feed.spot_price)
     implied_range = compute_implied_range(feed.spot_price, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
@@ -79,4 +81,5 @@ async def build_ai_context(symbol: str) -> dict:
         "oi_is_volume_proxy": feed.oi_is_volume_proxy,
         "macro_levels": feed.macro_levels,
         "vix_gamma_levels": vix_gamma_levels,
+        "economic_calendar": economic_calendar,
     }

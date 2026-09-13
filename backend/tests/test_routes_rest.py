@@ -60,6 +60,70 @@ def test_drift_returns_series_for_authed_user(authed_client, monkeypatch):
     assert body["put_gex"] == [-5.0]
 
 
+def test_drift_otm_only_query_param_reaches_compute_drift_series(authed_client, monkeypatch):
+    # Confirma el wiring del endpoint, no la lógica de filtrado en sí
+    # (ver tests/domain/test_drift.py para eso) -- que otm_only=true en la
+    # URL de verdad llegue como otm_only=True a compute_drift_series.
+    seen = {}
+
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        return FAKE_SNAPSHOTS
+
+    def _fake_compute_drift_series(snapshots, otm_only=False):
+        seen["otm_only"] = otm_only
+        return {"time": [], "spot": [], "call_gex": [], "put_gex": [], "net_gex": []}
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+    monkeypatch.setattr(routes_rest, "compute_drift_series", _fake_compute_drift_series)
+
+    resp = authed_client.get("/market/drift?symbol=QQQ&otm_only=true")
+    assert resp.status_code == 200
+    assert seen["otm_only"] is True
+
+
+def test_heatmap_includes_gamma_trend_lines(authed_client, monkeypatch):
+    snapshots = [
+        {
+            "time": "09:30", "spot": 100.0,
+            "strikes": [
+                {"strike": 95.0, "net_gex": -8.0}, {"strike": 105.0, "net_gex": 6.0},
+            ],
+        },
+    ]
+
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        return snapshots
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+
+    resp = authed_client.get("/market/heatmap?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["gamma_peak"] == [105.0]
+    assert body["gamma_trough"] == [95.0]
+    assert "gamma_zero" in body
+    assert "z" in body  # sigue trayendo la matriz de siempre, no la reemplaza
+
+
+def test_heatmap_charm_includes_charm_zero_line(authed_client, monkeypatch):
+    snapshots = [
+        {
+            "time": "09:30", "spot": 100.0,
+            "strikes": [{"strike": 100.0, "net_gex": 0.0, "net_chex": 5.0}],
+        },
+    ]
+
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        return snapshots
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+
+    resp = authed_client.get("/market/heatmap-charm?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["charm_zero"] == [100.0]
+
+
 def test_vix_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/market/vix")

@@ -1,8 +1,9 @@
 import { apiFetch } from './http.js'
 
-export async function fetchDrift(symbol, date) {
+export async function fetchDrift(symbol, date, otmOnly = false) {
   const params = new URLSearchParams({ symbol })
   if (date) params.set('date', date)
+  if (otmOnly) params.set('otm_only', 'true')
   const resp = await apiFetch(`/market/drift?${params.toString()}`)
   if (!resp.ok) throw new Error(`Error ${resp.status}`)
   return resp.json()

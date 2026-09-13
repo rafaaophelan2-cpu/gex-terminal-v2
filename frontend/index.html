@@ -234,6 +234,10 @@
             <div class="drift-toolbar">
               <label for="drift-date-input">Fecha</label>
               <input id="drift-date-input" type="date" />
+              <div class="drift-otm-toggle" role="group" aria-label="Filtro de strikes">
+                <button id="drift-otm-all-btn" type="button" class="drift-otm-btn active" data-otm="false">Todas</button>
+                <button id="drift-otm-only-btn" type="button" class="drift-otm-btn" data-otm="true">Solo OTM</button>
+              </div>
             </div>
             <div id="net-drift-chart" class="chart-container"></div>
           </section>

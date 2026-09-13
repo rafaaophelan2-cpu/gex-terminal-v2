@@ -4,6 +4,7 @@ from app.domain.ai_prompt import (
     build_intraday_context,
     build_system_prompt,
     classify_vix,
+    format_economic_calendar,
     format_implied_range,
     format_vix_term_structure,
 )
@@ -201,6 +202,54 @@ def test_build_system_prompt_includes_vix_gamma_levels_as_inverse_signal():
     assert "Niveles de Gamma de VIX" in prompt
     assert "correlación NEGATIVA" in prompt
     assert "VIX Call Wall=20.00" in prompt
+
+
+def test_build_system_prompt_includes_pinning_mechanics():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "PINNING HACIA EL CIERRE" in prompt
+    assert "dominant_wall" in prompt or "Gamma Wall/strike de mayor open interest" in prompt
+
+
+def test_build_system_prompt_includes_economic_calendar_events():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        economic_calendar=[
+            {"time": "08:30", "event": "CPI m/m", "impact": "high", "actual": None, "forecast": "0.3%", "previous": "0.2%"},
+        ],
+    )
+    assert "Calendario económico de hoy" in prompt
+    assert "CPI m/m" in prompt
+    assert "impacto ALTO" in prompt
+
+
+def test_build_system_prompt_omits_economic_calendar_line_when_empty():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        economic_calendar=[],
+    )
+    assert "sin eventos de impacto medio/alto" in prompt
+
+
+def test_format_economic_calendar_with_events():
+    text = format_economic_calendar([
+        {"time": "08:30", "event": "CPI m/m", "impact": "high", "actual": None, "forecast": "0.3%", "previous": "0.2%"},
+        {"time": "10:00", "event": "ISM Services PMI", "impact": "medium", "actual": "54.2", "forecast": "54.1", "previous": "54.0"},
+    ])
+    assert "08:30 NY -- CPI m/m [impacto ALTO]" in text
+    assert "esperado=0.3%" in text
+    assert "10:00 NY -- ISM Services PMI [impacto medio]" in text
+    assert "real=54.2" in text
+
+
+def test_format_economic_calendar_empty_is_normal_not_an_error():
+    text = format_economic_calendar(None)
+    assert "sin eventos de impacto medio/alto" in text
+    assert format_economic_calendar([]) == text
 
 
 def test_build_system_prompt_skew_high_note():

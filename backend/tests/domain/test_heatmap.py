@@ -1,4 +1,10 @@
-from app.domain.heatmap import BAND_HALF_WIDTH, compute_charm_heatmap_matrix, compute_heatmap_matrix
+from app.domain.heatmap import (
+    BAND_HALF_WIDTH,
+    compute_charm_heatmap_matrix,
+    compute_charm_trend_line,
+    compute_gamma_trend_lines,
+    compute_heatmap_matrix,
+)
 
 
 def test_compute_heatmap_matrix_builds_narrow_separated_bands():
@@ -72,3 +78,59 @@ def test_compute_charm_heatmap_matrix_missing_net_chex_defaults_to_zero():
     ]
     result = compute_charm_heatmap_matrix(snapshots)
     assert all(v == 0.0 for row in result["z"] for v in row)
+
+
+def test_compute_gamma_trend_lines_tracks_dominant_walls_per_snapshot():
+    # Instante 1: dominancia de calls en 105, puts en 95. Instante 2: el
+    # nivel dominante de calls se corre a 110 -- la línea de Gamma Peak
+    # debe reflejar ESE cambio instante a instante, no quedarse pegada al
+    # primer valor.
+    snapshots = [
+        {
+            "time": "09:30", "spot": 100.0,
+            "strikes": [
+                {"strike": 95.0, "net_gex": -8.0}, {"strike": 100.0, "net_gex": 1.0},
+                {"strike": 105.0, "net_gex": 6.0},
+            ],
+        },
+        {
+            "time": "09:31", "spot": 100.0,
+            "strikes": [
+                {"strike": 95.0, "net_gex": -8.0}, {"strike": 100.0, "net_gex": 1.0},
+                {"strike": 110.0, "net_gex": 9.0},
+            ],
+        },
+    ]
+    result = compute_gamma_trend_lines(snapshots)
+
+    assert result["times"] == ["09:30", "09:31"]
+    assert result["gamma_peak"] == [105.0, 110.0]
+    assert result["gamma_trough"] == [95.0, 95.0]
+    assert len(result["gamma_zero"]) == 2
+
+
+def test_compute_gamma_trend_lines_filters_outside_session_and_empty():
+    snapshots = [{"time": "05:00", "spot": 100.0, "strikes": [{"strike": 100.0, "net_gex": 1.0}]}]
+    assert compute_gamma_trend_lines(snapshots) == {
+        "times": [], "gamma_peak": [], "gamma_trough": [], "gamma_zero": [],
+    }
+    assert compute_gamma_trend_lines([]) == {
+        "times": [], "gamma_peak": [], "gamma_trough": [], "gamma_zero": [],
+    }
+
+
+def test_compute_charm_trend_line_uses_net_chex_not_net_gex():
+    snapshots = [
+        {
+            "time": "09:30", "spot": 100.0,
+            "strikes": [
+                {"strike": 95.0, "net_gex": 999.0, "net_chex": 5.0},
+                {"strike": 100.0, "net_gex": -999.0, "net_chex": -3.0},
+                {"strike": 105.0, "net_gex": 0.0, "net_chex": -10.0},
+            ],
+        },
+    ]
+    result = compute_charm_trend_line(snapshots)
+    assert result["times"] == ["09:30"]
+    # cumsum por strike de net_chex: 5, 2, -8 -> mínimo absoluto en 100
+    assert result["charm_zero"] == [100.0]

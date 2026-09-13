@@ -111,13 +111,22 @@ def compute_call_put_walls(df_grouped: pd.DataFrame, spot_ref: float, gap: float
     return cw1, cw2, cw3, pw1, pw2, pw3
 
 
-def compute_zero_gamma(df_by_strike: pd.DataFrame, spot_ref: float) -> float:
-    """Strike donde la suma acumulada de net_gex (ordenado por strike)
-    cruza cero. Port de la lógica de zero_gamma en app.py (~línea 1576)."""
-    if df_by_strike is None or df_by_strike.empty or 'net_gex' not in df_by_strike.columns:
+def compute_zero_crossing(df_by_strike: pd.DataFrame, value_col: str, spot_ref: float) -> float:
+    """Strike donde la suma acumulada de 'value_col' (ordenado por strike)
+    cruza cero -- generalización de compute_zero_gamma (antes hardcodeada a
+    'net_gex') para reusar la misma lógica con 'net_chex' y sacar el Charm
+    Zero de Aleks Rosme (ver domain/heatmap.py::compute_charm_trend_line),
+    sin duplicar el cálculo."""
+    if df_by_strike is None or df_by_strike.empty or value_col not in df_by_strike.columns:
         return spot_ref
 
     df_sorted = df_by_strike.sort_values('strike')
-    cum_gex = df_sorted['net_gex'].cumsum()
-    idx = cum_gex.abs().idxmin()
+    cum_val = df_sorted[value_col].cumsum()
+    idx = cum_val.abs().idxmin()
     return float(df_sorted.loc[idx, 'strike'])
+
+
+def compute_zero_gamma(df_by_strike: pd.DataFrame, spot_ref: float) -> float:
+    """Strike donde la suma acumulada de net_gex (ordenado por strike)
+    cruza cero. Port de la lógica de zero_gamma en app.py (~línea 1576)."""
+    return compute_zero_crossing(df_by_strike, 'net_gex', spot_ref)

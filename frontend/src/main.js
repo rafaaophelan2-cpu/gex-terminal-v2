@@ -57,6 +57,7 @@ const greeksChartEl = document.getElementById('greeks-chart')
 const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
 const netDriftChartEl = document.getElementById('net-drift-chart')
 const driftDateInput = document.getElementById('drift-date-input')
+const driftOtmButtons = document.querySelectorAll('.drift-otm-btn')
 const liveGammaChartEl = document.getElementById('live-gamma-chart')
 const charmHeatmapChartEl = document.getElementById('charm-heatmap-chart')
 const charmHeatmapSectionEl = document.getElementById('charm-heatmap-section')
@@ -643,11 +644,17 @@ function todayInLima() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
 }
 
+// Réplica del toggle "todas las strikes" vs. "solo OTM" de Aleks Rosme
+// (ver domain/drift.py::compute_drift_series) -- estado en JS en vez de
+// leer los botones en cada fetch, mismo patrón que driftDateAutoSelected
+// más abajo.
+let driftOtmOnly = false
+
 async function loadNetDrift() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const date = driftDateInput.value || todayInLima()
-    const series = await fetchDrift(symbol, date)
+    const series = await fetchDrift(symbol, date, driftOtmOnly)
     renderNetDriftChart(netDriftChartEl, series, date)
   } catch (err) {
     console.error('Error cargando NET DRIFT:', err)
@@ -1384,6 +1391,14 @@ backgammaPlayBtn.addEventListener('click', () => {
 driftDateInput.addEventListener('change', () => {
   driftDateAutoSelected = false
   if (driftRefreshTimer) loadNetDrift()
+})
+
+driftOtmButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    driftOtmOnly = btn.dataset.otm === 'true'
+    driftOtmButtons.forEach((b) => b.classList.toggle('active', b === btn))
+    loadNetDrift()
+  })
 })
 
 // Extraído de lo que antes era el único click handler de "Aplicar" --

@@ -90,6 +90,42 @@ def format_implied_range(implied_range: dict | None, ticker: str) -> str:
     )
 
 
+def format_economic_calendar(economic_calendar: list[dict] | None) -> str:
+    """Eventos macro de EE.UU. de impacto medio/alto para HOY (ver
+    integrations/finnhub_client.py) -- catalizadores que pueden invalidar
+    un escenario técnico de un momento a otro (Aleks Rosme: "CPI at 8:30
+    sent tech higher... wouldn't trust it until 9:30 net drifts confirm
+    it. CPI reversals happen a lot especially while oil + rates are so
+    fragile"). Vacío/None (sin FINNHUB_API_KEY configurada, o sin eventos
+    relevantes hoy) es un estado NORMAL, no un error -- se lo dice así al
+    modelo para que no invente un catalizador que no existe."""
+    if not economic_calendar:
+        return "Calendario económico de hoy: sin eventos de impacto medio/alto en EE.UU. (o sin esta fuente configurada)."
+
+    lines = []
+    for ev in economic_calendar:
+        time_str = ev.get("time") or "hora sin confirmar"
+        impact = "ALTO" if ev.get("impact") == "high" else "medio"
+        actual = ev.get("actual")
+        forecast = ev.get("forecast")
+        previous = ev.get("previous")
+        detail = f" (real={actual}, esperado={forecast}, anterior={previous})" if actual not in (None, "") else (
+            f" (esperado={forecast}, anterior={previous})" if forecast not in (None, "") else ""
+        )
+        lines.append(f"  - {time_str} NY -- {ev.get('event')} [impacto {impact}]{detail}")
+
+    joined = "\n".join(lines)
+    return (
+        "Calendario económico de hoy (EE.UU., impacto medio/alto):\n"
+        f"{joined}\n"
+        "Un evento AÚN NO PUBLICADO (sin 'real' todavía) es un catalizador de riesgo binario -- bajale la convicción a "
+        "cualquier escenario que dependa de que el régimen actual se sostenga hasta después de esa hora, y subí la vara "
+        "de confirmación de order flow alrededor de ese horario. Un evento YA PUBLICADO ('real' presente) que sorprendió "
+        "fuerte contra lo esperado puede invalidar de golpe el contexto de gamma/VIX de antes -- no lo ignores solo "
+        "porque el régimen de gamma no cambió todavía, el precio puede tardar unos minutos en reflejarlo."
+    )
+
+
 def build_system_prompt(
     ticker: str,
     spot: float,
@@ -106,6 +142,7 @@ def build_system_prompt(
     oi_is_volume_proxy: bool = False,
     macro_levels: dict | None = None,
     vix_gamma_levels: dict | None = None,
+    economic_calendar: list[dict] | None = None,
 ) -> str:
     """Port ampliado del system_prompt de consultar_ia en app.py (~línea
     2066): mismos datos de mercado y mismas reglas duras de coherencia
@@ -223,6 +260,8 @@ def build_system_prompt(
             f"CONTRARIO en {ticker} aunque no haya catalizador visible todavía en el precio de {ticker}."
         )
 
+    economic_calendar_line = format_economic_calendar(economic_calendar)
+
     # NDX/VIX (productos de índice exclusivos de CBOE) no traen Open
     # Interest real de Schwab -- para esos se pide a MarketData.app (ver
     # integrations/marketdata_client.py). Este flag solo se prende cuando
@@ -252,6 +291,7 @@ def build_system_prompt(
     - CALL WALLS / PUT WALLS: son los strikes con mayor concentración de gamma exposure de calls/puts. Ahí el volumen de hedging que deben hacer los dealers es máximo, por lo que actúan como imanes/frenos estructurales ("pines"). Mecanismo real al ACERCARSE a un Call Wall dominante: los dealers cortos en esas calls deben comprar más subyacente a medida que sube, lo cual desacelera el alza cerca del wall. Al ROMPER y SOSTENERSE por encima, ese freno se retira (los dealers ya cubrieron o invirtieron su exposición) y el camino de menor resistencia gamma queda abierto hacia el siguiente nivel. Mismo mecanismo espejado para Put Walls con ventas.
     - ZERO GAMMA / GAMMA FLIP: el nivel donde el gamma exposure neto cruza de positivo a negativo (o viceversa). Cruzarlo es un cambio de RÉGIMEN, no solo de precio: por encima, mercado más comprimido/mean-reverting; por debajo, más expansivo/trending. Un cruce reciente y sostenido de este nivel es una de las señales más fuertes de cambio de comportamiento esperado.
     - CHARM (delta decay) y 0DTE: el paso del tiempo mueve el delta de las opciones incluso sin que se mueva el precio, efecto que se acelera brutalmente en las últimas horas de una expiración 0DTE. Esto puede forzar rebalanceo de hedging de dealers ("drift" direccional) hacia el cierre sin necesidad de un catalizador de precio. En 0DTE, el gamma por contrato cerca del strike es extremo, lo que hace esos niveles más "pegajosos"/dominantes intradía, pero también más frágiles una vez rotos (el hedging que los sostenía se agota rápido).
+    - PINNING HACIA EL CIERRE (consecuencia directa de lo anterior): con Net GEX muy positivo y poco tiempo restante a la expiración 0DTE, el charm acelera el rehedging de dealers y tiende a "clavar" (pin) el precio hacia el Gamma Wall/strike de mayor open interest (dominant_wall) en vez de dejarlo alejarse -- cuanto más cerca del cierre y más grande el Net GEX positivo, más fuerte este efecto imán. Es la razón por la que, en un día de gamma muy positivo, perseguir rupturas en la última hora suele rendir peor que apostar a que el precio vuelva hacia ese nivel dominante. Con Net GEX negativo este efecto NO aplica -- ahí el charm suma a la tendencia en vez de frenarla.
     - VANNA: los cambios en volatilidad implícita (no solo en precio) también mueven el delta de las opciones. Una caída de IV (compresión de volatilidad) puede forzar compras del lado dealer incluso sin que el precio se mueva -- relevante para explicar "drift" alcista en sesiones de VIX cayendo.
     - NET GEX TOTAL: la suma neta de gamma exposure de calls y puts. Un Net GEX muy negativo con precio cerca de un Put Wall dominante es una configuración de riesgo de movimiento amplificado a la baja si ese wall se rompe (los dealers venden más al caer el precio).
     - GAMMA WALL (distinto de Call Wall/Put Wall): el strike con mayor gamma exposure BRUTA de toda la cadena (|call_gex| + |put_gex|, no neto). Un strike puede tener muchísimo gamma de calls Y de puts que casi se cancelan en el neto -- ahí igual hay actividad de hedging de dealers máxima en AMBOS lados, y eso lo vuelve un punto de fricción/consolidación tan real como un Call o Put Wall, aunque no aparezca como el nivel neto más grande. Puede coincidir con CW1 o PW1 (el lado más dominante de los dos) o ser un nivel totalmente distinto -- cuando coincide con otro nivel, ese nivel gana MÁS peso, no menos.
@@ -317,6 +357,7 @@ def build_system_prompt(
     {gamma_levels_in_points}
     {macro_levels_line}
     {vix_gamma_levels_line}
+    {economic_calendar_line}
     - Volatilidad Implícita ATM: {metrics['iv_str']} (percentil de IV: {metrics['iv_rank_str']}) -- un percentil alto sugiere IV cara respecto a su propio rango reciente (favorece vender prima/spreads de crédito, y en el marco de Aleks Rosme también favorece objetivos de tipo "runner"/dejar correr ganadores porque el mercado está pagando por movimiento real); uno bajo sugiere IV barata (favorece comprar opciones directas si el catalizador es fuerte, y favorece tomar "base hits" -- objetivos de scalp cortos y frecuentes en vez de esperar un runner que probablemente no llegue).
     - {vix_term_structure_line}
     - {implied_range_line}
