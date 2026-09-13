@@ -15,15 +15,21 @@ BASE_URL = "https://api.marketdata.app/v1/options/chain"
 NY_TZ = ZoneInfo("America/New_York")
 
 # El Open Interest real no varia intradia -- se actualiza UNA vez por
-# noche via OCC (Options Clearing Corporation), no en cada trade. Un
-# fetch por hora ya es mucho mas seguido de lo necesario (en rigor, uno
-# solo al abrir el mercado alcanzaria), pero da margen por si el primer
-# intento del dia falla. Ver tambien el chequeo de fin de semana abajo
-# (_is_weekend_ny): sin eso, un fallo en cascada (ya corregido, ver
-# FAILURE_COOLDOWN_SECONDS) o simplemente dejar el dashboard abierto un
-# sabado/domingo seguia gastando cuota sin necesidad, porque Schwab sirve
-# la ultima chain conocida 24/7 y el feed no distinguia el dia.
-REFRESH_INTERVAL_SECONDS = 3600
+# noche via OCC (Options Clearing Corporation), no en cada trade. Ahora
+# que existen los refrescos PROGRAMADOS de pre-mercado y post-cierre
+# (ver oi_scheduler.py -- cubren la apertura y una revalidacion nocturna
+# por si el OI se corrigio), este refresco oportunista (disparado por
+# el tick normal de un SymbolFeed mientras alguien tiene NDX/VIX
+# abiertos) pasa a ser solo un colchon adicional durante el dia, no el
+# mecanismo principal -- se estira a 6h para dejar el maximo margen
+# posible de cupo diario sin usar (pedido explicito: "que quede gas"
+# para el resto de la jornada + el dia siguiente). Ver tambien el
+# chequeo de fin de semana abajo (_is_weekend_ny): sin eso, un fallo en
+# cascada (ya corregido, ver FAILURE_COOLDOWN_SECONDS) o simplemente
+# dejar el dashboard abierto un sabado/domingo seguia gastando cuota sin
+# necesidad, porque Schwab sirve la ultima chain conocida 24/7 y el feed
+# no distinguia el dia.
+REFRESH_INTERVAL_SECONDS = 21600
 
 # Cooldown mínimo entre INTENTOS (éxito o fallo) -- confirmado en vivo en
 # Render: sin esto, un solo fallo (ej. 429 rate limit) dejaba _cache sin
