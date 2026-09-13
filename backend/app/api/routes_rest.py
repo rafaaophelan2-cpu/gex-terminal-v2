@@ -8,7 +8,7 @@ from app.domain.ai_fallback import generate_local_diagnosis
 from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt, classify_vix
 from app.domain.drift import compute_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
-from app.domain.heatmap import compute_heatmap_matrix
+from app.domain.heatmap import compute_charm_heatmap_matrix, compute_heatmap_matrix
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.vol_surface import compute_vol_surface
@@ -82,6 +82,17 @@ async def get_heatmap(symbol: str = "QQQ", date: str | None = None, _username: s
     de tiempo, spot[i] + la columna z[:, i] contra 'strikes'."""
     snapshots = await _fetch_day_snapshots(symbol, date)
     return compute_heatmap_matrix(snapshots)
+
+
+@router.get("/heatmap-charm")
+async def get_charm_heatmap(symbol: str = "QQQ", date: str | None = None, _username: str = Depends(require_auth)):
+    """Igual que /heatmap pero con Charm Exposure (net_chex) en vez de
+    Net GEX -- ver domain/heatmap.py::compute_charm_heatmap_matrix. Mismo
+    endpoint de snapshots, mismo formato de respuesta (times/strikes/z/spot),
+    para que el frontend reuse el mismo chart de Plotly cambiando solo la
+    fuente de datos."""
+    snapshots = await _fetch_day_snapshots(symbol, date)
+    return compute_charm_heatmap_matrix(snapshots)
 
 
 @router.get("/candles")
@@ -220,6 +231,8 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         ndx_cross_check=ctx.get("ndx_cross_check"),
         implied_range=ctx.get("implied_range"),
         oi_is_volume_proxy=ctx.get("oi_is_volume_proxy", False),
+        macro_levels=ctx.get("macro_levels"),
+        vix_gamma_levels=ctx.get("vix_gamma_levels"),
     )
     user_prompt = build_default_user_prompt(body.tipo_analisis)
 

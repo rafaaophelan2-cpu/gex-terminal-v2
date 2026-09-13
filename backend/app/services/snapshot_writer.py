@@ -43,7 +43,14 @@ async def _write_snapshot_for_feed(feed) -> None:
     # que el feed guardado sea determinístico y no dependa de qué esté
     # mirando cada usuario.
     df_nearest = get_nearest_dte_subset(feed.df)
-    by_strike = df_nearest.groupby('strike', as_index=False)[['call_gex', 'put_gex', 'net_gex']].sum()
+    # net_chex (ver domain/gex_math.py::compute_greeks_exposures) alimenta
+    # el panel de Charm Heatmap (domain/heatmap.py::compute_charm_heatmap_matrix)
+    # -- se guarda junto al resto para no tener que duplicar snapshots.
+    # 'gex_intraday.strikes' es JSONB sin schema fijo, así que agregar esta
+    # clave no rompe filas viejas que no la tienen (quedan sin ese dato en
+    # el heatmap de charm, nada más).
+    charm_col = ['net_chex'] if 'net_chex' in df_nearest.columns else []
+    by_strike = df_nearest.groupby('strike', as_index=False)[['call_gex', 'put_gex', 'net_gex'] + charm_col].sum()
 
     strikes_payload = [
         {
@@ -51,6 +58,7 @@ async def _write_snapshot_for_feed(feed) -> None:
             "net_gex": float(row.net_gex),
             "call_gex": float(row.call_gex),
             "put_gex": float(row.put_gex),
+            **({"net_chex": float(row.net_chex)} if charm_col else {}),
         }
         for row in by_strike.itertuples()
     ]

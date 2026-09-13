@@ -102,6 +102,12 @@
             <div class="metric"><span class="metric-label">Call Wall</span><span id="metric-cw1" class="metric-value">--</span></div>
             <div class="metric"><span class="metric-label">Put Wall</span><span id="metric-pw1" class="metric-value">--</span></div>
             <div class="metric"><span class="metric-label">Zero Gamma</span><span id="metric-zg" class="metric-value">--</span></div>
+            <div class="metric" title="Call Resistance de TODAS las expiraciones combinadas -- rango semanal/mensual, más estable que el Call Wall 0DTE de arriba">
+              <span class="metric-label">Call Resist. (semanal)</span><span id="metric-cw1-macro" class="metric-value">--</span>
+            </div>
+            <div class="metric" title="Put Support de TODAS las expiraciones combinadas -- rango semanal/mensual, más estable que el Put Wall 0DTE de arriba">
+              <span class="metric-label">Put Supp. (semanal)</span><span id="metric-pw1-macro" class="metric-value">--</span>
+            </div>
             <div class="metric">
               <span class="metric-label">Implied Range</span>
               <span id="metric-implied-range" class="metric-value">--</span>
@@ -217,6 +223,8 @@
 
           <section id="tab-live-gamma" class="tab-panel" data-label="LIVE GAMMA">
             <div id="live-gamma-chart" class="chart-container"></div>
+            <h3 class="chart-subheading">Charm Heatmap</h3>
+            <div id="charm-heatmap-chart" class="chart-container"></div>
           </section>
 
           <section id="tab-net-drift" class="tab-panel" data-label="NET DRIFT">

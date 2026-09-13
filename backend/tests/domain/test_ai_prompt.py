@@ -167,6 +167,58 @@ def test_build_system_prompt_includes_ndx_cross_check_and_implied_range():
     assert "CRUCE CON NDX" in prompt
 
 
+def test_build_system_prompt_includes_macro_levels_when_present():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        macro_levels={"cw1": 500.0, "cw2": 505.0, "cw3": 510.0, "pw1": 460.0, "pw2": 455.0, "pw3": 450.0, "zero_gamma": 478.0},
+    )
+    assert "Rango Semanal/Macro" in prompt
+    assert "Call Resistance=500.00" in prompt
+    assert "Put Support=460.00" in prompt
+
+
+def test_build_system_prompt_omits_macro_levels_line_when_empty():
+    # "Rango Semanal/Macro" aparece igual en la descripción fija del marco
+    # CONTEXT->LOCATION->CONFIRMATION -- lo que NO debe aparecer sin datos
+    # es la línea formateada con los números reales.
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        macro_levels={},
+    )
+    assert "Call Resistance=" not in prompt
+
+
+def test_build_system_prompt_includes_vix_gamma_levels_as_inverse_signal():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        vix_gamma_levels={"cw1": 20.0, "pw1": 15.0, "zero_gamma": 17.5, "vix_spot": 16.8},
+    )
+    assert "Niveles de Gamma de VIX" in prompt
+    assert "correlación NEGATIVA" in prompt
+    assert "VIX Call Wall=20.00" in prompt
+
+
+def test_build_system_prompt_skew_high_note():
+    metrics_with_skew = {**METRICS, "skew": 0.05}
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=metrics_with_skew, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "Skew Put/Call" in prompt
+    assert "miedo de caída ya construido" in prompt
+
+
+def test_build_system_prompt_skew_omitted_when_none():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "Skew Put/Call" not in prompt
+
+
 def test_build_system_prompt_warns_when_oi_is_volume_proxy():
     prompt = build_system_prompt(
         ticker="NDX", spot=29368.44, metrics=METRICS, vix_val=18.5,

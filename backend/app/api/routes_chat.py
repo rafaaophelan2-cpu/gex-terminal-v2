@@ -82,6 +82,8 @@ async def post_chat_message(body: ChatMessageRequest, username: str = Depends(re
         ndx_cross_check=ctx.get("ndx_cross_check"),
         implied_range=ctx.get("implied_range"),
         oi_is_volume_proxy=ctx.get("oi_is_volume_proxy", False),
+        macro_levels=ctx.get("macro_levels"),
+        vix_gamma_levels=ctx.get("vix_gamma_levels"),
     )
 
     ai_text = await query_groq(system_prompt, message, history=history)

@@ -1153,6 +1153,15 @@ main {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.chart-subheading {
+  margin: 20px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .chart-container {
   background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);

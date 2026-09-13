@@ -104,6 +104,8 @@ def build_system_prompt(
     ndx_cross_check: str = "",
     implied_range: dict | None = None,
     oi_is_volume_proxy: bool = False,
+    macro_levels: dict | None = None,
+    vix_gamma_levels: dict | None = None,
 ) -> str:
     """Port ampliado del system_prompt de consultar_ia en app.py (~línea
     2066): mismos datos de mercado y mismas reglas duras de coherencia
@@ -171,9 +173,55 @@ def build_system_prompt(
         f"  Zero Gamma={_wall_in_points(metrics['zero_gamma'])}{dominant_wall_line}"
     )
 
+    # Skew put/call cerca del ATM (ver domain/metrics.py) -- puts más caros
+    # que calls es NORMAL en índices (protección contra caídas), lo que
+    # importa es que esté CRECIENDO: eso es "miedo construyéndose" en
+    # silencio, antes de que el precio lo muestre (Rosme, video de
+    # volatilidad/vol surface). None si no hay suficiente data de un lado.
+    skew_line = ""
+    skew_val = metrics.get("skew")
+    if skew_val is not None:
+        skew_pct = skew_val * 100
+        if skew_pct > 3.0:
+            skew_note = "skew alto/empinado hacia puts -- miedo de caída ya construido, exige más confirmación para longs agresivos"
+        elif skew_pct > 1.0:
+            skew_note = "skew normal/sano de índice (puts algo más caros que calls, esperable)"
+        else:
+            skew_note = "skew plano o invertido hacia calls -- poco miedo de caída puesto en precio, cuidado con complacencia"
+        skew_line = f"- Skew Put/Call (ATM): {skew_pct:+.2f} puntos de IV (Put IV − Call IV) -- {skew_note}"
+
     vix_term_structure_line = format_vix_term_structure(vix_term_structure)
     implied_range_line = format_implied_range(implied_range, ticker)
     ndx_cross_check_section = f"\n{ndx_cross_check}\n" if ndx_cross_check else ""
+
+    # Call Resistance/Put Support de TODAS las expiraciones combinadas (a
+    # diferencia de CW1-3/PW1-3 arriba, que son solo la expiración más
+    # cercana/0DTE) -- el "rango semanal" de Aleks Rosme: mucho más
+    # estable día a día, se usa como límite macro, no como nivel de
+    # scalping. Puede llegar vacío si el feed todavía no tuvo su primer
+    # tick DEEP (ver services/market_feed.py).
+    macro_levels_line = ""
+    if macro_levels and macro_levels.get("cw1") and macro_levels.get("pw1"):
+        macro_levels_line = (
+            f"- Rango Semanal/Macro (Call Resistance / Put Support, TODAS las expiraciones combinadas -- límite "
+            f"estructural, no nivel de scalping): Call Resistance={_wall_in_points(macro_levels['cw1'])}, "
+            f"Put Support={_wall_in_points(macro_levels['pw1'])}"
+        )
+
+    # Niveles de gamma de VIX mismo (ver services/cross_check.py) -- VIX
+    # tiene su propia correlación NEGATIVA con equities: un nivel de
+    # gamma positivo actuando como soporte/resistencia EN VIX implica el
+    # movimiento contrario en {ticker} (si VIX rebota ahí hacia arriba,
+    # equities deberían caer, y viceversa).
+    vix_gamma_levels_line = ""
+    if vix_gamma_levels and vix_gamma_levels.get("cw1") and vix_gamma_levels.get("pw1"):
+        vgl = vix_gamma_levels
+        vix_gamma_levels_line = (
+            f"- Niveles de Gamma de VIX (correlación NEGATIVA con {ticker} -- úsalo como señal INVERSA, nunca "
+            f"directa): VIX Call Wall={vgl['cw1']:.2f}, VIX Put Wall={vgl['pw1']:.2f}, VIX Zero Gamma="
+            f"{vgl['zero_gamma']:.2f}. Si VIX está rebotando/pineado en uno de estos niveles, esperá el movimiento "
+            f"CONTRARIO en {ticker} aunque no haya catalizador visible todavía en el precio de {ticker}."
+        )
 
     # NDX/SPX/VIX (productos de índice exclusivos de CBOE): Schwab no da
     # Open Interest real para estos -- confirmado en vivo, 0 de cientos
@@ -212,8 +260,8 @@ def build_system_prompt(
     MARCO DE RAZONAMIENTO: CONTEXT -> LOCATION -> CONFIRMATION (úsalo como el orden mental de TODO análisis, nunca saltees un paso ni los mezcles)
     ================================================================
     Este es el marco real de un trader profesional de gamma exposure (no una plantilla genérica) -- cada paso depende del anterior, en este orden estricto:
-    1. CONTEXT (el panorama antes de mirar niveles puntuales): régimen de gamma (positivo/negativo), VIX y su term structure (VIX vs VIX3M -- ver más abajo), Net GEX total, y si hay CRUCE CON NDX (niveles compuestos, ver más abajo) -- esto responde "¿qué tipo de día es hoy y quién tiene la sartén por el mango (calls o puts)?", ANTES de mirar ningún nivel puntual.
-    2. LOCATION (dónde, dentro de ese contexto): los niveles de gamma en juego (Call/Put Walls, Zero Gamma, Gamma Wall) MÁS el Implied Range (techo/piso estadístico de la sesión, ver más abajo) MÁS -- cuando hay datos reales -- los perfiles de Volume/Delta/TPO de sesión (POC/VAH/VAL/HVN/LVN). Un nivel de gamma que además coincide con un POC/VAH/VAL de volumen, o con un nivel compuesto de NDX, tiene MÁS peso que uno aislado -- decilo explícitamente cuando aplique.
+    1. CONTEXT (el panorama antes de mirar niveles puntuales): régimen de gamma (positivo/negativo), VIX y su term structure (VIX vs VIX3M -- ver más abajo), los NIVELES DE GAMMA DE VIX MISMO como señal inversa (si hay dato, ver más abajo), el skew put/call (miedo construyéndose o no, ver más abajo), Net GEX total, y si hay CRUCE CON NDX (niveles compuestos, ver más abajo) -- esto responde "¿qué tipo de día es hoy y quién tiene la sartén por el mango (calls o puts)?", ANTES de mirar ningún nivel puntual.
+    2. LOCATION (dónde, dentro de ese contexto): los niveles de gamma 0DTE en juego (Call/Put Walls, Zero Gamma, Gamma Wall) MÁS el Rango Semanal/Macro (Call Resistance/Put Support de TODAS las expiraciones, ver más abajo -- son los límites del rango, no niveles de scalping) MÁS el Implied Range (techo/piso estadístico de la sesión, ver más abajo) MÁS -- cuando hay datos reales -- los perfiles de Volume/Delta/TPO de sesión (POC/VAH/VAL/HVN/LVN). Un nivel de gamma que además coincide con un POC/VAH/VAL de volumen, con el borde del Rango Semanal/Macro, o con un nivel compuesto de NDX, tiene MÁS peso que uno aislado -- decilo explícitamente cuando aplique.
     3. CONFIRMATION (lo ÚLTIMO, nunca el punto de partida): order flow -- absorción (esfuerzo que NO logra mover el precio = participantes atrapados = combustible para el lado contrario, la "Law of Effort" de Wyckoff) seguida de agresión recompensada (esfuerzo que SÍ mueve el precio = la reversión/continuación real). Nunca generes un escenario a partir de la confirmación sola -- confirmation solo valida o invalida un escenario que el Context+Location ya armaron.
     No mezcles estos pasos: un Net GEX negativo (Context) no es un nivel (Location), y una absorción (Confirmation) no reemplaza la necesidad de que el precio esté en un nivel real primero.
 
@@ -256,9 +304,12 @@ def build_system_prompt(
     - Put Walls (Soportes): PW1={metrics['pw1']:.0f} USD, PW2={metrics['pw2']:.0f} USD, PW3={metrics['pw3']:.0f} USD
     - Zero Gamma Level (Flip): {metrics['zero_gamma']:.2f} USD
     {gamma_levels_in_points}
+    {macro_levels_line}
+    {vix_gamma_levels_line}
     - Volatilidad Implícita ATM: {metrics['iv_str']} (percentil de IV: {metrics['iv_rank_str']}) -- un percentil alto sugiere IV cara respecto a su propio rango reciente (favorece vender prima/spreads de crédito, y en el marco de Aleks Rosme también favorece objetivos de tipo "runner"/dejar correr ganadores porque el mercado está pagando por movimiento real); uno bajo sugiere IV barata (favorece comprar opciones directas si el catalizador es fuerte, y favorece tomar "base hits" -- objetivos de scalp cortos y frecuentes en vez de esperar un runner que probablemente no llegue).
     - {vix_term_structure_line}
     - {implied_range_line}
+    {skew_line}
     - Delta Exposure (DEX): {metrics['net_dex_val']:.2f}M USD | Theta Exposure (TEX): {metrics['net_tex_val']:,.0f} USD/día
     - Vega Exposure (VEX): {metrics['net_vex_val']:,.0f} USD/1% IV | Charm Exposure (CHEX): {metrics['net_chex_val']:.2f}M USD/día | Vanna: {metrics['net_vanna_val']:.2f}M USD
     {ndx_cross_check_section}

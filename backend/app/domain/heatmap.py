@@ -42,12 +42,15 @@ def compute_heatmap_matrix(
     snapshots: list[dict],
     session_start: str = DEFAULT_SESSION_START,
     session_end: str = DEFAULT_SESSION_END,
+    value_key: str = 'net_gex',
 ) -> dict:
-    """Matriz strike x tiempo de net_gex real, construida directo de los
+    """Matriz strike x tiempo de un valor real por strike (net_gex por
+    defecto, o net_chex para el panel de Charm Heatmap -- ver
+    compute_charm_heatmap_matrix abajo), construida directo de los
     snapshots que snapshot_writer ya guarda -- a diferencia de
     compute_z_matrix_cached en app.py (que recalculaba Black-Scholes sobre
     una grilla sintética de strikes finos con un doble `for` en Python
-    puro), esto reusa el net_gex real ya calculado por cada snapshot, sin
+    puro), esto reusa el valor real ya calculado por cada snapshot, sin
     volver a tocar Black-Scholes. Mucho más barato en CPU -- relevante en
     el free tier de 0.1 vCPU de Render."""
     filtered = [s for s in snapshots if session_start <= s.get('time', '') <= session_end]
@@ -87,7 +90,7 @@ def compute_heatmap_matrix(
     for t_idx, snap in enumerate(filtered):
         for item in snap.get('strikes', []):
             strike = float(item['strike'])
-            value = float(item.get('net_gex', 0.0))
+            value = float(item.get(value_key, 0.0) or 0.0)
             for row, weight in band_weights_by_strike.get(strike, {}).items():
                 z[row, t_idx] = value * weight
 
@@ -95,3 +98,17 @@ def compute_heatmap_matrix(
         z = gaussian_filter1d(z, sigma=TIME_SIGMA, axis=1)
 
     return {"times": times, "strikes": y_axis, "z": z.tolist(), "spot": spots}
+
+
+def compute_charm_heatmap_matrix(
+    snapshots: list[dict],
+    session_start: str = DEFAULT_SESSION_START,
+    session_end: str = DEFAULT_SESSION_END,
+) -> dict:
+    """Igual que compute_heatmap_matrix pero con net_chex (Charm Exposure)
+    en vez de net_gex -- panel de Charm Heatmap (ver Aleks Rosme: el
+    'drift' direccional que el paso del tiempo fuerza en el hedging de
+    dealers, independiente del movimiento de precio). Snapshots guardados
+    antes de que snapshot_writer empezara a incluir 'net_chex' por strike
+    simplemente aportan 0 en esas columnas, no rompen la matriz."""
+    return compute_heatmap_matrix(snapshots, session_start, session_end, value_key='net_chex')

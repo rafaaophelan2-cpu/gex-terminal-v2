@@ -89,6 +89,14 @@ class SymbolFeed:
         self.deep_df: pd.DataFrame = pd.DataFrame()
         self.deep_last_update: float = 0.0
         self._deep_task: asyncio.Task | None = None
+        # Walls/Zero Gamma de TODAS las expiraciones combinadas (a
+        # diferencia de "walls" en gex_info_payload, que siempre es solo
+        # la expiración más cercana/0DTE) -- el "Call Resistance/Put
+        # Support" macro de Aleks Rosme: rango semanal/mensual, mucho más
+        # estable día a día que los niveles 0DTE. Se recalcula junto con
+        # deep_df (cada DEEP_CHAIN_INTERVAL_SECONDS), reusando
+        # compute_metrics_for_dte tal cual -- no hace falta lógica nueva.
+        self.macro_levels: dict = {}
         # IV ATM / percentile: se recalculan UNA vez por tick acá (no por
         # conexión en gex_info_payload) porque no varían con el
         # strike_range de cada usuario -- son una lectura de mercado
@@ -182,6 +190,19 @@ class SymbolFeed:
         self.deep_df = recalculate_gex_for_spot(df, spot_t=spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
         self.deep_last_update = time.time()
 
+        # Walls "all-expiry" (Call Resistance/Put Support macro, ver
+        # comentario en __init__) -- se calculan acá, no en _tick_once,
+        # porque necesitan TODAS las expiraciones que trae deep_df
+        # (self.df, la cadena angosta de cada tick de 2s, normalmente solo
+        # cubre 1-2 expiraciones cercanas).
+        exp_keys_all = list(self.deep_df['exp_key'].unique()) if 'exp_key' in self.deep_df.columns else []
+        macro = compute_metrics_for_dte(self.deep_df, exp_keys_all, spot)
+        self.macro_levels = {
+            "cw1": macro["cw1"], "cw2": macro["cw2"], "cw3": macro["cw3"],
+            "pw1": macro["pw1"], "pw2": macro["pw2"], "pw3": macro["pw3"],
+            "zero_gamma": macro["zero_gamma"],
+        }
+
     async def _tick_once(self) -> None:
         chain = await fetch_option_chain(_schwab_query_symbol(self.symbol), self.strikes_count)
         df, exp0 = parse_schwab_chain(chain)
@@ -256,6 +277,7 @@ class SymbolFeed:
                 "by_strike": [],
                 "price_profile": {"prices": [], "net_gamma": []},
                 "oi_is_volume_proxy": self.oi_is_volume_proxy,
+                "macro_levels": self.macro_levels,
             }
 
         df_nearest_full = get_nearest_dte_subset(self.df)
@@ -287,6 +309,12 @@ class SymbolFeed:
             ],
             "price_profile": price_profile,
             "oi_is_volume_proxy": self.oi_is_volume_proxy,
+            # Call Resistance/Put Support de TODAS las expiraciones (ver
+            # self.macro_levels en __init__) -- distinto de "walls" arriba,
+            # que siempre es solo la expiración más cercana/0DTE. Puede
+            # llegar vacío ({}) hasta el primer tick DEEP (máx
+            # DEEP_CHAIN_INTERVAL_SECONDS después de conectar).
+            "macro_levels": self.macro_levels,
         }
 
     def signals_payload(self) -> dict:

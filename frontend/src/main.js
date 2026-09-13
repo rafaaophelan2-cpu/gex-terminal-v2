@@ -2,7 +2,7 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchCompoundedLevels, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchCharmHeatmap, fetchCompoundedLevels, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
@@ -56,6 +56,7 @@ const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn'
 const netDriftChartEl = document.getElementById('net-drift-chart')
 const driftDateInput = document.getElementById('drift-date-input')
 const liveGammaChartEl = document.getElementById('live-gamma-chart')
+const charmHeatmapChartEl = document.getElementById('charm-heatmap-chart')
 const backgammaDateSelect = document.getElementById('backgamma-date-select')
 const backgammaPlayBtn = document.getElementById('backgamma-play-btn')
 const backgammaSpeedSelect = document.getElementById('backgamma-speed-select')
@@ -127,6 +128,8 @@ const metricEls = {
   cw1: document.getElementById('metric-cw1'),
   pw1: document.getElementById('metric-pw1'),
   zg: document.getElementById('metric-zg'),
+  cw1Macro: document.getElementById('metric-cw1-macro'),
+  pw1Macro: document.getElementById('metric-pw1-macro'),
   vix: document.getElementById('metric-vix'),
   vixStatus: document.getElementById('metric-vix-status'),
   vixTerm: document.getElementById('metric-vix-term'),
@@ -673,11 +676,15 @@ async function loadLiveGamma() {
     // depender de qué fecha haya elegido el usuario en otra pestaña).
     const dates = await fetchAvailableDates(symbol)
     const date = dates[0] || todayInLima()
-    const [heatmap, candles] = await Promise.all([
+    const [heatmap, charmHeatmap, candles] = await Promise.all([
       fetchHeatmap(symbol, date),
+      fetchCharmHeatmap(symbol, date).catch(() => null),
       fetchCandles(symbol, date).catch(() => []),
     ])
     renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles, date)
+    if (charmHeatmap) {
+      renderLiveGammaChart(charmHeatmapChartEl, charmHeatmap, latestWalls, candles, date, 'Charm Exposure')
+    }
   } catch (err) {
     console.error('Error cargando LIVE GAMMA:', err)
   }
@@ -1231,6 +1238,8 @@ function handleMarketMessage(data) {
     setMetric(metricEls.cw1, info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
     setMetric(metricEls.pw1, info.walls?.pw1 ? `$${info.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
     setMetric(metricEls.zg, info.flip_level ? `$${info.flip_level.toFixed(2)}` : '--', 'val-zero-gamma')
+    setMetric(metricEls.cw1Macro, info.macro_levels?.cw1 ? `$${info.macro_levels.cw1.toFixed(0)}` : '--', 'val-call-wall')
+    setMetric(metricEls.pw1Macro, info.macro_levels?.pw1 ? `$${info.macro_levels.pw1.toFixed(0)}` : '--', 'val-put-wall')
     oiProxyWarningEl.hidden = !info.oi_is_volume_proxy
 
     if (info.by_strike && info.by_strike.length > 0) {

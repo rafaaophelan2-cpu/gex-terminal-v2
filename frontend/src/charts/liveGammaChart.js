@@ -16,8 +16,13 @@ import { nyWallClockToPlotlyString } from '../utils/time.js'
  * texto hacía que Plotly tratara cada hora única de ambas series como
  * una columna más, dejando el heatmap con huecos dispersos y las velas
  * amontonadas. Con un eje de tiempo real cada trazo se ubica en su
- * posición real sin interferir con el otro. */
-export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
+ * posición real sin interferir con el otro.
+ * 'metricLabel' (opcional): título del colorbar + nombre del valor en el
+ * hover -- 'Net GEX' por defecto (LIVE GAMMA); se reusa esta misma
+ * función para el panel de Charm Heatmap pasando 'Charm Exposure', ya que
+ * el heatmap en sí es idéntico (mismo backend, mismo formato de
+ * respuesta, ver domain/heatmap.py), solo cambia qué valor trae 'z'. */
+export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metricLabel = 'Net GEX') {
   if (!heatmap.times || heatmap.times.length === 0) return
 
   // Preservar el zoom/pan actual entre refrescos periódicos (ver
@@ -55,8 +60,8 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr) {
         [0.7, 'rgba(16, 185, 129, 0.10)'],
         [1.0, 'rgba(16, 185, 129, 0.55)'],
       ],
-      hovertemplate: 'Hora: %{x|%H:%M}<br>Strike: $%{y}<br>Net GEX: %{z:,.0f}<extra></extra>',
-      colorbar: { title: { text: 'Net GEX', side: 'top' }, x: -0.08 },
+      hovertemplate: `Hora: %{x|%H:%M}<br>Strike: $%{y}<br>${metricLabel}: %{z:,.0f}<extra></extra>`,
+      colorbar: { title: { text: metricLabel, side: 'top' }, x: -0.08 },
     },
   ]
 

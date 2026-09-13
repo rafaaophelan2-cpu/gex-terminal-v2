@@ -1,4 +1,4 @@
-from app.domain.heatmap import BAND_HALF_WIDTH, compute_heatmap_matrix
+from app.domain.heatmap import BAND_HALF_WIDTH, compute_charm_heatmap_matrix, compute_heatmap_matrix
 
 
 def test_compute_heatmap_matrix_builds_narrow_separated_bands():
@@ -51,3 +51,24 @@ def test_compute_heatmap_matrix_filters_outside_session():
 def test_compute_heatmap_matrix_empty_input():
     result = compute_heatmap_matrix([])
     assert result == {"times": [], "strikes": [], "z": [], "spot": []}
+
+
+def test_compute_charm_heatmap_matrix_uses_net_chex_not_net_gex():
+    # Mismo strike, net_gex y net_chex a propósito distintos -- el
+    # heatmap de charm debe reflejar net_chex, ignorando net_gex.
+    snapshots = [
+        {"time": "09:30", "spot": 100.0, "strikes": [{"strike": 100.0, "net_gex": 999.0, "net_chex": 4.0}]},
+    ]
+    result = compute_charm_heatmap_matrix(snapshots)
+    peak_row = max(result["z"], key=lambda row: abs(row[0]))
+    assert abs(peak_row[0] - 4.0) < 1e-9
+
+
+def test_compute_charm_heatmap_matrix_missing_net_chex_defaults_to_zero():
+    # Snapshots guardados antes de que snapshot_writer incluyera
+    # net_chex no deben romper la matriz -- simplemente aportan 0.
+    snapshots = [
+        {"time": "09:30", "spot": 100.0, "strikes": [{"strike": 100.0, "net_gex": 5.0}]},
+    ]
+    result = compute_charm_heatmap_matrix(snapshots)
+    assert all(v == 0.0 for row in result["z"] for v in row)

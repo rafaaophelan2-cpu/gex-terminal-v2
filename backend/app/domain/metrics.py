@@ -51,7 +51,8 @@ def _metrics_fallback(spot_ref: float) -> dict:
         "pw1": spot_ref - 5, "pw2": spot_ref - 10, "pw3": spot_ref - 15,
         "zero_gamma": spot_ref, "dominant_wall": None, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
         "net_dex_val": 0.0, "net_tex_val": 0.0, "net_vex_val": 0.0, "net_chex_val": 0.0, "net_vanna_val": 0.0,
-        "atm_iv": 0.20, "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
+        "atm_iv": 0.20, "atm_iv_call": None, "atm_iv_put": None, "skew": None,
+        "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
         "condition_str": "Neutral",
     }
 
@@ -88,6 +89,8 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
     net_vanna_val = float(df_agg['net_vanna'].sum()) if 'net_vanna' in df_agg.columns else 0.0
 
     valid_ivs = []
+    valid_call_ivs = []
+    valid_put_ivs = []
     if spot_ref > 0:
         near_atm = df_agg[abs(df_agg['strike'] - spot_ref) <= (spot_ref * 0.025)]
         for _, r in near_atm.iterrows():
@@ -95,9 +98,20 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
             iv_p = r.get('iv_p', 0)
             if 0.02 < iv_c < 3.0:
                 valid_ivs.append(iv_c)
+                valid_call_ivs.append(iv_c)
             if 0.02 < iv_p < 3.0:
                 valid_ivs.append(iv_p)
+                valid_put_ivs.append(iv_p)
     atm_iv = float(np.median(valid_ivs)) if valid_ivs else 0.20
+    # Skew put/call cerca del ATM (ver ai_prompt.py) -- puts con IV más
+    # cara que calls es normal en índices (protección contra caídas), lo
+    # que importa es el CAMBIO: un skew creciente es "miedo construyéndose"
+    # aunque el precio todavía no lo muestre (Rosme, video de volatilidad).
+    # None cuando no hay suficiente data de un lado para que el número no
+    # se lea como una señal real.
+    atm_iv_call = float(np.median(valid_call_ivs)) if valid_call_ivs else None
+    atm_iv_put = float(np.median(valid_put_ivs)) if valid_put_ivs else None
+    skew = (atm_iv_put - atm_iv_call) if (atm_iv_call is not None and atm_iv_put is not None) else None
 
     regime_str = "positive regime" if net_gex_total >= 0 else "negative regime"
     condition_str = (
@@ -113,6 +127,7 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
         "net_dex_val": net_dex_val, "net_tex_val": net_tex_val, "net_vex_val": net_vex_val,
         "net_chex_val": net_chex_val, "net_vanna_val": net_vanna_val,
         "atm_iv": atm_iv,
+        "atm_iv_call": atm_iv_call, "atm_iv_put": atm_iv_put, "skew": skew,
         "iv_str": f"{atm_iv * 100:.2f}%",
         "iv_rank_str": f"{int(min(max((atm_iv / 0.35) * 100, 15), 85))}th percentile (estimado)",
         "regime_str": regime_str, "condition_str": condition_str,

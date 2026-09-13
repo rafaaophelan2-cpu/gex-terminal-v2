@@ -16,6 +16,14 @@ export async function fetchHeatmap(symbol, date) {
   return resp.json()
 }
 
+export async function fetchCharmHeatmap(symbol, date) {
+  const params = new URLSearchParams({ symbol })
+  if (date) params.set('date', date)
+  const resp = await apiFetch(`/market/heatmap-charm?${params.toString()}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
 export async function fetchCandles(symbol, date) {
   const params = new URLSearchParams({ symbol })
   if (date) params.set('date', date)

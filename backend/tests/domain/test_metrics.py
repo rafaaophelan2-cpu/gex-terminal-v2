@@ -71,6 +71,27 @@ def test_compute_metrics_for_dte_filters_and_aggregates():
     assert metrics['dominant_wall'] == 95.0
 
 
+def test_compute_metrics_for_dte_skew_put_call_near_atm():
+    # Único strike dentro de la ventana ATM (+-2.5% de 100.0) para esa
+    # expiración es 100.0 -- iv_c=0.21, iv_p=0.20 (ver _multi_exp_df).
+    df = _multi_exp_df()
+    metrics = compute_metrics_for_dte(df, ['2026-09-10:0'], spot_ref=100.0)
+    assert abs(metrics['atm_iv_call'] - 0.21) < 1e-9
+    assert abs(metrics['atm_iv_put'] - 0.20) < 1e-9
+    assert abs(metrics['skew'] - (-0.01)) < 1e-9
+
+
+def test_compute_metrics_for_dte_skew_none_when_no_near_atm_data():
+    # spot_ref lejos de cualquier strike real -> ninguno entra en la
+    # ventana ATM -> skew debe ser None, no 0.0 (0.0 se leería como "sin
+    # skew" en vez de "sin datos").
+    df = _multi_exp_df()
+    metrics = compute_metrics_for_dte(df, ['2026-09-10:0'], spot_ref=1000.0)
+    assert metrics['atm_iv_call'] is None
+    assert metrics['atm_iv_put'] is None
+    assert metrics['skew'] is None
+
+
 def test_compute_metrics_for_dte_fallback_on_empty_selection():
     df = _multi_exp_df()
     metrics = compute_metrics_for_dte(df, ['no-existe:99'], spot_ref=200.0)

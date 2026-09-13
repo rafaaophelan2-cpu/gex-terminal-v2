@@ -72,6 +72,45 @@ async def fetch_ndx_compounded_levels(primary_symbol: str, primary_spot: float, 
     return {"ratio": ratio, "ndx_spot": ndx_spot, "matches": matches}
 
 
+async def fetch_vix_gamma_levels(primary_symbol: str) -> dict | None:
+    """Walls/Zero Gamma DE VIX MISMO -- a diferencia de fetch_ndx_compounded_levels,
+    acá no hay cruce: Rosme usa el gamma exposure de VIX como soporte/
+    resistencia sobre VIX, y por la correlación NEGATIVA VIX-equities, una
+    señal INVERSA para {primary_symbol} (ver build_system_prompt). None si
+    el símbolo primario YA es VIX (sus propios niveles ya están en
+    pantalla, cruzarlo consigo mismo no aporta nada) o si el fetch falla."""
+    if primary_symbol == "VIX":
+        return None
+
+    try:
+        chain = await fetch_option_chain("$VIX", CROSS_CHECK_STRIKES_COUNT)
+        df, _ = parse_schwab_chain(chain)
+        vix_spot = float(chain.get("underlyingPrice") or 0.0) if isinstance(chain, dict) else 0.0
+        if df.empty or vix_spot <= 0:
+            return None
+
+        # Mismo motivo que en fetch_ndx_compounded_levels: Schwab no da OI
+        # real para VIX (índice CBOE), se fusiona el OI real de
+        # MarketData.app.
+        oi_map = await fetch_oi_map("VIX")
+        if oi_map:
+            df = merge_external_oi(df, oi_map)
+
+        df = recalculate_gex_for_spot(df, spot_t=vix_spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
+        df_nearest = get_nearest_dte_subset(df)
+        by_strike = df_nearest.groupby("strike", as_index=False)[["call_gex", "put_gex", "net_gex"]].sum().sort_values("strike")
+        if by_strike.empty:
+            return None
+
+        cw1, _, _, pw1, _, _ = compute_call_put_walls(by_strike, vix_spot)
+        zero_gamma = compute_zero_gamma(by_strike, vix_spot)
+    except Exception:
+        logger.exception("Niveles de gamma de VIX fallaron -- se omite esta vez.")
+        return None
+
+    return {"cw1": cw1, "pw1": pw1, "zero_gamma": zero_gamma, "vix_spot": vix_spot}
+
+
 def format_ndx_cross_check_text(primary_symbol: str, result: dict | None) -> str:
     """Texto en prosa para el prompt de la IA -- ver build_system_prompt."""
     if result is None:
