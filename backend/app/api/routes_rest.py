@@ -15,7 +15,6 @@ from app.domain.vol_surface import compute_vol_surface
 from app.integrations.groq_client import query_groq
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
-from app.integrations.yahoo_client import fetch_yahoo_option_chain_raw
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
 from app.services.ai_context import NoActiveFeedError, build_ai_context, dte_from_exp_key
 from app.services.cross_check import fetch_ndx_compounded_levels
@@ -136,48 +135,6 @@ async def get_vix_term_structure(_username: str = Depends(require_auth)):
     if not result:
         return {"vix": None, "vix3m": None, "state": "n/a"}
     return result
-
-
-@router.get("/test-yahoo-oi")
-async def get_test_yahoo_oi(symbol: str = "VIX", _username: str = Depends(require_auth)):
-    """ENDPOINT TEMPORAL DE PRUEBA -- NO es parte del pipeline real todavía.
-    Confirma si el free tier de Render (0.1 vCPU / 512MB) aguanta correr
-    un Chromium headless para scrapear Open Interest real de Yahoo
-    Finance (ver integrations/yahoo_client.py) sin tirar abajo el resto
-    del servicio. Borrar (o promover a integración real) según el
-    resultado de esta prueba."""
-    import time
-
-    start = time.monotonic()
-    raw = await fetch_yahoo_option_chain_raw(symbol)
-    elapsed = round(time.monotonic() - start, 1)
-
-    if raw is None:
-        return {"ok": False, "elapsed_seconds": elapsed, "reason": "fetch_yahoo_option_chain_raw devolvió None (ver logs)"}
-
-    result = raw.get("optionChain", {}).get("result", [])
-    if not result:
-        return {"ok": False, "elapsed_seconds": elapsed, "reason": "sin resultados en la respuesta"}
-
-    options = result[0].get("options", [{}])[0]
-    calls = options.get("calls", [])
-    puts = options.get("puts", [])
-    sample = [
-        {
-            "strike": c.get("strike", {}).get("raw"),
-            "openInterest": c.get("openInterest", {}).get("raw"),
-            "volume": c.get("volume", {}).get("raw"),
-        }
-        for c in calls[:10]
-    ]
-    return {
-        "ok": True,
-        "elapsed_seconds": elapsed,
-        "calls": len(calls),
-        "puts": len(puts),
-        "contracts_with_oi": sum(1 for c in calls if (c.get("openInterest", {}).get("raw") or 0) > 0),
-        "sample": sample,
-    }
 
 
 @router.get("/implied-range")
