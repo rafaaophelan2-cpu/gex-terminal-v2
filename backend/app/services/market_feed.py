@@ -35,6 +35,19 @@ DEFAULT_T_EXP = 1 / 365
 DEEP_CHAIN_STRIKES_COUNT = 100
 DEEP_CHAIN_INTERVAL_SECONDS = 45
 
+# Símbolos que Schwab expone como índice cash-settled -- su endpoint de
+# option chain solo los reconoce con "$" adelante ("$NDX", no "NDX"),
+# confirmado en vivo contra la API real. El resto del sistema (feed
+# registry, WS, string de TradingView, Firebase) sigue usando el símbolo
+# "limpio" (sin "$") en todos lados -- este mapeo es la ÚNICA frontera
+# donde se traduce, justo antes de llamarlo a Schwab.
+INDEX_SYMBOLS = {"NDX", "SPX", "VIX"}
+
+
+def _schwab_query_symbol(display_symbol: str) -> str:
+    return f"${display_symbol}" if display_symbol in INDEX_SYMBOLS else display_symbol
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -130,7 +143,7 @@ class SymbolFeed:
             await asyncio.sleep(DEEP_CHAIN_INTERVAL_SECONDS)
 
     async def _deep_tick_once(self) -> None:
-        chain = await fetch_option_chain(self.symbol, DEEP_CHAIN_STRIKES_COUNT)
+        chain = await fetch_option_chain(_schwab_query_symbol(self.symbol), DEEP_CHAIN_STRIKES_COUNT)
         df, _ = parse_schwab_chain(chain)
         spot = float(chain.get('underlyingPrice') or 0.0) if isinstance(chain, dict) else 0.0
         if df.empty or spot <= 0:
@@ -142,7 +155,7 @@ class SymbolFeed:
         self.deep_last_update = time.time()
 
     async def _tick_once(self) -> None:
-        chain = await fetch_option_chain(self.symbol, self.strikes_count)
+        chain = await fetch_option_chain(_schwab_query_symbol(self.symbol), self.strikes_count)
         df, exp0 = parse_schwab_chain(chain)
 
         spot = float(chain.get('underlyingPrice') or 0.0) if isinstance(chain, dict) else 0.0

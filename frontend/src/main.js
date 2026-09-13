@@ -30,8 +30,6 @@ const strikeRangeInput = document.getElementById('strike-range-input')
 const conversionRatioInput = document.getElementById('conversion-ratio-input')
 const applySymbolBtn = document.getElementById('apply-symbol-btn')
 const tabButtons = document.querySelectorAll('#tab-nav .tab-btn')
-const sidebarEl = document.getElementById('sidebar')
-const sidebarTitle = document.getElementById('sidebar-title')
 const iconRailBrandBtn = document.getElementById('icon-rail-brand-btn')
 const iconRailGexBtn = document.getElementById('icon-rail-gex-btn')
 const iconRailUtilidadBtn = document.getElementById('icon-rail-utilidad-btn')
@@ -121,7 +119,6 @@ const greeksMetricEls = {
 }
 
 const metricEls = {
-  symbol: document.getElementById('metric-symbol'),
   spot: document.getElementById('metric-spot'),
   netGex: document.getElementById('metric-net-gex'),
   callGex: document.getElementById('metric-call-gex'),
@@ -199,27 +196,7 @@ function isGreeksTabActive() {
   return isTabVisible('greeks')
 }
 
-function toggleSidebar() {
-  const collapsed = sidebarEl.classList.toggle('collapsed')
-  sidebarTitle.title = collapsed ? 'Mostrar panel' : 'Ocultar panel'
-  // #sidebar tarda 0.25s en terminar la transición de ancho -- si se
-  // redibuja el gráfico de GEX INFO ANTES de eso, Plotly mide el
-  // contenedor a mitad de camino (todavía angosto/ancho viejo) y ese
-  // rango mal calculado queda "pegado" hasta que el usuario hace zoom out
-  // manual (mismo síntoma reportado con split-view, ver
-  // forceGexInfoRedraw). Se espera a que termine la transición real en
-  // vez de adivinar con un setTimeout de duración fija.
-  sidebarEl.addEventListener('transitionend', forceGexInfoRedraw, { once: true })
-}
-
-sidebarTitle.addEventListener('click', toggleSidebar)
-sidebarTitle.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault()
-    toggleSidebar()
-  }
-})
-iconRailBrandBtn.addEventListener('click', toggleSidebar)
+iconRailBrandBtn.addEventListener('click', () => switchIconRailSection('gex-analytics'))
 
 // --- Riel de íconos: apartados (GEX Analytics / Tools / Chain Analytics)
 // El último ícono sigue deshabilitado ("Próximamente", ver index.html)
@@ -1117,7 +1094,6 @@ function handleMarketMessage(data) {
   if (data.type === 'pong') return
 
   if (data.type === 'chain_full' || data.type === 'tick') {
-    metricEls.symbol.textContent = data.symbol
     setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
     latestGexInfo = info
@@ -1227,7 +1203,13 @@ driftDateInput.addEventListener('change', () => {
   if (driftRefreshTimer) loadNetDrift()
 })
 
-applySymbolBtn.addEventListener('click', () => {
+// Extraído de lo que antes era el único click handler de "Aplicar" --
+// ahora dos triggers distintos necesitan disparar lo mismo: el dropdown
+// de símbolo (aplica solo al elegir, sin botón de por medio, ver el
+// pedido del usuario de "que aparezcan las opciones disponibles antes de
+// que lo tengas que escribir personalmente") y el botón "Aplicar" que
+// sigue existiendo para strike range/ratio.
+function applySymbolChange() {
   const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
   const strikeRange = Math.min(Math.max(parseInt(strikeRangeInput.value, 10) || 25, 5), 80)
   symbolInput.value = symbol
@@ -1247,7 +1229,10 @@ applySymbolBtn.addEventListener('click', () => {
   surface3dDteCount.textContent = ''
   latestGammaSurface = null
   latestVolSurface = null
-})
+}
+
+applySymbolBtn.addEventListener('click', applySymbolChange)
+symbolInput.addEventListener('change', applySymbolChange)
 
 tabButtons.forEach((btn) => {
   btn.addEventListener('click', () => {

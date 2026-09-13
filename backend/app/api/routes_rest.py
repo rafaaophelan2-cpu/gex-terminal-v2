@@ -158,6 +158,9 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         conversion_ratio=conversion_ratio,
         overnight_profile=ctx.get("overnight_profile"),
         cash_profile=ctx.get("cash_profile"),
+        vix_term_structure=ctx.get("vix_term_structure"),
+        ndx_cross_check=ctx.get("ndx_cross_check"),
+        implied_range=ctx.get("implied_range"),
     )
     user_prompt = build_default_user_prompt(body.tipo_analisis)
 

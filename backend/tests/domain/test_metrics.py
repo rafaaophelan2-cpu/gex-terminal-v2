@@ -66,6 +66,9 @@ def test_compute_metrics_for_dte_filters_and_aggregates():
     assert abs(metrics['net_gex_total'] - 2.0) < 1e-9
     assert metrics['cw1'] == 95.0  # único strike con net_gex positivo en ese DTE
     assert metrics['pw1'] == 100.0
+    # Gamma Wall: 95 (|5|+|0|=5) empata en total bruto con 100 (|1|+|4|=5) --
+    # idxmax() de pandas devuelve el primer strike en caso de empate.
+    assert metrics['dominant_wall'] == 95.0
 
 
 def test_compute_metrics_for_dte_fallback_on_empty_selection():

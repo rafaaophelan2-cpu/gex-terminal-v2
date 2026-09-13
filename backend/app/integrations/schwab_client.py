@@ -228,3 +228,30 @@ async def fetch_vix() -> float:
         return 0.0
 
     return await call_with_fallback("vix_price", 0.0, _do_fetch)
+
+
+async def fetch_vix_term_structure() -> dict:
+    """VIX (30 días) vs VIX3M (90 días) -- la forma más simple de leer la
+    curva de volatilidad sin necesitar toda la term structure completa.
+    Contango (VIX < VIX3M) es el estado normal/sano del mercado; cuando
+    se invierte a backwardation (VIX > VIX3M) es la señal de estrés real
+    -- "todo el mundo corriendo a cubrirse YA, no en 3 meses". Confirmado
+    en vivo que Schwab resuelve ambos símbolos con el mismo prefijo "$"
+    que el resto de los índices (ver INDEX_SYMBOLS en market_feed.py)."""
+    client = get_schwab_client()
+    if client is None:
+        return {}
+
+    async def _do_fetch():
+        resp = await client.get_quotes(["$VIX", "$VIX3M"])
+        if resp.status_code != 200:
+            return {}
+        data = resp.json()
+        vix = float((data.get("$VIX", {}) or {}).get("quote", {}).get("lastPrice", 0.0) or 0.0)
+        vix3m = float((data.get("$VIX3M", {}) or {}).get("quote", {}).get("lastPrice", 0.0) or 0.0)
+        if vix <= 0 or vix3m <= 0:
+            return {}
+        state = "backwardation" if vix > vix3m else "contango"
+        return {"vix": vix, "vix3m": vix3m, "state": state}
+
+    return await call_with_fallback("vix_term_structure", {}, _do_fetch)

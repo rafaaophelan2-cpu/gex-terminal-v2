@@ -190,8 +190,8 @@ body {
    ya trae su propio color -- a diferencia de la versión anterior (ícono
    de trazo simple dentro de una caja con fondo degradado), acá NO lleva
    caja de fondo propia, para no competir con el gradiente del ícono. Es
-   un <button> clickeable (colapsa/expande #sidebar, igual que el título
-   "GEX TERMINAL" del panel). */
+   un <button> clickeable (navega al apartado "GEX Analytics", como un
+   logo de "home"). */
 .icon-rail-brand {
   width: 34px;
   height: 34px;
@@ -300,82 +300,97 @@ body {
   transform: translateY(-50%) translateX(0);
 }
 
-#sidebar {
-  width: 220px;
-  flex: 0 0 220px;
-  background: linear-gradient(180deg, #090d16 0%, #05070b 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 20px 16px;
+
+/* Barra superior compacta: reemplaza el viejo #sidebar vertical (el
+   usuario no quería ese espacio fijo a la izquierda). El símbolo ahora es
+   un <select> nativo estilizado como pill -- solo 4 opciones curadas
+   (QQQ/SPY/NDX/VIX), se aplica solo con elegir, sin texto libre ni botón
+   de por medio. */
+.top-bar {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow: hidden;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), flex-basis 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    padding-left 0.25s cubic-bezier(0.4, 0, 0.2, 1), padding-right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Colapsado: clickeando el título "GEX TERMINAL" (o la marca del riel de
-   íconos, que hace lo mismo) -- para recuperar el máximo de ancho posible
-   para los gráficos sin perder acceso a Symbol/Strike Range/Ratio, que
-   siguen a un click de distancia. */
-#sidebar.collapsed {
-  width: 0;
-  flex: 0 0 0;
-  padding-left: 0;
-  padding-right: 0;
-  border-right: none;
+.top-bar-left {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.sidebar-header h1 {
+.top-bar-right {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 1rem;
-  font-weight: 800;
-  margin: 0;
-  background: linear-gradient(90deg, #f0f6fc 0%, #8b949e 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
+  gap: 10px;
 }
 
-.sidebar-title-chevron {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 auto;
-  color: #6e7681;
-  -webkit-text-fill-color: initial;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar-header h1:hover .sidebar-title-chevron {
-  color: #60a5fa;
-}
-
-#user-badge {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: #60a5fa;
-}
-
-.sidebar-field {
+.symbol-select-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.sidebar-field label {
+.symbol-select-wrap label,
+.top-bar-field label {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 1px;
   color: #8b949e;
   text-transform: uppercase;
 }
 
-.sidebar-field input {
+#symbol-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #0e131f;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 8px;
+  padding: 8px 30px 8px 12px;
+  color: #f0f6fc;
+  font-family: var(--mono);
+  font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  min-width: 92px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#symbol-input:hover {
+  border-color: rgba(96, 165, 250, 0.7);
+}
+
+#symbol-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+.symbol-select-chevron {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 14px;
+  height: 14px;
+  color: #6e7681;
+  pointer-events: none;
+}
+
+.top-bar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-bar-field input {
   background: #0e131f;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -383,22 +398,27 @@ body {
   color: #f0f6fc;
   font-family: var(--mono);
   font-size: 0.85rem;
+  width: 92px;
   transition: border-color 0.2s ease;
 }
 
-.sidebar-field input:focus {
+.top-bar-field input:focus {
   outline: none;
   border-color: rgba(96, 165, 250, 0.6);
 }
 
-.sidebar-field-hint {
-  font-size: 0.62rem;
-  color: #6e7681;
-  line-height: 1.35;
+.top-bar-field-ratio input {
+  width: 84px;
 }
 
-#apply-symbol-btn,
-#logout-btn {
+#user-badge {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: #60a5fa;
+  white-space: nowrap;
+}
+
+#apply-symbol-btn {
   background: linear-gradient(135deg, #1e2640 0%, #0f172a 100%);
   border: 1px solid rgba(59, 130, 246, 0.4);
   border-radius: 8px;
@@ -407,30 +427,17 @@ body {
   font-weight: 700;
   font-size: 0.72rem;
   letter-spacing: 0.6px;
-  padding: 9px 12px;
+  padding: 9px 14px;
   cursor: pointer;
-  width: 100%;
+  white-space: nowrap;
   transition: all 0.2s ease-in-out;
 }
 
-#apply-symbol-btn:hover,
-#logout-btn:hover {
+#apply-symbol-btn:hover {
   border-color: #60a5fa;
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   color: #fff;
   box-shadow: 0 0 14px rgba(37, 99, 235, 0.5);
-}
-
-#logout-btn {
-  margin-top: auto;
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #8b949e;
-}
-
-.sidebar-status {
-  display: flex;
-  justify-content: center;
 }
 
 main {
@@ -476,8 +483,15 @@ main {
   color: #8b949e;
   font-family: inherit;
   font-size: 0.72rem;
-  padding: 6px 12px;
+  padding: 7px 12px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+#logout-btn:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
 }
 
 .metrics-bar {
@@ -1142,23 +1156,14 @@ main {
     flex-direction: column;
   }
 
-  #sidebar {
-    width: auto;
-    flex: 0 0 auto;
-    flex-direction: row;
+  .top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-bar-left,
+  .top-bar-right {
     flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .sidebar-field,
-  #apply-symbol-btn,
-  #logout-btn {
-    width: auto;
-    flex: 1 1 140px;
-  }
-
-  #logout-btn {
-    margin-top: 0;
   }
 }
 

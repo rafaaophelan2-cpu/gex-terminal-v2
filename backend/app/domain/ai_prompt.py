@@ -54,6 +54,42 @@ def classify_vix(vix_val: float) -> tuple[str, str, str]:
     return "Muy Alta Volatilidad", "Miedo grande / Movimientos muy expansivos", "#EF4444"
 
 
+def format_vix_term_structure(vix_term_structure: dict | None) -> str:
+    """VIX (30d) vs VIX3M (90d) -- ver fetch_vix_term_structure en
+    schwab_client.py. Contango (VIX < VIX3M) es el estado normal/sano;
+    backwardation (VIX > VIX3M) es la señal de estrés real, todo el
+    mundo corriendo a cubrirse YA en vez de en 3 meses."""
+    if not vix_term_structure or not vix_term_structure.get("vix") or not vix_term_structure.get("vix3m"):
+        return "Term structure VIX/VIX3M: sin dato disponible ahora mismo."
+    vix = vix_term_structure["vix"]
+    vix3m = vix_term_structure["vix3m"]
+    state = vix_term_structure.get("state", "n/a")
+    if state == "backwardation":
+        read = "BACKWARDATION (VIX > VIX3M) -- señal de estrés real, el mercado está pagando más por protección inmediata que por protección a 3 meses. Dale menos crédito a un régimen de gamma positiva/rango si esto se sostiene: el estrés de corto plazo suele preceder rupturas, no rangos."
+    else:
+        read = "Contango (VIX < VIX3M) -- estado normal/sano, sin estrés de corto plazo inusual sobre la volatilidad de mediano plazo."
+    return f"Term structure VIX/VIX3M: VIX={vix:.2f}, VIX3M={vix3m:.2f} -> {read}"
+
+
+def format_implied_range(implied_range: dict | None, ticker: str) -> str:
+    """Banda de movimiento esperado (expected move) desde la IV ATM de la
+    expiración más cercana -- techo/piso ADICIONAL a los niveles de
+    gamma, no un reemplazo. Ver domain/implied_range.py."""
+    if not implied_range or not implied_range.get("one_sd"):
+        return f"Implied Range de {ticker}: sin dato disponible ahora mismo (requiere IV ATM válida)."
+    one_sd = implied_range["one_sd"]
+    two_sd = implied_range["two_sd"]
+    move = implied_range["expected_move"]
+    return (
+        f"Implied Range de {ticker} (expected move de la expiración más cercana, ±1 desvío estándar): "
+        f"{one_sd['low']:.2f} - {one_sd['high']:.2f} USD (movimiento esperado ±{move:.2f} pts). "
+        f"±2 desvíos (cola, menos probable pero no descartable): {two_sd['low']:.2f} - {two_sd['high']:.2f} USD. "
+        f"Tratalo como el techo/piso ESTADÍSTICO de la sesión -- un escenario que proyecte un TP fuera de la banda de "
+        f"±1 desvío necesita sustento extra (un nivel de gamma real ahí, no solo momentum), y prácticamente nunca debería "
+        f"salirse de la banda de ±2 desvíos."
+    )
+
+
 def build_system_prompt(
     ticker: str,
     spot: float,
@@ -64,6 +100,9 @@ def build_system_prompt(
     dte_note: str = "",
     overnight_profile: dict | None = None,
     cash_profile: dict | None = None,
+    vix_term_structure: dict | None = None,
+    ndx_cross_check: str = "",
+    implied_range: dict | None = None,
 ) -> str:
     """Port ampliado del system_prompt de consultar_ia en app.py (~línea
     2066): mismos datos de mercado y mismas reglas duras de coherencia
@@ -120,13 +159,20 @@ def build_system_prompt(
     def _wall_in_points(usd_value: float) -> str:
         return f"{usd_value:.2f} USD ({usd_value * conversion_ratio:,.2f} pts NQ/MNQ)"
 
+    dominant_wall = metrics.get("dominant_wall")
+    dominant_wall_line = f"\n  Gamma Wall={_wall_in_points(dominant_wall)}" if dominant_wall else ""
+
     gamma_levels_in_points = (
         f"- Niveles de gamma en puntos NQ/MNQ (YA CALCULADOS, USÁLOS TAL CUAL -- NUNCA multipliques wall x ratio vos "
         f"mismo en la respuesta, incluso si parece una cuenta simple; usa exactamente estos números):\n"
         f"  CW1={_wall_in_points(metrics['cw1'])}, CW2={_wall_in_points(metrics['cw2'])}, CW3={_wall_in_points(metrics['cw3'])}\n"
         f"  PW1={_wall_in_points(metrics['pw1'])}, PW2={_wall_in_points(metrics['pw2'])}, PW3={_wall_in_points(metrics['pw3'])}\n"
-        f"  Zero Gamma={_wall_in_points(metrics['zero_gamma'])}"
+        f"  Zero Gamma={_wall_in_points(metrics['zero_gamma'])}{dominant_wall_line}"
     )
+
+    vix_term_structure_line = format_vix_term_structure(vix_term_structure)
+    implied_range_line = format_implied_range(implied_range, ticker)
+    ndx_cross_check_section = f"\n{ndx_cross_check}\n" if ndx_cross_check else ""
 
     return f"""
     Eres un analista senior de order flow, derivados y microestructura de mercado, especializado en gamma exposure (GEX) de opciones sobre Nasdaq y en scalping de futuros NQ/MNQ, operando dentro del GEX Quant Terminal. {dte_note}
@@ -140,6 +186,17 @@ def build_system_prompt(
     - CHARM (delta decay) y 0DTE: el paso del tiempo mueve el delta de las opciones incluso sin que se mueva el precio, efecto que se acelera brutalmente en las últimas horas de una expiración 0DTE. Esto puede forzar rebalanceo de hedging de dealers ("drift" direccional) hacia el cierre sin necesidad de un catalizador de precio. En 0DTE, el gamma por contrato cerca del strike es extremo, lo que hace esos niveles más "pegajosos"/dominantes intradía, pero también más frágiles una vez rotos (el hedging que los sostenía se agota rápido).
     - VANNA: los cambios en volatilidad implícita (no solo en precio) también mueven el delta de las opciones. Una caída de IV (compresión de volatilidad) puede forzar compras del lado dealer incluso sin que el precio se mueva -- relevante para explicar "drift" alcista en sesiones de VIX cayendo.
     - NET GEX TOTAL: la suma neta de gamma exposure de calls y puts. Un Net GEX muy negativo con precio cerca de un Put Wall dominante es una configuración de riesgo de movimiento amplificado a la baja si ese wall se rompe (los dealers venden más al caer el precio).
+    - GAMMA WALL (distinto de Call Wall/Put Wall): el strike con mayor gamma exposure BRUTA de toda la cadena (|call_gex| + |put_gex|, no neto). Un strike puede tener muchísimo gamma de calls Y de puts que casi se cancelan en el neto -- ahí igual hay actividad de hedging de dealers máxima en AMBOS lados, y eso lo vuelve un punto de fricción/consolidación tan real como un Call o Put Wall, aunque no aparezca como el nivel neto más grande. Puede coincidir con CW1 o PW1 (el lado más dominante de los dos) o ser un nivel totalmente distinto -- cuando coincide con otro nivel, ese nivel gana MÁS peso, no menos.
+    - LOS NIVELES SON ZONAS, NO PRECIOS EXACTOS: nunca trates un Call Wall/Put Wall/Zero Gamma/Gamma Wall como un precio quirúrgico al centavo -- son zonas de reacción. Al hablar de "llegar" o "romper" un nivel, referite a la zona alrededor de él, no exijas que el precio toque el número exacto para que el escenario siga vigente.
+
+    ================================================================
+    MARCO DE RAZONAMIENTO: CONTEXT -> LOCATION -> CONFIRMATION (úsalo como el orden mental de TODO análisis, nunca saltees un paso ni los mezcles)
+    ================================================================
+    Este es el marco real de un trader profesional de gamma exposure (no una plantilla genérica) -- cada paso depende del anterior, en este orden estricto:
+    1. CONTEXT (el panorama antes de mirar niveles puntuales): régimen de gamma (positivo/negativo), VIX y su term structure (VIX vs VIX3M -- ver más abajo), Net GEX total, y si hay CRUCE CON NDX (niveles compuestos, ver más abajo) -- esto responde "¿qué tipo de día es hoy y quién tiene la sartén por el mango (calls o puts)?", ANTES de mirar ningún nivel puntual.
+    2. LOCATION (dónde, dentro de ese contexto): los niveles de gamma en juego (Call/Put Walls, Zero Gamma, Gamma Wall) MÁS el Implied Range (techo/piso estadístico de la sesión, ver más abajo) MÁS -- cuando hay datos reales -- los perfiles de Volume/Delta/TPO de sesión (POC/VAH/VAL/HVN/LVN). Un nivel de gamma que además coincide con un POC/VAH/VAL de volumen, o con un nivel compuesto de NDX, tiene MÁS peso que uno aislado -- decilo explícitamente cuando aplique.
+    3. CONFIRMATION (lo ÚLTIMO, nunca el punto de partida): order flow -- absorción (esfuerzo que NO logra mover el precio = participantes atrapados = combustible para el lado contrario, la "Law of Effort" de Wyckoff) seguida de agresión recompensada (esfuerzo que SÍ mueve el precio = la reversión/continuación real). Nunca generes un escenario a partir de la confirmación sola -- confirmation solo valida o invalida un escenario que el Context+Location ya armaron.
+    No mezcles estos pasos: un Net GEX negativo (Context) no es un nivel (Location), y una absorción (Confirmation) no reemplaza la necesidad de que el precio esté en un nivel real primero.
 
     ================================================================
     CÓMO DECIDIR EL FORMATO DE TU RESPUESTA (leer con atención, esto es tan importante como el análisis mismo)
@@ -180,14 +237,18 @@ def build_system_prompt(
     - Put Walls (Soportes): PW1={metrics['pw1']:.0f} USD, PW2={metrics['pw2']:.0f} USD, PW3={metrics['pw3']:.0f} USD
     - Zero Gamma Level (Flip): {metrics['zero_gamma']:.2f} USD
     {gamma_levels_in_points}
-    - Volatilidad Implícita ATM: {metrics['iv_str']} (percentil de IV: {metrics['iv_rank_str']}) -- un percentil alto sugiere IV cara respecto a su propio rango reciente (favorece vender prima/spreads de crédito), uno bajo sugiere IV barata (favorece comprar opciones directas si el catalizador es fuerte).
+    - Volatilidad Implícita ATM: {metrics['iv_str']} (percentil de IV: {metrics['iv_rank_str']}) -- un percentil alto sugiere IV cara respecto a su propio rango reciente (favorece vender prima/spreads de crédito, y en el marco de Aleks Rosme también favorece objetivos de tipo "runner"/dejar correr ganadores porque el mercado está pagando por movimiento real); uno bajo sugiere IV barata (favorece comprar opciones directas si el catalizador es fuerte, y favorece tomar "base hits" -- objetivos de scalp cortos y frecuentes en vez de esperar un runner que probablemente no llegue).
+    - {vix_term_structure_line}
+    - {implied_range_line}
     - Delta Exposure (DEX): {metrics['net_dex_val']:.2f}M USD | Theta Exposure (TEX): {metrics['net_tex_val']:,.0f} USD/día
     - Vega Exposure (VEX): {metrics['net_vex_val']:,.0f} USD/1% IV | Charm Exposure (CHEX): {metrics['net_chex_val']:.2f}M USD/día | Vanna: {metrics['net_vanna_val']:.2f}M USD
-
+    {ndx_cross_check_section}
     REGLAS DE INTERPRETACIÓN DEL VIX (para scalping, no para swing):
-    1. VIX < 15: Volatilidad calmada. Rango intradía comprimido -- objetivos de scalp más cortos de lo normal.
-    2. VIX 15-30 (15-24 media, 25-30 alta): Volatilidad sana, rango intradía amplio -- es donde mejor rinde el scalping.
-    3. VIX > 30: Volatilidad muy alta, mechas violentas -- exige confirmación de absorción antes de entrar, evita perseguir el primer impulso.
+    1. VIX < 15: Volatilidad calmada. Rango intradía comprimido -- objetivos de scalp más cortos de lo normal ("base hits"), size más grande es aceptable porque el riesgo por punto es menor.
+    2. VIX 15-30 (15-24 media, 25-30 alta): Volatilidad sana, rango intradía amplio -- es donde mejor rinde el scalping, y donde tiene más sentido dejar correr algún "runner" en vez de cerrar todo en base hits.
+    3. VIX > 30: Volatilidad muy alta, mechas violentas -- exige confirmación de absorción antes de entrar, evita perseguir el primer impulso, y el tamaño de posición debería ser MENOR (el riesgo por punto es mucho mayor, no lo mismo de siempre).
+    4. VANNA como sesgo de apertura: una caída de VIX fuerza compras mecánicas de dealers (sesgo alcista) incluso sin ningún catalizador visible en precio -- es el "drift sin razón aparente" que la mayoría no puede explicar. Si el VIX viene cayendo, dale más convicción a los escenarios alcistas y exige más confirmación a los bajistas; si el VIX viene subiendo, al revés.
+    5. Term structure (VIX vs VIX3M, ver dato arriba): una BACKWARDATION sostenida es una señal de estrés que pesa MÁS que el régimen de gamma del momento -- si el régimen dice "positivo/rango" pero el term structure está en backwardation, bajale la convicción a los escenarios de rango puro y subile la vara de confirmación exigida.
 
     CÓMO RAZONAR LOS ESCENARIOS (usa el conocimiento base de arriba, no una plantilla genérica de niveles sueltos):
     Cada escenario debe explicar el MECANISMO real de hedging de dealers detrás del movimiento (qué están obligados a hacer, y por qué eso empuja el precio), no solo tirar un número. Conecta explícitamente régimen de gamma + el nivel en juego + qué se espera del hedging de dealers ahí.

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from app.domain.gex_math import compute_call_put_walls, compute_zero_gamma
+from app.domain.tradingview_string import compute_dominant_gamma_wall
 
 AGG_SUM_COLS = [
     'net_gex', 'call_gex', 'put_gex', 'openInterest_c', 'openInterest_p',
@@ -48,7 +49,7 @@ def _metrics_fallback(spot_ref: float) -> dict:
     return {
         "cw1": spot_ref + 5, "cw2": spot_ref + 10, "cw3": spot_ref + 15,
         "pw1": spot_ref - 5, "pw2": spot_ref - 10, "pw3": spot_ref - 15,
-        "zero_gamma": spot_ref, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
+        "zero_gamma": spot_ref, "dominant_wall": None, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
         "net_dex_val": 0.0, "net_tex_val": 0.0, "net_vex_val": 0.0, "net_chex_val": 0.0, "net_vanna_val": 0.0,
         "atm_iv": 0.20, "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
         "condition_str": "Neutral",
@@ -74,6 +75,7 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
 
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(df_agg, spot_ref)
     zero_gamma = compute_zero_gamma(df_agg, spot_ref) if 'net_gex' in df_agg.columns else spot_ref
+    dominant_wall = compute_dominant_gamma_wall(df_agg)
 
     net_gex_total = float(df_agg['net_gex'].sum()) if 'net_gex' in df_agg.columns else 0.0
     call_gex_sum = float(df_agg['call_gex'].sum()) if 'call_gex' in df_agg.columns else 0.0
@@ -106,7 +108,7 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
 
     return {
         "cw1": cw1, "cw2": cw2, "cw3": cw3, "pw1": pw1, "pw2": pw2, "pw3": pw3,
-        "zero_gamma": zero_gamma, "net_gex_total": net_gex_total,
+        "zero_gamma": zero_gamma, "dominant_wall": dominant_wall, "net_gex_total": net_gex_total,
         "call_gex_sum": call_gex_sum, "put_gex_sum": put_gex_sum,
         "net_dex_val": net_dex_val, "net_tex_val": net_tex_val, "net_vex_val": net_vex_val,
         "net_chex_val": net_chex_val, "net_vanna_val": net_vanna_val,

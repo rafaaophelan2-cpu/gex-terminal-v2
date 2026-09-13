@@ -1,4 +1,10 @@
-from app.domain.ai_prompt import build_intraday_context, build_system_prompt, classify_vix
+from app.domain.ai_prompt import (
+    build_intraday_context,
+    build_system_prompt,
+    classify_vix,
+    format_implied_range,
+    format_vix_term_structure,
+)
 
 METRICS = {
     "cw1": 485.0, "cw2": 490.0, "cw3": 495.0, "pw1": 475.0, "pw2": 470.0, "pw3": 465.0,
@@ -97,3 +103,65 @@ def test_build_system_prompt_with_session_profiles_includes_real_levels():
     # El disclaimer de "NO tienes esos datos" ya no debe aparecer tal cual
     # cuando SÍ hay perfiles -- solo el matiz sobre el footprint en vivo.
     assert "NO tienes esos datos en vivo todavía" not in prompt
+
+
+def test_format_vix_term_structure_contango():
+    text = format_vix_term_structure({"vix": 15.0, "vix3m": 18.0, "state": "contango"})
+    assert "Contango" in text
+    assert "15.00" in text and "18.00" in text
+
+
+def test_format_vix_term_structure_backwardation():
+    text = format_vix_term_structure({"vix": 22.0, "vix3m": 19.0, "state": "backwardation"})
+    assert "BACKWARDATION" in text
+    assert "estrés" in text.lower()
+
+
+def test_format_vix_term_structure_missing_data():
+    assert "sin dato" in format_vix_term_structure(None).lower()
+    assert "sin dato" in format_vix_term_structure({}).lower()
+
+
+def test_format_implied_range_with_data():
+    text = format_implied_range(
+        {"expected_move": 5.0, "one_sd": {"low": 475.0, "high": 485.0}, "two_sd": {"low": 470.0, "high": 490.0}},
+        ticker="QQQ",
+    )
+    assert "475.00" in text and "485.00" in text
+    assert "470.00" in text and "490.00" in text
+
+
+def test_format_implied_range_missing_data():
+    assert "sin dato" in format_implied_range(None, ticker="QQQ").lower()
+
+
+def test_build_system_prompt_includes_clc_framework():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "CONTEXT" in prompt and "LOCATION" in prompt and "CONFIRMATION" in prompt
+    assert "Law of Effort" in prompt
+    assert "ZONAS" in prompt
+
+
+def test_build_system_prompt_includes_gamma_wall_when_present():
+    metrics_with_wall = {**METRICS, "dominant_wall": 483.0}
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=metrics_with_wall, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "Gamma Wall=" in prompt
+
+
+def test_build_system_prompt_includes_ndx_cross_check_and_implied_range():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+        vix_term_structure={"vix": 15.0, "vix3m": 18.0, "state": "contango"},
+        implied_range={"expected_move": 5.0, "one_sd": {"low": 475.0, "high": 485.0}, "two_sd": {"low": 470.0, "high": 490.0}},
+        ndx_cross_check="CRUCE CON NDX (niveles compuestos): texto de prueba de cruce.",
+    )
+    assert "Contango" in prompt
+    assert "475.00" in prompt
+    assert "CRUCE CON NDX" in prompt
