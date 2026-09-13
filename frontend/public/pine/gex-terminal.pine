@@ -147,17 +147,25 @@ if barstate.islast
 
     [gen_strikes, gen_comments] = parse_gex_string(gex_string_input)
 
-    if array.size(gen_strikes) > 0 and not na(smoothed_diff)
+    int n_levels = math.min(array.size(gen_strikes), array.size(gen_comments))
+
+    if n_levels > 0 and not na(smoothed_diff)
         int start_time = time[math.min(bar_index, LOOKBACK_BARS)]
         int time_offset_ms = (time - time[1]) * LABEL_OFFSET_BARS
         int right_x_time = time + time_offset_ms
-        int n_levels = array.size(gen_strikes)
 
-        // Valor convertido de cada nivel, precomputado UNA vez -- se
-        // recorre varias veces abajo para agrupar los que coinciden.
+        // vals_out y consumed se arman en el MISMO loop, elemento por
+        // elemento -- así quedan garantizados del mismo tamaño (n_levels)
+        // pase lo que pase, en vez de confiar en dos construcciones
+        // separadas que podrían desincronizarse. Cada array.get() de acá
+        // en más además revalida su índice contra array.size() real en
+        // el momento, no solo contra n_levels, para que un eventual
+        // desajuste se salte en silencio en vez de tirar un runtime error.
         float[] vals_out = array.new_float()
+        bool[] consumed = array.new_bool()
         for i = 0 to n_levels - 1
             array.push(vals_out, round_tick(array.get(gen_strikes, i) * smoothed_diff, tick_size))
+            array.push(consumed, false)
 
         // Cuando 2+ niveles caen en el MISMO precio convertido (ej. Call
         // Wall 1 y Gamma Wall), se dibuja UNA sola línea con ambos
@@ -165,22 +173,21 @@ if barstate.islast
         // líneas pisándose -- siempre en overlap_color, con el ancho más
         // grueso de los niveles que se fusionaron (para que se note que
         // ahí hay más de un nivel, no solo el más angosto de los dos).
-        bool[] consumed = array.new_bool(n_levels, false)
-
         for i = 0 to n_levels - 1
-            if not array.get(consumed, i)
+            if i < array.size(consumed) and not array.get(consumed, i)
                 array.set(consumed, i, true)
                 float val_out_i = array.get(vals_out, i)
                 float val_in_i = array.get(gen_strikes, i)
-                string combined_label = array.get(gen_comments, i)
+                string combined_label = i < array.size(gen_comments) ? array.get(gen_comments, i) : ""
                 color lvl_color = i < array.size(level_colors) ? array.get(level_colors, i) : color.gray
                 int lvl_width = i < array.size(level_widths) ? array.get(level_widths, i) : 2
                 string lvl_style = i < array.size(level_styles) ? array.get(level_styles, i) : "Solid"
                 bool is_overlap = false
 
                 for j = i + 1 to n_levels - 1
-                    if not array.get(consumed, j) and array.get(vals_out, j) == val_out_i
-                        combined_label := combined_label + " / " + array.get(gen_comments, j)
+                    if j < array.size(consumed) and j < array.size(vals_out) and not array.get(consumed, j) and array.get(vals_out, j) == val_out_i
+                        if j < array.size(gen_comments)
+                            combined_label := combined_label + " / " + array.get(gen_comments, j)
                         array.set(consumed, j, true)
                         is_overlap := true
                         int j_width = j < array.size(level_widths) ? array.get(level_widths, j) : 2
