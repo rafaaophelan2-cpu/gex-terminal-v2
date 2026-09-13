@@ -59,6 +59,7 @@ const netDriftChartEl = document.getElementById('net-drift-chart')
 const driftDateInput = document.getElementById('drift-date-input')
 const liveGammaChartEl = document.getElementById('live-gamma-chart')
 const charmHeatmapChartEl = document.getElementById('charm-heatmap-chart')
+const charmHeatmapSectionEl = document.getElementById('charm-heatmap-section')
 const backgammaDateSelect = document.getElementById('backgamma-date-select')
 const backgammaPlayBtn = document.getElementById('backgamma-play-btn')
 const backgammaSpeedSelect = document.getElementById('backgamma-speed-select')
@@ -151,6 +152,7 @@ let latestWalls = null
 let driftRefreshTimer = null
 let driftDateAutoSelected = true
 let liveGammaRefreshTimer = null
+let charmHeatmapRefreshTimer = null
 let vixRefreshTimer = null
 let vixTermRefreshTimer = null
 let impliedRangeRefreshTimer = null
@@ -600,6 +602,16 @@ function syncTabLifecycle() {
     renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
   }
 
+  // Charm Heatmap: visible solo dentro de GREEKS con CHARM (CHEX)
+  // seleccionado -- ver charmHeatmapSectionEl/loadCharmHeatmap.
+  if (isTabVisible('greeks') && activeGreek === 'chex') {
+    charmHeatmapSectionEl.hidden = false
+    if (!charmHeatmapRefreshTimer) startCharmHeatmapRefresh()
+  } else {
+    charmHeatmapSectionEl.hidden = true
+    stopCharmHeatmapRefresh()
+  }
+
   // Mismo problema para GEX INFO: entrar/salir de split-mode o cambiar la
   // pestaña secundaria cambia el ANCHO del contenedor de golpe (de 100%
   // a 50% o viceversa, vía el grid de #tab-content). updateTick() (lo que
@@ -686,15 +698,11 @@ async function loadLiveGamma() {
     // depender de qué fecha haya elegido el usuario en otra pestaña).
     const dates = await fetchAvailableDates(symbol)
     const date = dates[0] || todayInLima()
-    const [heatmap, charmHeatmap, candles] = await Promise.all([
+    const [heatmap, candles] = await Promise.all([
       fetchHeatmap(symbol, date),
-      fetchCharmHeatmap(symbol, date).catch(() => null),
       fetchCandles(symbol, date).catch(() => []),
     ])
     renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles, date)
-    if (charmHeatmap) {
-      renderLiveGammaChart(charmHeatmapChartEl, charmHeatmap, latestWalls, candles, date, 'Charm Exposure')
-    }
   } catch (err) {
     console.error('Error cargando LIVE GAMMA:', err)
   }
@@ -704,6 +712,37 @@ function startLiveGammaRefresh() {
   stopLiveGammaRefresh()
   loadLiveGamma()
   liveGammaRefreshTimer = setInterval(loadLiveGamma, LIVE_GAMMA_REFRESH_MS)
+}
+
+// Charm Heatmap vive DENTRO de GREEKS, debajo de CHARM (CHEX) -- no en
+// LIVE GAMMA -- y solo se carga/refresca mientras esa sub-pestaña esté
+// activa (ver syncTabLifecycle y el handler de greeksSubNavButtons).
+async function loadCharmHeatmap() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const dates = await fetchAvailableDates(symbol)
+    const date = dates[0] || todayInLima()
+    const [charmHeatmap, candles] = await Promise.all([
+      fetchCharmHeatmap(symbol, date),
+      fetchCandles(symbol, date).catch(() => []),
+    ])
+    renderLiveGammaChart(charmHeatmapChartEl, charmHeatmap, latestWalls, candles, date, 'Charm Exposure')
+  } catch (err) {
+    console.error('Error cargando Charm Heatmap:', err)
+  }
+}
+
+function startCharmHeatmapRefresh() {
+  stopCharmHeatmapRefresh()
+  loadCharmHeatmap()
+  charmHeatmapRefreshTimer = setInterval(loadCharmHeatmap, LIVE_GAMMA_REFRESH_MS)
+}
+
+function stopCharmHeatmapRefresh() {
+  if (charmHeatmapRefreshTimer) {
+    clearInterval(charmHeatmapRefreshTimer)
+    charmHeatmapRefreshTimer = null
+  }
 }
 
 async function loadVix() {
@@ -1174,6 +1213,7 @@ function showLogin() {
   stopCompoundedLevelsRefresh()
   stopDriftRefresh()
   stopLiveGammaRefresh()
+  stopCharmHeatmapRefresh()
   stopTvStringRefresh()
   stopBackgammaPlay()
   stopGridRefresh()
@@ -1457,6 +1497,13 @@ greeksSubNavButtons.forEach((btn) => {
     activeGreek = btn.dataset.greek
     if (latestGreeksPayload) {
       renderGreeksChart(greeksChartEl, activeGreek, latestGreeksPayload, true)
+    }
+    if (activeGreek === 'chex') {
+      charmHeatmapSectionEl.hidden = false
+      if (!charmHeatmapRefreshTimer) startCharmHeatmapRefresh()
+    } else {
+      charmHeatmapSectionEl.hidden = true
+      stopCharmHeatmapRefresh()
     }
   })
 })

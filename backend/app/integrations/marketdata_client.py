@@ -11,12 +11,15 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.marketdata.app/v1/options/chain"
 
 # El Open Interest real no varia intradia -- se actualiza UNA vez por
-# noche via OCC (Options Clearing Corporation), no en cada trade. Por eso
-# no hace falta pedirlo en cada tick de 2s como el spot: refrescarlo cada
-# 15 min ya sobra de margen, y de paso deja el consumo MUY por debajo del
-# limite de 100 requests/dia del plan Free Forever de MarketData.app (2
-# simbolos * ~26 refrescos en una sesion de mercado completa).
-REFRESH_INTERVAL_SECONDS = 900
+# noche via OCC (Options Clearing Corporation), no en cada trade. En
+# rigor, con UN solo fetch al abrir el mercado ya alcanzaria. 15 min
+# (el valor anterior) ya cubria de sobra el limite diario en el uso
+# normal, pero un fallo en cascada (ver FAILURE_COOLDOWN_SECONDS, ya
+# corregido) agoto la cuota diaria completa en produccion en cuestion de
+# minutos -- se sube a 4 horas como margen de seguridad adicional: 2
+# simbolos (NDX/VIX) * ~3 refrescos en una sesion de 12h completa = ~6
+# requests/dia en el peor caso, muy lejos de cualquier limite.
+REFRESH_INTERVAL_SECONDS = 14400
 
 # Cooldown mínimo entre INTENTOS (éxito o fallo) -- confirmado en vivo en
 # Render: sin esto, un solo fallo (ej. 429 rate limit) dejaba _cache sin
