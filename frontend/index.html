@@ -103,9 +103,14 @@
             <div class="metric"><span class="metric-label">Put Wall</span><span id="metric-pw1" class="metric-value">--</span></div>
             <div class="metric"><span class="metric-label">Zero Gamma</span><span id="metric-zg" class="metric-value">--</span></div>
             <div class="metric">
+              <span class="metric-label">Implied Range</span>
+              <span id="metric-implied-range" class="metric-value">--</span>
+            </div>
+            <div class="metric">
               <span class="metric-label">VIX</span>
               <span id="metric-vix" class="metric-value">--</span>
               <span id="metric-vix-status" class="metric-sub"></span>
+              <span id="metric-vix-term" class="metric-sub"></span>
             </div>
           </div>
 
@@ -166,6 +171,13 @@
                     <span id="squeeze-bias-badge" class="badge badge-bias"></span>
                   </div>
                   <div id="squeeze-body">
+                    <p class="signals-placeholder">Cargando…</p>
+                  </div>
+                </div>
+                <div id="compounded-levels-section" class="signals-section" hidden>
+                  <h3 class="signals-heading"><span class="signals-heading-bar"></span>Niveles Compuestos (NDX)</h3>
+                  <p class="gex-info-section-sub">Cuando un nivel coincide con un nivel grande de NDX (otro libro de opciones sobre Nasdaq-100), pesa más -- el "bread and butter" del cruce de niveles.</p>
+                  <div id="compounded-levels-body">
                     <p class="signals-placeholder">Cargando…</p>
                   </div>
                 </div>

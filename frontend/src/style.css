@@ -545,6 +545,14 @@ main {
   margin-top: 1px;
 }
 
+/* El rango ("709.45 - 720.31") es más ancho que el resto de los valores
+   de metrics-bar -- una fuente más chica evita que se corte en dos
+   líneas en columnas angostas del grid. */
+#metric-implied-range {
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 /* Signo (GEX total, cada Griega): verde positivo, rojo negativo.
  * Niveles fijos (no dependen de signo): Call Wall verde, Put Wall rojo,
  * Zero Gamma azul (acento del spot en el gráfico), Spot en blanco/neutro. */
@@ -1638,6 +1646,22 @@ main {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 14px;
+}
+
+.compounded-level-row {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: #d1d5db;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.compounded-level-row:last-child {
+  border-bottom: none;
+}
+
+.compounded-level-secondary {
+  color: #FFEB3B;
 }
 
 .signals-heading {

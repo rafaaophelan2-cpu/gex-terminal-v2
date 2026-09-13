@@ -9,12 +9,15 @@ from app.domain.ai_prompt import build_default_user_prompt, build_system_prompt,
 from app.domain.drift import compute_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
 from app.domain.heatmap import compute_heatmap_matrix
+from app.domain.implied_range import compute_implied_range
+from app.domain.metrics import compute_metrics_for_dte
 from app.domain.vol_surface import compute_vol_surface
 from app.integrations.groq_client import query_groq
-from app.integrations.schwab_client import fetch_price_history, fetch_vix
+from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
-from app.services.ai_context import NoActiveFeedError, build_ai_context
+from app.services.ai_context import NoActiveFeedError, build_ai_context, dte_from_exp_key
+from app.services.cross_check import fetch_ndx_compounded_levels
 from app.services.market_feed import feed_registry
 from app.services.tradingview_string_updater import latest_strings as tv_latest_strings
 
@@ -121,6 +124,61 @@ async def get_tradingview_string(symbol: str = "QQQ", _username: str = Depends(r
     if entry is None:
         return {"symbol": symbol, "string": None, "updated_at": None}
     return entry
+
+
+@router.get("/vix-term-structure")
+async def get_vix_term_structure(_username: str = Depends(require_auth)):
+    """VIX (30d) vs VIX3M (90d) -- contango/backwardation, ver
+    fetch_vix_term_structure en schwab_client.py. Global, no depende de
+    ningún símbolo/feed activo."""
+    result = await fetch_vix_term_structure()
+    if not result:
+        return {"vix": None, "vix3m": None, "state": "n/a"}
+    return result
+
+
+@router.get("/implied-range")
+async def get_implied_range(symbol: str = "QQQ", _username: str = Depends(require_auth)):
+    """Banda de movimiento esperado (expected move) desde la IV ATM de la
+    expiración más cercana del feed YA activo -- ver domain/implied_range.py.
+    No pide ningún dato nuevo a Schwab, deriva todo de feed.df."""
+    feed = feed_registry.get(symbol)
+    if feed is None or feed.df.empty or feed.spot_price <= 0:
+        return {"expected_move": None, "one_sd": None, "two_sd": None}
+
+    exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
+    metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
+    return compute_implied_range(feed.spot_price, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
+
+
+@router.get("/compounded-levels")
+async def get_compounded_levels(symbol: str = "QQQ", _username: str = Depends(require_auth)):
+    """Niveles "compuestos" -- cruce en vivo contra la cadena de NDX (ver
+    services/cross_check.py). Solo aplica para QQQ/SPY (ambos sobre
+    Nasdaq-100, el mismo mercado que NDX); para cualquier otro símbolo
+    devuelve matches=[] sin pedir nada a Schwab."""
+    feed = feed_registry.get(symbol)
+    if feed is None or feed.df.empty or feed.spot_price <= 0:
+        return {"ratio": None, "ndx_spot": None, "matches": []}
+
+    exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
+    metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
+    result = await fetch_ndx_compounded_levels(symbol, feed.spot_price, metrics)
+    if result is None:
+        return {"ratio": None, "ndx_spot": None, "matches": []}
+    return {
+        "ratio": result["ratio"],
+        "ndx_spot": result["ndx_spot"],
+        "matches": [
+            {
+                "primary_name": m.primary_name,
+                "primary_value": m.primary_value,
+                "secondary_name": m.secondary_name,
+                "secondary_value_translated": m.secondary_value_translated,
+            }
+            for m in result["matches"]
+        ],
+    }
 
 
 @router.post("/ai-diagnosis", response_model=AiDiagnosisResponse)

@@ -2,7 +2,7 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchTradingViewString, fetchVix, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchCompoundedLevels, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
@@ -128,7 +128,12 @@ const metricEls = {
   zg: document.getElementById('metric-zg'),
   vix: document.getElementById('metric-vix'),
   vixStatus: document.getElementById('metric-vix-status'),
+  vixTerm: document.getElementById('metric-vix-term'),
+  impliedRange: document.getElementById('metric-implied-range'),
 }
+
+const compoundedLevelsSectionEl = document.getElementById('compounded-levels-section')
+const compoundedLevelsBodyEl = document.getElementById('compounded-levels-body')
 
 let wsClient = null
 let chatHistoryLoaded = false
@@ -141,6 +146,9 @@ let driftRefreshTimer = null
 let driftDateAutoSelected = true
 let liveGammaRefreshTimer = null
 let vixRefreshTimer = null
+let vixTermRefreshTimer = null
+let impliedRangeRefreshTimer = null
+let compoundedLevelsRefreshTimer = null
 let backgammaHeatmap = null
 let backgammaPlayTimer = null
 let gridExpirations = []
@@ -177,6 +185,13 @@ const LIVE_GAMMA_REFRESH_MS = 30000
 const VIX_REFRESH_MS = 30000
 const GRID_REFRESH_MS = 15000
 const SURFACE3D_REFRESH_MS = 20000
+// Term structure de VIX es dato global, cambia lento -- no hace falta
+// refrescarlo tan seguido como el VIX mismo.
+const VIX_TERM_REFRESH_MS = 60000
+const IMPLIED_RANGE_REFRESH_MS = 30000
+// Cruce de niveles compuestos pide una cadena de NDX en vivo cada vez --
+// más espaciado que el resto para no generar carga extra innecesaria.
+const COMPOUNDED_LEVELS_REFRESH_MS = 60000
 // 3D SURFACE/VOL SURFACE preseleccionan más expiraciones por defecto que
 // el GRID (mismo criterio que DEFAULT_SURFACE_EXPIRATION_COUNT en
 // routes_rest.py) -- una malla 3D necesita más puntos en el eje DTE para
@@ -685,6 +700,95 @@ function stopVixRefresh() {
   }
 }
 
+async function loadVixTermStructure() {
+  try {
+    const ts = await fetchVixTermStructure()
+    if (!ts || ts.state === 'n/a' || ts.vix == null || ts.vix3m == null) {
+      metricEls.vixTerm.textContent = ''
+      return
+    }
+    const isBackwardation = ts.state === 'backwardation'
+    metricEls.vixTerm.textContent = `${isBackwardation ? 'Backwardation' : 'Contango'} (3M ${ts.vix3m.toFixed(2)})`
+    metricEls.vixTerm.style.color = isBackwardation ? '#EF4444' : '#8b949e'
+  } catch (err) {
+    console.error('Error cargando VIX term structure:', err)
+  }
+}
+
+function startVixTermStructureRefresh() {
+  stopVixTermStructureRefresh()
+  loadVixTermStructure()
+  vixTermRefreshTimer = setInterval(loadVixTermStructure, VIX_TERM_REFRESH_MS)
+}
+
+function stopVixTermStructureRefresh() {
+  if (vixTermRefreshTimer) {
+    clearInterval(vixTermRefreshTimer)
+    vixTermRefreshTimer = null
+  }
+}
+
+async function loadImpliedRange() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const range = await fetchImpliedRange(symbol)
+    if (!range || !range.one_sd) {
+      metricEls.impliedRange.textContent = '--'
+      return
+    }
+    metricEls.impliedRange.textContent = `${range.one_sd.low.toFixed(2)} - ${range.one_sd.high.toFixed(2)}`
+  } catch (err) {
+    console.error('Error cargando Implied Range:', err)
+  }
+}
+
+function startImpliedRangeRefresh() {
+  stopImpliedRangeRefresh()
+  loadImpliedRange()
+  impliedRangeRefreshTimer = setInterval(loadImpliedRange, IMPLIED_RANGE_REFRESH_MS)
+}
+
+function stopImpliedRangeRefresh() {
+  if (impliedRangeRefreshTimer) {
+    clearInterval(impliedRangeRefreshTimer)
+    impliedRangeRefreshTimer = null
+  }
+}
+
+async function loadCompoundedLevels() {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    const result = await fetchCompoundedLevels(symbol)
+    if (!result || result.ratio == null) {
+      compoundedLevelsSectionEl.hidden = true
+      return
+    }
+    compoundedLevelsSectionEl.hidden = false
+    if (!result.matches || result.matches.length === 0) {
+      compoundedLevelsBodyEl.innerHTML = '<p class="signals-placeholder">Sin coincidencias con NDX ahora mismo -- sin refuerzo cruzado.</p>'
+      return
+    }
+    compoundedLevelsBodyEl.innerHTML = result.matches
+      .map((m) => `<div class="compounded-level-row"><strong>${m.primary_name}</strong> (${m.primary_value.toFixed(2)}) = <span class="compounded-level-secondary">${m.secondary_name}</span> (${m.secondary_value_translated.toFixed(2)})</div>`)
+      .join('')
+  } catch (err) {
+    console.error('Error cargando niveles compuestos:', err)
+  }
+}
+
+function startCompoundedLevelsRefresh() {
+  stopCompoundedLevelsRefresh()
+  loadCompoundedLevels()
+  compoundedLevelsRefreshTimer = setInterval(loadCompoundedLevels, COMPOUNDED_LEVELS_REFRESH_MS)
+}
+
+function stopCompoundedLevelsRefresh() {
+  if (compoundedLevelsRefreshTimer) {
+    clearInterval(compoundedLevelsRefreshTimer)
+    compoundedLevelsRefreshTimer = null
+  }
+}
+
 function stopLiveGammaRefresh() {
   if (liveGammaRefreshTimer) {
     clearInterval(liveGammaRefreshTimer)
@@ -1009,6 +1113,9 @@ function showDashboard(username) {
   setDefaultDriftDate()
   connectMarketFeed()
   startVixRefresh()
+  startVixTermStructureRefresh()
+  startImpliedRangeRefresh()
+  startCompoundedLevelsRefresh()
   // GEX INFO ya arranca .active en el HTML estático -- sin este llamado,
   // el refresh de Gamma Heatmap (atado a isTabVisible('gex-info'), ver
   // syncTabLifecycle) nunca se disparaba al entrar por primera vez, solo
@@ -1032,6 +1139,9 @@ function showLogin() {
   // abajo) mientras, por ejemplo, LIVE GAMMA seguía activo, ese timer
   // quedaba reintentando en un loop de errores 401 indefinidamente.
   stopVixRefresh()
+  stopVixTermStructureRefresh()
+  stopImpliedRangeRefresh()
+  stopCompoundedLevelsRefresh()
   stopDriftRefresh()
   stopLiveGammaRefresh()
   stopTvStringRefresh()
@@ -1229,6 +1339,16 @@ function applySymbolChange() {
   surface3dDteCount.textContent = ''
   latestGammaSurface = null
   latestVolSurface = null
+
+  // El SymbolFeed nuevo recién tiene datos después de su primer tick
+  // (~2s, ver TICK_INTERVAL_SECONDS en market_feed.py) -- pedir Implied
+  // Range/niveles compuestos ANTES de eso solo devuelve nulls. Se espera
+  // un poco en vez de dejarlo solo al próximo tick del timer periódico
+  // (30-60s), para que la UI se sienta al día apenas se cambia de símbolo.
+  setTimeout(() => {
+    loadImpliedRange()
+    loadCompoundedLevels()
+  }, 3000)
 }
 
 applySymbolBtn.addEventListener('click', applySymbolChange)

@@ -98,6 +98,34 @@ def test_available_dates_returns_list(authed_client, monkeypatch):
     assert resp.json() == {"dates": ["2026-09-11", "2026-09-10"]}
 
 
+def test_vix_term_structure_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/vix-term-structure")
+    assert resp.status_code == 401
+
+
+def test_vix_term_structure_returns_state(authed_client, monkeypatch):
+    async def _fake_term_structure():
+        return {"vix": 15.0, "vix3m": 18.0, "state": "contango"}
+
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure)
+
+    resp = authed_client.get("/market/vix-term-structure")
+    assert resp.status_code == 200
+    assert resp.json() == {"vix": 15.0, "vix3m": 18.0, "state": "contango"}
+
+
+def test_vix_term_structure_no_data_returns_na(authed_client, monkeypatch):
+    async def _fake_term_structure_empty():
+        return {}
+
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure_empty)
+
+    resp = authed_client.get("/market/vix-term-structure")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "n/a"
+
+
 class _FakeFeed:
     def __init__(self):
         self.spot_price = 481.23
@@ -108,6 +136,65 @@ class _FakeFeed:
             {"strike": 485.0, "exp_key": "2026-09-11:0", "dte": 0, "net_gex": 3.0, "call_gex": 4.0, "put_gex": -1.0,
              "net_dex": 1.0, "net_tex": -1.0, "net_vex": 1.0, "net_chex": -1.0, "net_vanna": 1.0},
         ])
+
+
+def test_implied_range_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/implied-range?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_implied_range_no_active_feed_returns_nulls(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/implied-range?symbol=QQQ")
+    assert resp.status_code == 200
+    assert resp.json() == {"expected_move": None, "one_sd": None, "two_sd": None}
+
+
+def test_implied_range_with_active_feed_returns_band(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
+    resp = authed_client.get("/market/implied-range?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["expected_move"] is not None
+    assert body["one_sd"]["low"] < 481.23 < body["one_sd"]["high"]
+
+
+def test_compounded_levels_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/compounded-levels?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_compounded_levels_no_active_feed_returns_empty(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/compounded-levels?symbol=QQQ")
+    assert resp.status_code == 200
+    assert resp.json() == {"ratio": None, "ndx_spot": None, "matches": []}
+
+
+def test_compounded_levels_formats_matches_as_dicts(authed_client, monkeypatch):
+    from app.domain.compounded_levels import CompoundedLevel
+
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
+
+    async def _fake_ndx_compounded(symbol, spot, metrics):
+        return {
+            "ratio": 41.0,
+            "ndx_spot": 19730.4,
+            "matches": [CompoundedLevel("Call Wall 1", 485.0, "Call Wall 1 NDX", 485.1)],
+        }
+
+    monkeypatch.setattr(routes_rest, "fetch_ndx_compounded_levels", _fake_ndx_compounded)
+
+    resp = authed_client.get("/market/compounded-levels?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ratio"] == 41.0
+    assert body["matches"] == [{
+        "primary_name": "Call Wall 1", "primary_value": 485.0,
+        "secondary_name": "Call Wall 1 NDX", "secondary_value_translated": 485.1,
+    }]
 
 
 def test_ai_diagnosis_requires_auth():

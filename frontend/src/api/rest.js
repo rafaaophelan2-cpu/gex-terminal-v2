@@ -37,6 +37,24 @@ export async function fetchVix() {
   return resp.json()
 }
 
+export async function fetchVixTermStructure() {
+  const resp = await apiFetch('/market/vix-term-structure')
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchImpliedRange(symbol) {
+  const resp = await apiFetch(`/market/implied-range?symbol=${encodeURIComponent(symbol)}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchCompoundedLevels(symbol) {
+  const resp = await apiFetch(`/market/compounded-levels?symbol=${encodeURIComponent(symbol)}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
 export async function fetchTradingViewString(symbol) {
   const resp = await apiFetch(`/market/tradingview-string?symbol=${encodeURIComponent(symbol)}`)
   if (!resp.ok) throw new Error(`Error ${resp.status}`)
