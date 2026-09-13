@@ -217,6 +217,7 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         overnight_profile=ctx.get("overnight_profile"),
         cash_profile=ctx.get("cash_profile"),
         vix_term_structure=ctx.get("vix_term_structure"),
+        ndx_cross_check=ctx.get("ndx_cross_check"),
         implied_range=ctx.get("implied_range"),
         oi_is_volume_proxy=ctx.get("oi_is_volume_proxy", False),
     )

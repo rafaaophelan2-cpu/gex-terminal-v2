@@ -8,6 +8,7 @@ from app.domain.metrics import compute_metrics_for_dte
 from app.domain.session_profile import SESSION_TZ, cash_key_for, overnight_key_for
 from app.integrations.firebase_client import fetch_session_profile
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
+from app.services.cross_check import fetch_ndx_compounded_levels, format_ndx_cross_check_text
 from app.services.market_feed import feed_registry
 
 NY_TZ = ZoneInfo("America/New_York")
@@ -52,23 +53,17 @@ async def build_ai_context(symbol: str) -> dict:
 
     today = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     now_lima = datetime.now(SESSION_TZ)
-    # El cruce de niveles compuestos con NDX (services/cross_check.py) se
-    # sacó de acá -- medido en vivo, el ranking de walls por volumen (lo
-    # único que da Schwab para NDX, sin OI real) coincide con el ranking
-    # real en 0-2 de los 10 primeros strikes: cruzar QQQ/SPY contra eso
-    # no suma información real, solo ruido con apariencia de señal. El
-    # endpoint /market/compounded-levels y el módulo siguen ahí, listos
-    # para reactivarse el día que haya una fuente de datos con OI real de
-    # NDX (ver domain/oi_fallback.py).
-    candles, vix_val, overnight_profile, cash_profile, vix_term_structure = await asyncio.gather(
+    candles, vix_val, overnight_profile, cash_profile, vix_term_structure, ndx_compounded = await asyncio.gather(
         fetch_price_history(symbol, today),
         fetch_vix(),
         fetch_session_profile(overnight_key_for(now_lima)),
         fetch_session_profile(cash_key_for(now_lima)),
         fetch_vix_term_structure(),
+        fetch_ndx_compounded_levels(symbol, feed.spot_price, metrics),
     )
     intraday_context = build_intraday_context(candles, feed.spot_price)
     implied_range = compute_implied_range(feed.spot_price, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
+    ndx_cross_check = format_ndx_cross_check_text(symbol, ndx_compounded)
 
     return {
         "spot": feed.spot_price,
@@ -78,6 +73,7 @@ async def build_ai_context(symbol: str) -> dict:
         "overnight_profile": overnight_profile,
         "cash_profile": cash_profile,
         "vix_term_structure": vix_term_structure,
+        "ndx_cross_check": ndx_cross_check,
         "implied_range": implied_range,
         "oi_is_volume_proxy": feed.oi_is_volume_proxy,
     }

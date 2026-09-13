@@ -1655,6 +1655,21 @@ main {
   padding: 14px;
 }
 
+.compounded-level-row {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: #d1d5db;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.compounded-level-row:last-child {
+  border-bottom: none;
+}
+
+.compounded-level-secondary {
+  color: #FFEB3B;
+}
 
 .signals-heading {
   display: flex;

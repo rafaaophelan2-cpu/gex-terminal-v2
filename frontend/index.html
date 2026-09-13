@@ -68,6 +68,8 @@
                 <select id="symbol-input">
                   <option value="QQQ">QQQ</option>
                   <option value="SPY">SPY</option>
+                  <option value="NDX">NDX</option>
+                  <option value="VIX">VIX</option>
                 </select>
                 <svg class="symbol-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg>
               </div>
@@ -172,6 +174,13 @@
                     <span id="squeeze-bias-badge" class="badge badge-bias"></span>
                   </div>
                   <div id="squeeze-body">
+                    <p class="signals-placeholder">Cargando…</p>
+                  </div>
+                </div>
+                <div id="compounded-levels-section" class="signals-section" hidden>
+                  <h3 class="signals-heading"><span class="signals-heading-bar"></span>Niveles Compuestos (NDX)</h3>
+                  <p class="gex-info-section-sub">Cuando un nivel coincide con un nivel grande de NDX (otro libro de opciones sobre Nasdaq-100), pesa más -- el "bread and butter" del cruce de niveles.</p>
+                  <div id="compounded-levels-body">
                     <p class="signals-placeholder">Cargando…</p>
                   </div>
                 </div>

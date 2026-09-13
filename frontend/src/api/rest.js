@@ -49,6 +49,11 @@ export async function fetchImpliedRange(symbol) {
   return resp.json()
 }
 
+export async function fetchCompoundedLevels(symbol) {
+  const resp = await apiFetch(`/market/compounded-levels?symbol=${encodeURIComponent(symbol)}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
 
 export async function fetchTradingViewString(symbol) {
   const resp = await apiFetch(`/market/tradingview-string?symbol=${encodeURIComponent(symbol)}`)
