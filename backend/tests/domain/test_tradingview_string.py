@@ -3,13 +3,24 @@ import pandas as pd
 from app.domain.tradingview_string import build_tradingview_levels_string, compute_dominant_gamma_wall
 
 
-def test_compute_dominant_gamma_wall_picks_largest_magnitude():
+def test_compute_dominant_gamma_wall_picks_largest_total_magnitude():
     by_strike = pd.DataFrame([
-        {"strike": 700.0, "net_gex": -500.0},
-        {"strike": 705.0, "net_gex": -900000.0},
-        {"strike": 720.0, "net_gex": 1450000.0},
+        {"strike": 700.0, "call_gex": 200.0, "put_gex": -300.0, "net_gex": -100.0},
+        {"strike": 705.0, "call_gex": 400000.0, "put_gex": -500000.0, "net_gex": -100000.0},
+        {"strike": 720.0, "call_gex": 1450000.0, "put_gex": -100.0, "net_gex": 1449900.0},
     ])
     assert compute_dominant_gamma_wall(by_strike) == 720.0
+
+
+def test_compute_dominant_gamma_wall_prefers_total_over_net():
+    # 710 tiene MUCHO call Y put gex que casi se cancelan (net chico) --
+    # el total bruto ahí (900k) supera al de 720 (200k neto y bruto,
+    # solo del lado call), aunque el net_gex de 710 sea mucho más chico.
+    by_strike = pd.DataFrame([
+        {"strike": 710.0, "call_gex": 450000.0, "put_gex": -450000.0, "net_gex": 0.0},
+        {"strike": 720.0, "call_gex": 200000.0, "put_gex": 0.0, "net_gex": 200000.0},
+    ])
+    assert compute_dominant_gamma_wall(by_strike) == 710.0
 
 
 def test_compute_dominant_gamma_wall_empty():

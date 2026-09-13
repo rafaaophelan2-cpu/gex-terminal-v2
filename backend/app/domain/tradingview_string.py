@@ -8,15 +8,19 @@ def _fmt_num(value: float) -> str:
 
 
 def compute_dominant_gamma_wall(by_strike: pd.DataFrame) -> float | None:
-    """"Gamma Wall": el strike con mayor |net_gex| de toda la cadena --
-    a diferencia de Zero Gamma/Gamma Flip (dónde el gamma acumulado
-    cruza cero), esto es DÓNDE se concentra más gamma en un solo punto,
-    sea del lado call o put. Puede coincidir con CW1 o PW1 (el que sea
-    más dominante de los dos) o no coincidir con ninguno si hay un
-    strike intermedio con más concentración que ambos extremos."""
-    if by_strike is None or by_strike.empty or 'net_gex' not in by_strike.columns:
+    """"Gamma Wall": el strike con mayor GEX TOTAL de toda la cadena --
+    |call_gex| + |put_gex|, NO |net_gex|. Un strike con muchísimo call_gex
+    Y muchísimo put_gex que casi se cancelan (net_gex chico) sigue siendo
+    un punto de altísima actividad de hedging de dealers en AMBOS lados,
+    y esta métrica lo refleja; net_gex ahí lo escondería por completo.
+    A diferencia de Zero Gamma/Gamma Flip (dónde el gamma acumulado NETO
+    cruza cero), esto es DÓNDE se concentra más gamma en términos brutos,
+    sea del lado call, put, o ambos. Puede coincidir con CW1 o PW1 (el que
+    sea más dominante de los dos) o no coincidir con ninguno."""
+    if by_strike is None or by_strike.empty or 'call_gex' not in by_strike.columns or 'put_gex' not in by_strike.columns:
         return None
-    idx = by_strike['net_gex'].abs().idxmax()
+    total_gex = by_strike['call_gex'].abs() + by_strike['put_gex'].abs()
+    idx = total_gex.idxmax()
     return float(by_strike.loc[idx, 'strike'])
 
 

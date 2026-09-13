@@ -38,13 +38,17 @@ const iconRailUtilidadBtn = document.getElementById('icon-rail-utilidad-btn')
 const gexAnalyticsView = document.getElementById('gex-analytics-view')
 const utilidadView = document.getElementById('utilidad-view')
 const gammaPriceProfileChartEl = document.getElementById('gamma-price-profile-chart')
+const gexInfoViewToggleButtons = document.querySelectorAll('.gex-info-view-toggle .view-toggle-btn')
 const copyPineBtn = document.getElementById('copy-pine-btn')
 const copyStringBtn = document.getElementById('copy-string-btn')
 const tvStringBox = document.getElementById('tv-string-box')
 const tvStringUpdated = document.getElementById('tv-string-updated')
 const tabContentEl = document.getElementById('tab-content')
 const splitToggleBtn = document.getElementById('split-toggle-btn')
-const splitSecondarySelect = document.getElementById('split-secondary-select')
+const splitDropdownEl = document.getElementById('split-dropdown')
+const splitDropdownToggleBtn = document.getElementById('split-dropdown-toggle')
+const splitDropdownLabel = document.getElementById('split-dropdown-label')
+const splitDropdownMenu = document.getElementById('split-dropdown-menu')
 const splitCloseBtn = document.getElementById('split-close-btn')
 const greeksChartEl = document.getElementById('greeks-chart')
 const greeksSubNavButtons = document.querySelectorAll('#greeks-sub-nav .tab-btn')
@@ -152,6 +156,7 @@ let splitMode = false
 let splitSecondaryTab = null
 let tvStringRefreshTimer = null
 const TV_STRING_REFRESH_MS = 20000
+let gexInfoViewMode = 'net' // 'net' | 'callput'
 
 // Nombre visible de cada pestaña -- se arma una sola vez leyendo el texto
 // real de los botones del nav (en vez de duplicarlo a mano acá), así que
@@ -208,32 +213,68 @@ sidebarTitle.addEventListener('keydown', (event) => {
 })
 iconRailBrandBtn.addEventListener('click', toggleSidebar)
 
-// --- Riel de íconos: apartados (GEX Analytics / Utilidad) -----------
+// --- Riel de íconos: apartados (GEX Analytics / Tools) ---------------
 // Por ahora solo hay dos apartados reales -- el resto de los íconos del
 // riel siguen deshabilitados ("Próximamente", ver index.html) hasta que
 // se agregue contenido ahí. Cambiar de apartado no toca el estado interno
 // de GEX Analytics (símbolo, pestaña activa, split-mode): solo se oculta
-// su vista y se muestra la de Utilidad, o viceversa.
+// su vista y se muestra la de Tools, o viceversa.
+let currentApartado = 'gex-analytics'
+
+// Tools (#utilidad-view) puede vivir en DOS lugares: su posición normal
+// (apartado a pantalla completa) o reparenteado dentro del slot de
+// split-view (#tab-utilidad-slot, ver index.html) cuando se lo elige como
+// pestaña secundaria -- es el MISMO nodo movido de lugar, nunca una copia
+// (evita ids duplicados y que su estado -- scroll, el string ya cargado --
+// se desincronice entre dos copias). Se recuerda su posición original acá
+// arriba, antes de que cualquier reparenteo pueda moverlo.
+const utilidadHomeParent = utilidadView.parentElement
+const utilidadHomeNextSibling = utilidadView.nextSibling
+
+function moveUtilidadToSplitSlot() {
+  document.getElementById('tab-utilidad-slot').appendChild(utilidadView)
+}
+
+function moveUtilidadHome() {
+  if (utilidadView.parentElement !== utilidadHomeParent) {
+    utilidadHomeParent.insertBefore(utilidadView, utilidadHomeNextSibling)
+  }
+}
+
+// El string en vivo debe refrescarse mientras Tools esté a la vista, sea
+// como apartado de pantalla completa O como panel secundario de split --
+// !utilidadView.hidden ya es verdad en ambos casos por construcción, así
+// que alcanza con mirar eso en vez de duplicar la condición.
+function syncUtilidadRefresh() {
+  if (!utilidadView.hidden) startTvStringRefresh()
+  else stopTvStringRefresh()
+}
+
 function switchIconRailSection(section) {
+  currentApartado = section
   const isUtilidad = section === 'utilidad'
   iconRailGexBtn.classList.toggle('active', !isUtilidad)
   iconRailGexBtn.setAttribute('aria-current', String(!isUtilidad))
   iconRailUtilidadBtn.classList.toggle('active', isUtilidad)
   iconRailUtilidadBtn.setAttribute('aria-current', String(isUtilidad))
   gexAnalyticsView.hidden = isUtilidad
-  utilidadView.hidden = !isUtilidad
 
   if (isUtilidad) {
-    startTvStringRefresh()
-  } else {
-    stopTvStringRefresh()
+    // Si Tools estaba reparenteado dentro de un panel de split-view, no
+    // tiene sentido mostrar el mismo nodo ahí Y como apartado de pantalla
+    // completa a la vez -- se cierra split-view en vez de dejarlo roto
+    // (mostrando un panel vacío donde Tools solía estar).
+    if (splitMode && splitSecondaryTab === 'utilidad') disableSplitMode()
+    moveUtilidadHome()
   }
+  utilidadView.hidden = !isUtilidad
+  syncUtilidadRefresh()
 }
 
 iconRailGexBtn.addEventListener('click', () => switchIconRailSection('gex-analytics'))
 iconRailUtilidadBtn.addEventListener('click', () => switchIconRailSection('utilidad'))
 
-// --- Utilidad: copiar el indicador de Pine / el string en vivo -------
+// --- Tools: copiar el indicador de Pine / el string en vivo -----------
 async function copyToClipboard(text, btn) {
   try {
     await navigator.clipboard.writeText(text)
@@ -299,34 +340,122 @@ function stopTvStringRefresh() {
 // Deja ver dos pestañas a la vez (ej. GEX INFO + NET DRIFT) en vez de
 // una sola pantalla completa. La pestaña PRINCIPAL sigue siendo la que
 // ya controla el nav de arriba (#tab-nav, clase .active); la SECUNDARIA
-// se elige en el <select> y se marca con .split-secondary. Todo lo que
-// ya dependía de "está esta pestaña activa" (temporizadores de refresh,
-// redibujado de GREEKS) pasa a usar isTabVisible(), que considera ambas.
-function refreshSplitSecondaryOptions() {
+// se elige en un árbol desplegable agrupado por apartado (GEX Analytics /
+// Tools) y se marca con .split-secondary. Todo lo que ya dependía de
+// "está esta pestaña activa" (temporizadores de refresh, redibujado de
+// GREEKS) pasa a usar isTabVisible(), que considera ambas.
+function splitDropdownGroups() {
   const primaryTab = document.querySelector('#tab-nav .tab-btn.active')?.dataset.tab
-  const options = Object.keys(TAB_LABELS).filter((key) => key !== primaryTab)
-  splitSecondarySelect.innerHTML = options.map((key) => `<option value="${key}">${TAB_LABELS[key]}</option>`).join('')
-  if (!splitSecondaryTab || splitSecondaryTab === primaryTab) {
-    splitSecondaryTab = options[0]
-  }
-  splitSecondarySelect.value = splitSecondaryTab
+  const gexItems = Object.keys(TAB_LABELS)
+    .filter((key) => key !== primaryTab)
+    .map((key) => ({ value: key, label: TAB_LABELS[key] }))
+  return [
+    { key: 'gex-analytics', label: 'GEX Analytics', items: gexItems },
+    { key: 'utilidad', label: 'Tools', items: [{ value: 'utilidad', label: 'Tools' }] },
+  ]
 }
+
+function closeSplitDropdown() {
+  splitDropdownEl.classList.remove('open')
+  splitDropdownMenu.hidden = true
+}
+
+function buildSplitDropdownMenu() {
+  const groups = splitDropdownGroups()
+  const allValues = groups.flatMap((g) => g.items.map((i) => i.value))
+  // Si la secundaria elegida ya no es válida (ej. coincide con la nueva
+  // principal tras cambiar de pestaña arriba), se reasigna sola a la
+  // primera opción disponible en vez de quedar en un estado inconsistente.
+  if (!splitSecondaryTab || !allValues.includes(splitSecondaryTab)) {
+    splitSecondaryTab = allValues[0]
+  }
+
+  splitDropdownMenu.innerHTML = groups.map((g) => {
+    // Un apartado con un solo ítem (Tools, por ahora) se selecciona
+    // directo desde su propio header -- expandirlo para ver un único
+    // hijo con el mismo nombre sería redundante. GEX Analytics, con
+    // varios ítems, sí se expande/colapsa como una carpeta real.
+    if (g.items.length === 1) {
+      const item = g.items[0]
+      const isSelected = item.value === splitSecondaryTab
+      return `<div class="split-dropdown-group">
+        <button type="button" class="split-dropdown-item split-dropdown-leaf-group${isSelected ? ' selected' : ''}" data-value="${item.value}">${g.label}</button>
+      </div>`
+    }
+    const expanded = g.items.some((i) => i.value === splitSecondaryTab)
+    return `<div class="split-dropdown-group">
+      <button type="button" class="split-dropdown-group-header${expanded ? ' expanded' : ''}" data-group="${g.key}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+        ${g.label}
+      </button>
+      <div class="split-dropdown-group-items"${expanded ? '' : ' hidden'}>
+        ${g.items.map((i) => `<button type="button" class="split-dropdown-item${i.value === splitSecondaryTab ? ' selected' : ''}" data-value="${i.value}">${i.label}</button>`).join('')}
+      </div>
+    </div>`
+  }).join('')
+
+  const selected = groups.flatMap((g) => g.items).find((i) => i.value === splitSecondaryTab)
+  splitDropdownLabel.textContent = selected ? selected.label : 'Elegir pestaña…'
+}
+
+splitDropdownToggleBtn.addEventListener('click', () => {
+  const willOpen = !splitDropdownEl.classList.contains('open')
+  if (willOpen) {
+    buildSplitDropdownMenu()
+    splitDropdownEl.classList.add('open')
+    splitDropdownMenu.hidden = false
+  } else {
+    closeSplitDropdown()
+  }
+})
+
+splitDropdownMenu.addEventListener('click', (event) => {
+  const groupHeader = event.target.closest('.split-dropdown-group-header')
+  if (groupHeader) {
+    const willExpand = !groupHeader.classList.contains('expanded')
+    groupHeader.classList.toggle('expanded', willExpand)
+    groupHeader.nextElementSibling.hidden = !willExpand
+    return
+  }
+  const item = event.target.closest('.split-dropdown-item')
+  if (item) {
+    splitSecondaryTab = item.dataset.value
+    applySplitSecondaryTab()
+    closeSplitDropdown()
+  }
+})
+
+document.addEventListener('click', (event) => {
+  if (splitDropdownEl.classList.contains('open') && !event.target.closest('#split-dropdown')) {
+    closeSplitDropdown()
+  }
+})
 
 function applySplitSecondaryTab() {
   document.querySelectorAll('.tab-panel.split-secondary').forEach((p) => p.classList.remove('split-secondary'))
+  moveUtilidadHome()
+  utilidadView.hidden = currentApartado !== 'utilidad'
+
   if (splitMode && splitSecondaryTab) {
-    document.getElementById(`tab-${splitSecondaryTab}`)?.classList.add('split-secondary')
+    if (splitSecondaryTab === 'utilidad') {
+      document.getElementById('tab-utilidad-slot').classList.add('split-secondary')
+      moveUtilidadToSplitSlot()
+      utilidadView.hidden = false
+    } else {
+      document.getElementById(`tab-${splitSecondaryTab}`)?.classList.add('split-secondary')
+    }
   }
   syncTabLifecycle()
+  syncUtilidadRefresh()
 }
 
 function enableSplitMode() {
   splitMode = true
   tabContentEl.classList.add('split-mode')
   splitToggleBtn.classList.add('active')
-  splitSecondarySelect.hidden = false
+  splitDropdownEl.hidden = false
   splitCloseBtn.hidden = false
-  refreshSplitSecondaryOptions()
+  buildSplitDropdownMenu()
   applySplitSecondaryTab()
 }
 
@@ -334,10 +463,14 @@ function disableSplitMode() {
   splitMode = false
   tabContentEl.classList.remove('split-mode')
   splitToggleBtn.classList.remove('active')
-  splitSecondarySelect.hidden = true
+  splitDropdownEl.hidden = true
+  closeSplitDropdown()
   splitCloseBtn.hidden = true
   document.querySelectorAll('.tab-panel.split-secondary').forEach((p) => p.classList.remove('split-secondary'))
+  moveUtilidadHome()
+  utilidadView.hidden = currentApartado !== 'utilidad'
   syncTabLifecycle()
+  syncUtilidadRefresh()
 }
 
 splitToggleBtn.addEventListener('click', () => {
@@ -346,11 +479,6 @@ splitToggleBtn.addEventListener('click', () => {
 })
 
 splitCloseBtn.addEventListener('click', disableSplitMode)
-
-splitSecondarySelect.addEventListener('change', () => {
-  splitSecondaryTab = splitSecondarySelect.value
-  applySplitSecondaryTab()
-})
 
 // Arranca/para los refrescos periódicos de cada pestaña según quién esté
 // VISIBLE ahora mismo (principal + secundaria en split-mode) -- reemplaza
@@ -421,7 +549,7 @@ function syncTabLifecycle() {
 function forceGexInfoRedraw() {
   if (!latestGexInfo) return
   if (latestGexInfo.by_strike && latestGexInfo.by_strike.length > 0) {
-    renderChainFull(chartEl, latestGexInfo, latestSpot)
+    renderChainFull(chartEl, latestGexInfo, latestSpot, gexInfoViewMode)
   }
   if (latestGexInfo.price_profile) {
     renderGammaPriceProfileChart(gammaPriceProfileChartEl, latestGexInfo.price_profile)
@@ -883,9 +1011,9 @@ function handleMarketMessage(data) {
 
     if (info.by_strike && info.by_strike.length > 0) {
       if (data.type === 'chain_full') {
-        renderChainFull(chartEl, info, data.spot)
+        renderChainFull(chartEl, info, data.spot, gexInfoViewMode)
       } else {
-        updateTick(chartEl, info, data.spot)
+        updateTick(chartEl, info, data.spot, gexInfoViewMode)
       }
     }
 
@@ -1006,7 +1134,7 @@ tabButtons.forEach((btn) => {
     // En split-mode la pestaña secundaria no puede ser también la
     // principal -- si justo lo era, se reasigna sola a otra opción.
     if (splitMode) {
-      refreshSplitSecondaryOptions()
+      buildSplitDropdownMenu()
       applySplitSecondaryTab()
     } else {
       syncTabLifecycle()
@@ -1034,6 +1162,19 @@ surface3dSubNavButtons.forEach((btn) => {
     btn.classList.add('active')
     surface3dActiveView = btn.dataset.surface
     renderActiveSurface3d()
+  })
+})
+
+gexInfoViewToggleButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.view === gexInfoViewMode) return
+    gexInfoViewToggleButtons.forEach((b) => b.classList.remove('active'))
+    btn.classList.add('active')
+    gexInfoViewMode = btn.dataset.view
+    // Cambia la cantidad de trazas (1 traza neta vs 2 agrupadas
+    // call/put) -- renderChainFull ya sabe reconstruir todo desde cero
+    // cuando el modo no coincide con el último dibujado.
+    forceGexInfoRedraw()
   })
 })
 

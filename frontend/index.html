@@ -46,7 +46,7 @@
               <path d="M7 15l3.5-5 3 3L19 6" />
             </svg>
           </button>
-          <button type="button" id="icon-rail-utilidad-btn" class="icon-rail-btn" data-tooltip="Utilidad">
+          <button type="button" id="icon-rail-utilidad-btn" class="icon-rail-btn" data-tooltip="Tools">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l1 1 5.3-5.3a4 4 0 0 1 5.4-5.4l-2.6 2.6 1 1 2.6-2.6z" />
             </svg>
@@ -131,13 +131,23 @@
                 </svg>
                 Dividir
               </button>
-              <select id="split-secondary-select" hidden></select>
+              <div id="split-dropdown" class="split-dropdown" hidden>
+                <button type="button" id="split-dropdown-toggle" class="split-dropdown-toggle">
+                  <span id="split-dropdown-label">Elegir pestaña…</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                </button>
+                <div id="split-dropdown-menu" class="split-dropdown-menu" hidden></div>
+              </div>
               <button type="button" id="split-close-btn" hidden title="Cerrar vista dividida">✕</button>
             </div>
           </div>
 
           <div id="tab-content">
           <section id="tab-gex-info" class="tab-panel active" data-label="GEX INFO">
+            <div class="gex-info-view-toggle">
+              <button type="button" class="view-toggle-btn active" data-view="net">NET GEX</button>
+              <button type="button" class="view-toggle-btn" data-view="callput">CALL VS PUT</button>
+            </div>
             <div class="gex-info-layout">
               <div id="gex-info-chart" class="chart-container gex-info-chart"></div>
               <aside class="signals-panel">
@@ -297,12 +307,19 @@
               <p class="ai-placeholder">Pulsa "Generar Diagnóstico IA" para un análisis de escenarios basado en los niveles de gamma en vivo.</p>
             </div>
           </section>
+
+          <!-- Slot vacío: cuando Tools se elige como pestaña secundaria de
+               split-view, #utilidad-view (más abajo, fuera de esta vista)
+               se REPARENTEA acá con JS -- no es una copia, es el mismo
+               nodo, para no duplicar ids ni desincronizar su estado. Ver
+               moveUtilidadToSplitSlot()/moveUtilidadHome() en main.js. -->
+          <div id="tab-utilidad-slot" class="tab-panel" data-label="Tools"></div>
           </div>
           </div>
 
           <div id="utilidad-view" hidden>
             <div class="utilidad-section">
-              <h3 class="signals-heading"><span class="signals-heading-bar"></span>Indicadores</h3>
+              <h3 class="signals-heading"><span class="signals-heading-bar"></span>Indicators</h3>
               <div class="indicator-card">
                 <div class="indicator-card-header">
                   <span class="indicator-card-title">Gamma Levels para TradingView</span>
