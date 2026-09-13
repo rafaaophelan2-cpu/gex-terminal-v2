@@ -24,9 +24,13 @@ REFRESH_INTERVAL_SECONDS = 900
 # reintento volvía a fallar, y así indefinidamente -- un bucle que
 # mantenía el rate limit pisado para siempre y nunca dejaba pasar el
 # tiempo suficiente para que se liberara. Con este cooldown, un fallo
-# espera igual antes de volver a intentar, dándole tiempo real a
-# MarketData.app para levantar el límite.
-FAILURE_COOLDOWN_SECONDS = 60
+# espera igual antes de volver a intentar.
+# 5 min, no 60s: el 429 real visto en producción no fue un rate-limit de
+# minuto sino la CUOTA DIARIA de créditos de la cuenta agotada (headers
+# x-api-ratelimit-remaining=0, reset varias horas después) -- reintentar
+# cada 60s mientras la cuota sigue en 0 solo genera ruido en los logs sin
+# ninguna chance real de éxito antes del reset.
+FAILURE_COOLDOWN_SECONDS = 300
 
 _cache: dict[str, tuple[float, dict[tuple[float, str], int]]] = {}
 _last_attempt: dict[str, float] = {}

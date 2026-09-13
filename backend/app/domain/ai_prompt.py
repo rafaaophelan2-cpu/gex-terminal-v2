@@ -223,20 +223,21 @@ def build_system_prompt(
             f"CONTRARIO en {ticker} aunque no haya catalizador visible todavía en el precio de {ticker}."
         )
 
-    # NDX/SPX/VIX (productos de índice exclusivos de CBOE): Schwab no da
-    # Open Interest real para estos -- confirmado en vivo, 0 de cientos
-    # de contratos con OI>0 en el mismo instante en que QQQ/SPY sí lo
-    # tenían (no es un tema de horario). Sin esta advertencia el modelo
-    # analizaría un GEX basado en volumen del día como si fuera
-    # posicionamiento acumulado real, una distinción que cambia por
-    # completo cuánto peso merece cada nivel.
+    # NDX/VIX (productos de índice exclusivos de CBOE) no traen Open
+    # Interest real de Schwab -- para esos se pide a MarketData.app (ver
+    # integrations/marketdata_client.py). Este flag solo se prende cuando
+    # AMBAS fuentes fallan (Schwab estructuralmente, y MarketData.app por
+    # rate-limit/timeout/lo que sea en este momento puntual) y el sistema
+    # cae al viejo proxy de volumen. Sin esta advertencia el modelo
+    # analizaría ese GEX como si fuera posicionamiento acumulado real.
     oi_proxy_warning = (
-        f"\n⚠️ ADVERTENCIA DE CALIDAD DE DATO PARA {ticker}: Schwab no publica Open Interest real para este símbolo "
-        f"(confirmado, no es un problema de horario). Todo el GEX/niveles de abajo está calculado usando VOLUMEN DEL "
-        f"DÍA como aproximación en vez de posicionamiento acumulado real -- es decir, refleja la actividad de HOY, no "
-        f"cuánta exposición tienen los dealers acumulada de días/semanas anteriores. Tratá estos niveles con MENOS "
-        f"convicción que los de un símbolo con OI real (QQQ/SPY): aclaralo explícitamente en tu análisis, y exigí "
-        f"confirmación de order flow más estricta antes de operar cualquier setup basado en ellos.\n"
+        f"\n⚠️ ADVERTENCIA DE CALIDAD DE DATO PARA {ticker}: no se pudo obtener Open Interest real para este símbolo "
+        f"ahora mismo (Schwab no lo da para índices, y la fuente alternativa -- MarketData.app -- falló o no "
+        f"respondió a tiempo en este momento puntual, puede ser transitorio). Todo el GEX/niveles de abajo está "
+        f"calculado usando VOLUMEN DEL DÍA como aproximación en vez de posicionamiento acumulado real -- es decir, "
+        f"refleja la actividad de HOY, no cuánta exposición tienen los dealers acumulada de días/semanas anteriores. "
+        f"Tratá estos niveles con MENOS convicción que los de un símbolo con OI real: aclaralo explícitamente en tu "
+        f"análisis, y exigí confirmación de order flow más estricta antes de operar cualquier setup basado en ellos.\n"
         if oi_is_volume_proxy else ""
     )
 
