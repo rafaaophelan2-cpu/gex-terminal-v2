@@ -110,6 +110,20 @@ export async function fetchVolSurface(symbol, expKeys) {
   return resp.json()
 }
 
+export async function fetchEconomicCalendar(daysAhead = 1) {
+  const resp = await apiFetch(`/market/economic-calendar?days_ahead=${encodeURIComponent(daysAhead)}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  const data = await resp.json()
+  return data.events
+}
+
+export async function fetchNews() {
+  const resp = await apiFetch('/market/news')
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  const data = await resp.json()
+  return data.articles
+}
+
 export async function postAiDiagnosis(symbol, tipoAnalisis, conversionRatio) {
   const resp = await apiFetch('/market/ai-diagnosis', {
     method: 'POST',

@@ -2,7 +2,7 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchCharmHeatmap, fetchCompoundedLevels, fetchDrift, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchCandles, fetchCharmHeatmap, fetchCompoundedLevels, fetchDrift, fetchEconomicCalendar, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchNews, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
@@ -13,6 +13,7 @@ import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfo
 import { renderGreeksChart, resetGreeksChart } from './charts/greeksChart.js'
 import { renderAllDayGammaChart, renderLiveGammaChart } from './charts/liveGammaChart.js'
 import { renderNetDriftChart } from './charts/netDriftChart.js'
+import { renderNewsCalendar, renderNewsFeed } from './charts/newsPanel.js'
 import { renderSignalsPanel } from './charts/signalsPanel.js'
 import { renderVolSurfaceChart } from './charts/volSurfaceChart.js'
 import { fmtMoney } from './utils/format.js'
@@ -35,10 +36,14 @@ const iconRailGexBtn = document.getElementById('icon-rail-gex-btn')
 const iconRailUtilidadBtn = document.getElementById('icon-rail-utilidad-btn')
 const iconRailChainBtn = document.getElementById('icon-rail-chain-btn')
 const iconRailBriefingsBtn = document.getElementById('icon-rail-briefings-btn')
+const iconRailNewsBtn = document.getElementById('icon-rail-news-btn')
 const gexAnalyticsView = document.getElementById('gex-analytics-view')
 const utilidadView = document.getElementById('utilidad-view')
 const chainAnalyticsView = document.getElementById('chain-analytics-view')
 const briefingsView = document.getElementById('briefings-view')
+const newsView = document.getElementById('news-view')
+const newsCalendarEl = document.getElementById('news-calendar')
+const newsFeedEl = document.getElementById('news-feed')
 const gammaPriceProfileChartEl = document.getElementById('gamma-price-profile-chart')
 const gexInfoViewToggleButtons = document.querySelectorAll('.gex-info-view-toggle .view-toggle-btn')
 const oiProxyWarningEl = document.getElementById('oi-proxy-warning')
@@ -179,6 +184,11 @@ let splitMode = false
 let splitSecondaryTab = null
 let tvStringRefreshTimer = null
 const TV_STRING_REFRESH_MS = 20000
+let newsRefreshTimer = null
+// 3 min -- acorde al cache de 5 min del backend (ver
+// NEWS_CACHE_TTL_SECONDS en integrations/finnhub_client.py), sin generar
+// pedidos de más que de todas formas van a devolver el mismo cache.
+const NEWS_REFRESH_MS = 180000
 let gexInfoViewMode = 'net' // 'net' | 'callput'
 
 // Nombre visible de cada pestaña -- se arma una sola vez leyendo el texto
@@ -292,6 +302,7 @@ function switchIconRailSection(section) {
   const isUtilidad = section === 'utilidad'
   const isChain = section === 'chain-analytics'
   const isBriefings = section === 'briefings'
+  const isNews = section === 'news'
 
   iconRailGexBtn.classList.toggle('active', isGex)
   iconRailGexBtn.setAttribute('aria-current', String(isGex))
@@ -301,11 +312,19 @@ function switchIconRailSection(section) {
   iconRailChainBtn.setAttribute('aria-current', String(isChain))
   iconRailBriefingsBtn.classList.toggle('active', isBriefings)
   iconRailBriefingsBtn.setAttribute('aria-current', String(isBriefings))
+  iconRailNewsBtn.classList.toggle('active', isNews)
+  iconRailNewsBtn.setAttribute('aria-current', String(isNews))
   gexAnalyticsView.hidden = !isGex
-  // Briefings no participa de vista dividida (es un panel de acción, no
-  // un gráfico para comparar lado a lado) -- a diferencia de Tools/Chain
-  // Analytics, no necesita reparenteo a ningún slot de split.
+  // Briefings/News no participan de vista dividida (son paneles propios,
+  // no un gráfico para comparar lado a lado) -- a diferencia de
+  // Tools/Chain Analytics, no necesitan reparenteo a ningún slot de split.
   briefingsView.hidden = !isBriefings
+  newsView.hidden = !isNews
+  if (isNews) {
+    if (!newsRefreshTimer) startNewsRefresh()
+  } else {
+    stopNewsRefresh()
+  }
 
   // Si Tools/Chain Analytics estaban reparenteados dentro de un panel de
   // split-view, no tiene sentido mostrar el mismo nodo ahí Y como
@@ -330,6 +349,7 @@ iconRailGexBtn.addEventListener('click', () => switchIconRailSection('gex-analyt
 iconRailUtilidadBtn.addEventListener('click', () => switchIconRailSection('utilidad'))
 iconRailChainBtn.addEventListener('click', () => switchIconRailSection('chain-analytics'))
 iconRailBriefingsBtn.addEventListener('click', () => switchIconRailSection('briefings'))
+iconRailNewsBtn.addEventListener('click', () => switchIconRailSection('news'))
 
 // --- Tools: copiar el indicador de Pine / el string en vivo -----------
 async function copyToClipboard(text, btn) {
@@ -390,6 +410,32 @@ function stopTvStringRefresh() {
   if (tvStringRefreshTimer) {
     clearInterval(tvStringRefreshTimer)
     tvStringRefreshTimer = null
+  }
+}
+
+async function loadNews() {
+  try {
+    const [events, articles] = await Promise.all([
+      fetchEconomicCalendar(1),
+      fetchNews(),
+    ])
+    renderNewsCalendar(newsCalendarEl, events)
+    renderNewsFeed(newsFeedEl, articles)
+  } catch (err) {
+    console.error('Error cargando News:', err)
+  }
+}
+
+function startNewsRefresh() {
+  stopNewsRefresh()
+  loadNews()
+  newsRefreshTimer = setInterval(loadNews, NEWS_REFRESH_MS)
+}
+
+function stopNewsRefresh() {
+  if (newsRefreshTimer) {
+    clearInterval(newsRefreshTimer)
+    newsRefreshTimer = null
   }
 }
 
@@ -1227,6 +1273,7 @@ function showLogin() {
   stopLiveGammaRefresh()
   stopCharmHeatmapRefresh()
   stopTvStringRefresh()
+  stopNewsRefresh()
   stopBackgammaPlay()
   stopGridRefresh()
   stopSurface3dRefresh()

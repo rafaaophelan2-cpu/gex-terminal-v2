@@ -124,6 +124,63 @@ def test_heatmap_charm_includes_charm_zero_line(authed_client, monkeypatch):
     assert body["charm_zero"] == [100.0]
 
 
+def test_economic_calendar_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/economic-calendar")
+    assert resp.status_code == 401
+
+
+def test_economic_calendar_forwards_days_ahead_and_returns_events(authed_client, monkeypatch):
+    seen = {}
+
+    async def _fake_fetch_economic_calendar(days_ahead=0):
+        seen["days_ahead"] = days_ahead
+        return [{"date": "2026-09-14", "time": "08:30", "event": "CPI", "impact": "high", "actual": None, "forecast": "0.3", "previous": "0.2"}]
+
+    monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_fetch_economic_calendar)
+
+    resp = authed_client.get("/market/economic-calendar?days_ahead=2")
+    assert resp.status_code == 200
+    assert seen["days_ahead"] == 2
+    assert resp.json()["events"][0]["event"] == "CPI"
+
+
+def test_economic_calendar_defaults_to_one_day_ahead(authed_client, monkeypatch):
+    seen = {}
+
+    async def _fake_fetch_economic_calendar(days_ahead=0):
+        seen["days_ahead"] = days_ahead
+        return []
+
+    monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_fetch_economic_calendar)
+
+    resp = authed_client.get("/market/economic-calendar")
+    assert resp.status_code == 200
+    assert seen["days_ahead"] == 1
+
+
+def test_news_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/news")
+    assert resp.status_code == 401
+
+
+def test_news_returns_filtered_articles(authed_client, monkeypatch):
+    async def _fake_fetch_market_news():
+        return [
+            {"headline": "Fed cuts rates", "summary": "", "url": "https://x", "source": "Reuters", "datetime": 200, "image": ""},
+            {"headline": "Local bakery news", "summary": "", "url": "https://y", "source": "Reuters", "datetime": 100, "image": ""},
+        ]
+
+    monkeypatch.setattr(routes_rest, "fetch_market_news", _fake_fetch_market_news)
+
+    resp = authed_client.get("/market/news")
+    assert resp.status_code == 200
+    articles = resp.json()["articles"]
+    assert [a["headline"] for a in articles] == ["Fed cuts rates"]  # la irrelevante queda afuera
+    assert "important" in articles[0]
+
+
 def test_vix_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/market/vix")

@@ -16,7 +16,9 @@ from app.domain.heatmap import (
 )
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
+from app.domain.news_filter import filter_relevant_news
 from app.domain.vol_surface import compute_vol_surface
+from app.integrations.finnhub_client import fetch_economic_calendar, fetch_market_news
 from app.integrations.groq_client import query_groq
 from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
@@ -138,6 +140,27 @@ async def get_vix(_username: str = Depends(require_auth)):
     value = await fetch_vix()
     status, description, color = classify_vix(value)
     return {"value": value, "status": status, "description": description, "color": color}
+
+
+@router.get("/economic-calendar")
+async def get_economic_calendar(days_ahead: int = 1, _username: str = Depends(require_auth)):
+    """Calendario económico de EE.UU. (CPI/FOMC/NFP, impacto medio/alto)
+    para la pestaña News -- ver integrations/finnhub_client.py. 1 día
+    adelante por defecto (hoy + mañana, igual que la captura de
+    referencia del usuario); [] si no hay FINNHUB_API_KEY configurada."""
+    events = await fetch_economic_calendar(days_ahead=days_ahead)
+    return {"events": events}
+
+
+@router.get("/news")
+async def get_news(_username: str = Depends(require_auth)):
+    """Feed de noticias filtrado a lo que probablemente impacta QQQ/NQ
+    (pedido explícito del usuario) -- ver domain/news_filter.py para el
+    disclaimer de que es una heurística por palabras clave, no un
+    clasificador real (Finnhub no tagea sus noticias por ticker). Los
+    ~40 más recientes alcanzan de sobra para una sesión de trading."""
+    articles = filter_relevant_news(await fetch_market_news())
+    return {"articles": articles[:40]}
 
 
 @router.get("/available-dates")

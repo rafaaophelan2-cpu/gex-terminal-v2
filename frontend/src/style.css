@@ -2222,6 +2222,187 @@ main {
   }
 }
 
+/* --- News: calendario económico + feed de noticias (estilo FinancialJuice) --- */
+.news-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.news-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #f0f6fc;
+  letter-spacing: 0.3px;
+}
+
+.news-subtitle {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #8b949e;
+}
+
+.news-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.news-calendar-column {
+  flex: 0 0 380px;
+  min-width: 0;
+}
+
+.news-feed-column {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.news-calendar,
+.news-feed {
+  background: linear-gradient(180deg, rgba(14, 18, 27, 0.8) 0%, rgba(9, 12, 18, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  max-height: 78vh;
+  overflow-y: auto;
+}
+
+.news-placeholder {
+  padding: 16px;
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.news-calendar-day-header {
+  position: sticky;
+  top: 0;
+  padding: 8px 14px;
+  background: #0e131f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8b949e;
+  z-index: 1;
+}
+
+.news-calendar-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.78rem;
+}
+
+.news-calendar-row:last-child {
+  border-bottom: none;
+}
+
+/* Fondo sutil para el PRÓXIMO evento -- pedido explícito: "que se
+   diferencia pero que no resalte a kilómetros", nada del estilo llamativo
+   que sí lleva .news-feed-item.important (roja) más abajo. */
+.news-calendar-row.upcoming {
+  background: rgba(59, 130, 246, 0.08);
+  border-left: 2px solid rgba(59, 130, 246, 0.45);
+}
+
+.news-calendar-row-time {
+  flex: 0 0 44px;
+  color: #8b949e;
+  font-family: var(--mono);
+}
+
+.news-calendar-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.news-calendar-row-event {
+  color: #d1d5db;
+}
+
+.news-calendar-row.upcoming .news-calendar-row-event {
+  color: #f0f6fc;
+  font-weight: 600;
+}
+
+.news-calendar-row-values {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: #8b949e;
+}
+
+.news-feed-item {
+  display: block;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  text-decoration: none;
+  transition: background 0.12s ease;
+}
+
+.news-feed-item:last-child {
+  border-bottom: none;
+}
+
+.news-feed-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Roja y bien visible a propósito (a diferencia del highlight sutil del
+   calendario) -- pedido explícito, calcado de la referencia que mandó el
+   usuario: las noticias de alto impacto se pintan en rojo, sin ambigüedad. */
+.news-feed-item.important {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.news-feed-item.important:hover {
+  background: rgba(239, 68, 68, 0.26);
+}
+
+.news-feed-item-headline {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #f0f6fc;
+}
+
+.news-feed-item.important .news-feed-item-headline {
+  color: #fecaca;
+}
+
+.news-feed-item-meta {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: #8b949e;
+}
+
+@media (max-width: 1000px) {
+  .news-layout {
+    flex-direction: column;
+  }
+
+  .news-calendar-column {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .news-calendar,
+  .news-feed {
+    max-height: 50vh;
+  }
+}
+
 /* --- Utilidad: Indicadores + Strings --- */
 #utilidad-view {
   max-width: 900px;
