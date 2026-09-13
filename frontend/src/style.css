@@ -1979,6 +1979,21 @@ main {
   margin-bottom: 12px;
 }
 
+/* Aviso de "GEX aproximado con volumen" (NDX/SPX/VIX, ver oi_fallback.py
+   en el backend) -- sin display propio: como <div> ya es block por
+   defecto, no hace falta pisar la regla nativa de [hidden] acá. */
+.oi-proxy-warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  color: #f59e0b;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
 .view-toggle-btn {
   background: transparent;
   border: none;

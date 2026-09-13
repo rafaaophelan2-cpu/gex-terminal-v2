@@ -39,6 +39,7 @@ const utilidadView = document.getElementById('utilidad-view')
 const chainAnalyticsView = document.getElementById('chain-analytics-view')
 const gammaPriceProfileChartEl = document.getElementById('gamma-price-profile-chart')
 const gexInfoViewToggleButtons = document.querySelectorAll('.gex-info-view-toggle .view-toggle-btn')
+const oiProxyWarningEl = document.getElementById('oi-proxy-warning')
 const copyPineBtn = document.getElementById('copy-pine-btn')
 const copyStringBtn = document.getElementById('copy-string-btn')
 const tvStringBox = document.getElementById('tv-string-box')
@@ -1230,6 +1231,7 @@ function handleMarketMessage(data) {
     setMetric(metricEls.cw1, info.walls?.cw1 ? `$${info.walls.cw1.toFixed(0)}` : '--', 'val-call-wall')
     setMetric(metricEls.pw1, info.walls?.pw1 ? `$${info.walls.pw1.toFixed(0)}` : '--', 'val-put-wall')
     setMetric(metricEls.zg, info.flip_level ? `$${info.flip_level.toFixed(2)}` : '--', 'val-zero-gamma')
+    oiProxyWarningEl.hidden = !info.oi_is_volume_proxy
 
     if (info.by_strike && info.by_strike.length > 0) {
       if (data.type === 'chain_full') {
