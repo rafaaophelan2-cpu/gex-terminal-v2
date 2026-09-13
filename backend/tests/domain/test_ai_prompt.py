@@ -232,7 +232,7 @@ def test_build_system_prompt_omits_economic_calendar_line_when_empty():
         intraday_context="contexto de prueba",
         economic_calendar=[],
     )
-    assert "sin eventos relevantes en EE.UU." in prompt
+    assert "sin eventos de impacto medio/alto en EE.UU." in prompt
 
 
 def test_format_economic_calendar_with_events_groups_by_day_and_precomputes_days_until():
@@ -256,17 +256,35 @@ def test_format_economic_calendar_with_events_groups_by_day_and_precomputes_days
     assert "FOMC Rate Decision" in text
 
 
-def test_format_economic_calendar_low_impact_is_included_with_its_own_label():
+def test_format_economic_calendar_excludes_low_impact_to_save_tokens():
+    # Pedido de presupuesto de tokens (ver ai_prompt.py): 'low' se filtra
+    # SOLO acá (la pestaña News sigue mostrando los 3 niveles, ver
+    # test_forexfactory_client.py) -- Groq cuenta prompt+max_tokens contra
+    # el límite de TPM de la cuenta, confirmado en vivo que una semana con
+    # muchos eventos de bajo impacto hacía superar ese límite en cada
+    # pedido.
+    text = format_economic_calendar(
+        [
+            {"date": "2026-09-13", "time": "09:00", "event": "Minor Data", "impact": "low", "actual": None, "forecast": None, "previous": None},
+            {"date": "2026-09-13", "time": "10:00", "event": "ISM Services PMI", "impact": "medium", "actual": None, "forecast": None, "previous": None},
+        ],
+        today_str="2026-09-13",
+    )
+    assert "Minor Data" not in text
+    assert "ISM Services PMI" in text
+
+
+def test_format_economic_calendar_only_low_impact_events_reads_as_no_relevant_events():
     text = format_economic_calendar(
         [{"date": "2026-09-13", "time": "09:00", "event": "Minor Data", "impact": "low", "actual": None, "forecast": None, "previous": None}],
         today_str="2026-09-13",
     )
-    assert "[impacto bajo]" in text
+    assert "sin eventos de impacto medio/alto" in text
 
 
 def test_format_economic_calendar_empty_is_normal_not_an_error():
     text = format_economic_calendar(None)
-    assert "sin eventos relevantes en EE.UU." in text
+    assert "sin eventos de impacto medio/alto en EE.UU." in text
     assert format_economic_calendar([]) == text
 
 

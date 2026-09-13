@@ -37,11 +37,22 @@ async def query_groq(system_prompt: str, user_prompt: str, history: list[dict] |
             model=GROQ_MODEL,
             messages=messages,
             temperature=0.3,
-            # El informe completo (5 secciones + tabla final) es largo --
-            # confirmado en vivo que sin esto la tabla del punto 5 salía
-            # incompleta (1 de 3 filas, celdas vacías), muy probablemente
-            # cortada por el máximo default del modelo en Groq.
-            max_tokens=4096,
+            # 3072 (antes 4096, y antes de eso sin setear) -- confirmado en
+            # vivo en Render el motivo real de cada valor:
+            # - sin setear: la tabla del punto 5 salía incompleta (1 de 3
+            #   filas, celdas vacías), cortada por el máximo default.
+            # - 4096: el prompt de este sistema (framework completo +
+            #   calendario económico de la semana, ver ai_prompt.py) creció
+            #   a lo largo de la sesión hasta ~4300 tokens -- Groq cuenta
+            #   prompt + max_tokens (NO tokens realmente generados) contra
+            #   el límite de Tokens Por Minuto de la cuenta (8000 TPM en
+            #   este tier), así que 4300 + 4096 = 8396 superaba el límite
+            #   en CADA pedido (error 413 "tokens per minute", nunca
+            #   llegaba a generar nada -- confirmado con logger.exception
+            #   de acá abajo). 3072 deja margen real (~4300 + 3072 = 7372)
+            #   incluso en una semana con calendario económico cargado, sin
+            #   volver a la tabla incompleta del primer problema.
+            max_tokens=3072,
         )
         return completion.choices[0].message.content
 

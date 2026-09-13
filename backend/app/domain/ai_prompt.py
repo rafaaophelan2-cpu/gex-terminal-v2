@@ -116,8 +116,21 @@ def format_economic_calendar(economic_calendar: list[dict] | None, today_str: st
     él mismo (mismo motivo que el resto de la aritmética de este prompt,
     ver REGLAS DURAS DE COHERENCIA DE PRECIOS más abajo: un LLM no resta
     fechas de forma confiable, las aproxima por patrón de texto)."""
+    # Filtra 'low' SOLO acá (la pestaña News sigue mostrando los 3
+    # niveles -- ver GET /market/economic-calendar, que llama a
+    # fetch_economic_calendar sin este filtro) -- pedido de presupuesto de
+    # tokens: el prompt de este sistema ya es grande (framework completo +
+    # niveles + perfiles de sesión) y Groq cuenta prompt+max_tokens contra
+    # el límite de Tokens Por Minuto de la cuenta (confirmado en vivo: un
+    # 413 "tokens per minute" por CADA pedido cuando el calendario de la
+    # semana traía muchos eventos de bajo impacto que no cambian el
+    # análisis, ver groq_client.py). 'low' es ruido menor que casi nunca
+    # pesa en el razonamiento -- se recorta acá, no se pierde nada
+    # relevante.
+    economic_calendar = [ev for ev in (economic_calendar or []) if ev.get("impact") != "low"]
+
     if not economic_calendar:
-        return "Calendario económico de esta semana: sin eventos relevantes en EE.UU. (o sin esta fuente configurada)."
+        return "Calendario económico de esta semana: sin eventos de impacto medio/alto en EE.UU. (o sin esta fuente configurada)."
 
     today_date = None
     if today_str:
@@ -156,7 +169,7 @@ def format_economic_calendar(economic_calendar: list[dict] | None, today_str: st
 
     joined = "\n".join(lines)
     return (
-        "Calendario económico de esta semana (EE.UU., los 3 niveles de impacto -- bajo/medio/ALTO):\n"
+        "Calendario económico de esta semana (EE.UU., impacto medio/ALTO):\n"
         f"{joined}\n"
         "Un evento de HOY AÚN NO PUBLICADO (sin 'real' todavía) es un catalizador de riesgo binario -- bajale la "
         "convicción a cualquier escenario que dependa de que el régimen actual se sostenga hasta después de esa hora. "
@@ -164,9 +177,8 @@ def format_economic_calendar(economic_calendar: list[dict] | None, today_str: st
         "contexto de gamma/VIX de antes. Un evento de un día FUTURO (no hoy) es un catalizador que puede explicar POR "
         "QUÉ la IV está elevada o por qué el mercado se comporta cauteloso incluso sin movimiento de precio visible "
         "todavía -- mencionalo así cuando aplique (ej. \"la IV se mantiene alta, consistente con el <evento> en N "
-        "días\", usando el 'en N días' YA CALCULADO arriba, nunca restando las fechas vos mismo). Impacto bajo es "
-        "ruido menor, casi nunca cambia el análisis por sí solo; impacto medio pesa como contexto; impacto ALTO puede "
-        "invalidar de golpe el régimen de gamma/VIX vigente."
+        "días\", usando el 'en N días' YA CALCULADO arriba, nunca restando las fechas vos mismo). Impacto medio pesa "
+        "como contexto; impacto ALTO puede invalidar de golpe el régimen de gamma/VIX vigente."
     )
 
 
