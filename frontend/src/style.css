@@ -977,37 +977,6 @@ main {
   color: #58a6ff;
 }
 
-.live-gamma-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
-.live-gamma-trend-btn {
-  background: #0e131f;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 7px 12px;
-  color: #8b949e;
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.live-gamma-trend-btn:hover {
-  color: #f0f6fc;
-}
-
-.live-gamma-trend-btn.active {
-  background: rgba(88, 166, 255, 0.16);
-  border-color: rgba(88, 166, 255, 0.4);
-  color: #58a6ff;
-}
-
 .backgamma-toolbar {
   display: flex;
   align-items: center;

@@ -27,11 +27,12 @@ const COLOR_GAMMA_TROUGH = '#EAB308'
  * función para el panel de Charm Heatmap pasando 'Charm Exposure', ya que
  * el heatmap en sí es idéntico (mismo backend, mismo formato de
  * respuesta, ver domain/heatmap.py), solo cambia qué valor trae 'z'.
- * 'showGammaTrendLines' (opcional, true por defecto): controla SOLO las
- * 3 líneas de Gamma Peak/Trough/Zero -- pedido explícito del usuario
- * ("me hacen ruido"), LIVE GAMMA las pasa en false por defecto vía un
- * toggle propio (ver main.js), Charm Heatmap no lo toca (su única línea,
- * Charm Zero, sigue siempre visible -- no fue parte del pedido). */
+ *
+ * Las líneas de tendencia Gamma Peak/Trough/Zero NO se dibujan acá --
+ * pedido explícito del usuario ("me hacen ruido" sobre el heatmap): en
+ * vez de un toggle, viven en su propio gráfico separado (ver
+ * renderAllDayGammaChart más abajo), sin heatmap ni colores/etiquetas de
+ * gamma, montado debajo de este mismo en LIVE GAMMA (main.js). */
 // Un rango [a, b] solo es válido para reusar como zoom preservado si
 // ambos extremos son números finitos y a < b -- confirmado en vivo el
 // bug real que esto previene: si Plotly llega a computar/heredar un
@@ -52,7 +53,63 @@ function isValidRange(range) {
   )
 }
 
-export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metricLabel = 'Net GEX', showGammaTrendLines = true) {
+/** Vela real de Schwab si hay (mismo criterio de ambos gráficos), si no
+ * la línea de spot que ya viene en los snapshots guardados. */
+function buildPriceTrace(heatmap, candles, heatmapX, dateStr) {
+  if (candles && candles.length > 0) {
+    const candlesX = candles.map((c) => nyWallClockToPlotlyString(dateStr, c.time))
+    return {
+      type: 'candlestick',
+      name: 'Spot',
+      x: candlesX,
+      open: candles.map((c) => c.open),
+      high: candles.map((c) => c.high),
+      low: candles.map((c) => c.low),
+      close: candles.map((c) => c.close),
+      increasing: { line: { color: COLOR_POSITIVE }, fillcolor: COLOR_POSITIVE },
+      decreasing: { line: { color: COLOR_NEGATIVE }, fillcolor: COLOR_NEGATIVE },
+      showlegend: false,
+    }
+  }
+  return {
+    type: 'scatter', mode: 'lines', name: 'Spot', x: heatmapX, y: heatmap.spot,
+    line: { color: COLOR_ACCENT, width: 2 },
+  }
+}
+
+/** Gamma Peak/Trough/Zero -- Call Wall/Put Wall/Zero Gamma dominante de
+ * CADA instante (ver domain/heatmap.py::compute_gamma_trend_lines), no
+ * solo el valor actual. Usado únicamente por renderAllDayGammaChart (ver
+ * más abajo) -- separado del heatmap de LIVE GAMMA a pedido explícito
+ * del usuario, que las quería ver sin que "hagan ruido" sobre el mapa de
+ * calor. */
+function buildGammaTrendTraces(heatmap, heatmapX) {
+  const traces = []
+  if (heatmap.gamma_peak && heatmap.gamma_peak.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Gamma Peak', x: heatmapX, y: heatmap.gamma_peak,
+      line: { color: COLOR_POSITIVE, width: 1.5 },
+      hovertemplate: 'Gamma Peak: $%{y}<extra></extra>',
+    })
+  }
+  if (heatmap.gamma_trough && heatmap.gamma_trough.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Gamma Trough', x: heatmapX, y: heatmap.gamma_trough,
+      line: { color: COLOR_GAMMA_TROUGH, width: 1.5 },
+      hovertemplate: 'Gamma Trough: $%{y}<extra></extra>',
+    })
+  }
+  if (heatmap.gamma_zero && heatmap.gamma_zero.length > 0) {
+    traces.push({
+      type: 'scatter', mode: 'lines', name: 'Gamma Zero', x: heatmapX, y: heatmap.gamma_zero,
+      line: { color: COLOR_ACCENT, width: 1.5 },
+      hovertemplate: 'Gamma Zero: $%{y}<extra></extra>',
+    })
+  }
+  return traces
+}
+
+export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metricLabel = 'Net GEX') {
   if (!heatmap.times || heatmap.times.length === 0) return
 
   // Preservar el zoom/pan actual entre refrescos periódicos (ver
@@ -96,62 +153,9 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
       colorbar: { title: { text: metricLabel, side: 'top' }, x: -0.08 },
       showlegend: false,
     },
+    buildPriceTrace(heatmap, candles, heatmapX, dateStr),
   ]
 
-  if (candles && candles.length > 0) {
-    const candlesX = candles.map((c) => nyWallClockToPlotlyString(dateStr, c.time))
-    traces.push({
-      type: 'candlestick',
-      name: 'Spot',
-      x: candlesX,
-      open: candles.map((c) => c.open),
-      high: candles.map((c) => c.high),
-      low: candles.map((c) => c.low),
-      close: candles.map((c) => c.close),
-      increasing: { line: { color: COLOR_POSITIVE }, fillcolor: COLOR_POSITIVE },
-      decreasing: { line: { color: COLOR_NEGATIVE }, fillcolor: COLOR_NEGATIVE },
-      showlegend: false,
-    })
-  } else {
-    // Fallback: sin velas de Schwab disponibles, al menos la línea de
-    // spot que ya viene en los snapshots guardados.
-    traces.push({
-      type: 'scatter', mode: 'lines', name: 'Spot', x: heatmapX, y: heatmap.spot,
-      line: { color: COLOR_ACCENT, width: 2 },
-    })
-  }
-
-  // Líneas de tendencia estilo Aleks Rosme: a diferencia de los shapes
-  // CW1-3/PW1-3/Gamma Flip de abajo (horizontales, fijos al valor ACTUAL
-  // nada más), estas son series reales que evolucionan strike a strike a
-  // lo largo del día -- Call Wall/Put Wall/Zero Gamma dominante de CADA
-  // instante (ver domain/heatmap.py::compute_gamma_trend_lines para el
-  // panel de Gamma, compute_charm_trend_line para el de Charm). Ambos
-  // paneles reusan esta misma función (ver metricLabel más arriba), así
-  // que se detecta cuál trend line corresponde por qué campo trae
-  // 'heatmap' -- gamma_peak/gamma_trough/gamma_zero para LIVE GAMMA,
-  // charm_zero para el panel de Charm.
-  if (showGammaTrendLines && heatmap.gamma_peak && heatmap.gamma_peak.length > 0) {
-    traces.push({
-      type: 'scatter', mode: 'lines', name: 'Gamma Peak', x: heatmapX, y: heatmap.gamma_peak,
-      line: { color: COLOR_POSITIVE, width: 1.5 },
-      hovertemplate: 'Gamma Peak: $%{y}<extra></extra>',
-    })
-  }
-  if (showGammaTrendLines && heatmap.gamma_trough && heatmap.gamma_trough.length > 0) {
-    traces.push({
-      type: 'scatter', mode: 'lines', name: 'Gamma Trough', x: heatmapX, y: heatmap.gamma_trough,
-      line: { color: COLOR_GAMMA_TROUGH, width: 1.5 },
-      hovertemplate: 'Gamma Trough: $%{y}<extra></extra>',
-    })
-  }
-  if (showGammaTrendLines && heatmap.gamma_zero && heatmap.gamma_zero.length > 0) {
-    traces.push({
-      type: 'scatter', mode: 'lines', name: 'Gamma Zero', x: heatmapX, y: heatmap.gamma_zero,
-      line: { color: COLOR_ACCENT, width: 1.5 },
-      hovertemplate: 'Gamma Zero: $%{y}<extra></extra>',
-    })
-  }
   if (heatmap.charm_zero && heatmap.charm_zero.length > 0) {
     traces.push({
       type: 'scatter', mode: 'lines', name: 'Charm Zero', x: heatmapX, y: heatmap.charm_zero,
@@ -255,11 +259,10 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
       bgcolor: '#0E131F',
       bordercolor: 'rgba(255,255,255,0.15)',
     },
-    // true (antes false): las líneas de tendencia Gamma Peak/Trough/Zero
-    // (y Charm Zero) recién agregadas necesitan leyenda para distinguirse
-    // -- heatmap/velas ya se marcaron showlegend:false por trace arriba,
-    // así que la leyenda queda limpia (solo Spot + las líneas nuevas que
-    // vengan en esta respuesta).
+    // true: necesario para el panel de Charm Heatmap (Charm Zero, ver
+    // arriba) -- en LIVE GAMMA no hay nada más que 'Spot' para mostrar acá
+    // (las líneas de Gamma Peak/Trough/Zero viven en su propio gráfico,
+    // ver renderAllDayGammaChart), así que la leyenda queda mínima/inocua.
     showlegend: true,
     legend: {
       orientation: 'h', x: 0, y: 1.08,
@@ -295,6 +298,71 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
   // rompiéndolo con una medición prematura. requestAnimationFrame difiere
   // el resize al siguiente frame, después de que el navegador ya pintó
   // el layout real del contenedor recién visible.
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
+}
+
+/** ALL-DAY GAMMA: mismo gráfico base que LIVE GAMMA (spot/velas sobre un
+ * eje Hora x Strike, mismo zoom/resize) pero SIN el heatmap de color ni
+ * las etiquetas de walls (CW1-3/PW1-3/Gamma Flip) -- pedido explícito del
+ * usuario para tener las 3 líneas de tendencia (Gamma Peak/Trough/Zero,
+ * ver buildGammaTrendTraces arriba) en un gráfico propio, separado de
+ * LIVE GAMMA, en vez de un toggle que las prenda/apague sobre el mismo
+ * heatmap ("me hacen ruido"). 'heatmap' es la MISMA respuesta de
+ * /market/heatmap que ya usa LIVE GAMMA (ver loadLiveGamma en main.js) --
+ * no pide datos nuevos, solo dibuja un subconjunto distinto de sus
+ * campos. */
+export function renderAllDayGammaChart(el, heatmap, candles, dateStr) {
+  if (!heatmap.times || heatmap.times.length === 0) return
+
+  const rawXRange = el.layout?.xaxis?.range
+  const rawYRange = el.layout?.yaxis?.range
+  const prevXRange = isValidRange(rawXRange) ? rawXRange : undefined
+  const prevYRange = isValidRange(rawYRange) ? rawYRange : undefined
+
+  const heatmapX = heatmap.times.map((t) => nyWallClockToPlotlyString(dateStr, t))
+
+  const traces = [
+    buildPriceTrace(heatmap, candles, heatmapX, dateStr),
+    ...buildGammaTrendTraces(heatmap, heatmapX),
+  ]
+
+  const layout = {
+    plot_bgcolor: COLOR_BG,
+    paper_bgcolor: COLOR_BG,
+    font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
+    xaxis: {
+      title: 'Hora', gridcolor: 'rgba(255,255,255,0.05)',
+      type: 'date', tickformat: '%H:%M', rangeslider: { visible: false },
+      ...(prevXRange ? { range: prevXRange, autorange: false } : {}),
+    },
+    yaxis: {
+      title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right', dtick: 1,
+      ...(prevYRange ? { range: prevYRange, autorange: false } : {}),
+    },
+    hoverlabel: {
+      font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },
+      bgcolor: '#0E131F',
+      bordercolor: 'rgba(255,255,255,0.15)',
+    },
+    showlegend: true,
+    legend: {
+      orientation: 'h', x: 0, y: 1.08,
+      font: { size: 10, color: '#D1D5DB', family: 'JetBrains Mono, monospace' },
+      bgcolor: 'rgba(0,0,0,0)',
+    },
+    dragmode: 'pan',
+    // Mismo l/r que LIVE GAMMA (aunque acá no haya colorbar ni label de
+    // Gamma Flip que lo necesiten) a propósito -- con el mismo margen,
+    // los ejes de ambos gráficos quedan alineados verticalmente al estar
+    // apilados uno debajo del otro (ver index.html).
+    margin: { l: 80, r: 150, t: 55, b: 50 },
+    height: 650,
+  }
+
+  Plotly.react(el, traces, layout, { responsive: true, displaylogo: false, scrollZoom: true })
+  // Mismo motivo que en renderLiveGammaChart -- ver el comentario grande ahí.
   requestAnimationFrame(() => {
     Plotly.Plots.resize(el)?.catch(() => {})
   })
