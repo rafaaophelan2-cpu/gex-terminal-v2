@@ -10,6 +10,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# PRUEBA (temporal): Chromium para scrapear Open Interest real de Yahoo
+# Finance en NDX/VIX (Schwab no lo da para estos símbolos, ver
+# oi_fallback.py) -- el objetivo de este paso es solo confirmar si el
+# plan gratis de Render (0.1 vCPU / 512MB) aguanta correr un navegador
+# headless sin tirar abajo el resto del servicio. --with-deps instala
+# las librerías de sistema que Chromium necesita en Debian.
+RUN playwright install --with-deps chromium
 
 COPY app ./app
 
