@@ -101,7 +101,7 @@ _IMPACT_LABELS = {"low": "bajo", "medium": "medio", "high": "ALTO"}
 
 def format_economic_calendar(economic_calendar: list[dict] | None, today_str: str = "") -> str:
     """Eventos macro de EE.UU. de la SEMANA relevante (ver
-    integrations/finnhub_client.py::fetch_economic_calendar -- semana
+    integrations/forexfactory_client.py::fetch_economic_calendar -- semana
     actual en día hábil, semana siguiente en fin de semana), no solo hoy:
     un analista real de order flow razona con catalizadores de DÍAS por
     delante, no solo el de la mañana (ej.: "IV se mantiene alta, lo cual

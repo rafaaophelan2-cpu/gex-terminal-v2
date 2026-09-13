@@ -18,7 +18,8 @@ from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.news_filter import filter_relevant_news
 from app.domain.vol_surface import compute_vol_surface
-from app.integrations.finnhub_client import fetch_economic_calendar, fetch_market_news
+from app.integrations.finnhub_client import fetch_market_news
+from app.integrations.forexfactory_client import fetch_economic_calendar
 from app.integrations.groq_client import query_groq
 from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
@@ -146,9 +147,9 @@ async def get_vix(_username: str = Depends(require_auth)):
 async def get_economic_calendar(_username: str = Depends(require_auth)):
     """Calendario económico de EE.UU. (CPI/FOMC/NFP, los 3 niveles de
     impacto) de la semana relevante -- ver
-    integrations/finnhub_client.py::fetch_economic_calendar (semana
-    actual en día hábil, semana siguiente en fin de semana); []
-    si no hay FINNHUB_API_KEY configurada."""
+    integrations/forexfactory_client.py::fetch_economic_calendar (semana
+    actual en día hábil, semana siguiente en fin de semana). Feed público
+    sin API key -- [] solo si el fetch falla."""
     events = await fetch_economic_calendar()
     return {"events": events}
 

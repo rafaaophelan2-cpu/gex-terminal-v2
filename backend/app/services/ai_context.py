@@ -6,8 +6,8 @@ from app.domain.ai_prompt import build_intraday_context
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.session_profile import SESSION_TZ, cash_key_for, overnight_key_for
-from app.integrations.finnhub_client import fetch_economic_calendar
 from app.integrations.firebase_client import fetch_session_profile
+from app.integrations.forexfactory_client import fetch_economic_calendar
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
 from app.services.cross_check import fetch_ndx_compounded_levels, fetch_vix_gamma_levels, format_ndx_cross_check_text
 from app.services.market_feed import feed_registry
