@@ -1,4 +1,5 @@
 import asyncio
+import time as time_module
 
 import httpx
 import pytest
@@ -91,6 +92,44 @@ def test_fetch_oi_map_hits_network_on_weekday(monkeypatch):
     result = asyncio.run(fetch_oi_map("VIX"))
 
     assert result == {(15.0, "call"): 100}
+
+
+def test_fetch_oi_map_force_bypasses_weekend_gate(monkeypatch):
+    # /market/refresh-oi y oi_scheduler.py usan force=True a propósito
+    # para poder refrescar aunque sea fin de semana (ej. alguien lo pide
+    # a mano) o aunque el cache todavía esté "fresco".
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: True)
+    payload = {"s": "ok", "strike": [15.0], "side": ["call"], "openInterest": [100]}
+    _patch_response(monkeypatch, _FakeResponse(200, payload))
+
+    result = asyncio.run(fetch_oi_map("VIX", force=True))
+
+    assert result == {(15.0, "call"): 100}
+
+
+def test_fetch_oi_map_force_bypasses_fresh_cache(monkeypatch):
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: False)
+    marketdata_client._cache["VIX"] = (time_module.time(), {(10.0, "call"): 1})
+    payload = {"s": "ok", "strike": [15.0], "side": ["call"], "openInterest": [100]}
+    _patch_response(monkeypatch, _FakeResponse(200, payload))
+
+    result = asyncio.run(fetch_oi_map("VIX", force=True))
+
+    assert result == {(15.0, "call"): 100}
+
+
+def test_fetch_oi_map_force_still_respects_failure_cooldown(monkeypatch):
+    # force=True no debe abrir la puerta a ráfagas de requests -- el
+    # cooldown de fallos sigue aplicando incluso con force.
+    monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: False)
+    marketdata_client._last_attempt["VIX"] = time_module.time()
+    calls = {"count": 0}
+    monkeypatch.setattr(marketdata_client.httpx, "AsyncClient", lambda **kwargs: calls.__setitem__("count", calls["count"] + 1))
+
+    result = asyncio.run(fetch_oi_map("VIX", force=True))
+
+    assert calls["count"] == 0
+    assert result is None
 
 
 def test_fetch_oi_map_returns_none_without_api_key(monkeypatch):

@@ -48,7 +48,7 @@ def _is_weekend_ny() -> bool:
     return datetime.now(NY_TZ).weekday() >= 5
 
 
-async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
+async def fetch_oi_map(symbol: str, force: bool = False) -> dict[tuple[float, str], int] | None:
     """Open Interest real por strike para la expiracion mas proxima de
     `symbol`, como {(strike, 'call'|'put'): open_interest} -- pieza que le
     faltaba a Schwab para NDX/VIX (productos de indice exclusivos de CBOE,
@@ -56,7 +56,14 @@ async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
     de Schwab para calcular gamma exposure real, no aproximado por
     volumen. None si no hay API key configurada o el fetch fallo sin
     cache previo para devolver -- el caller debe caer al fallback de
-    volumen en ese caso."""
+    volumen en ese caso.
+
+    'force': salta el chequeo de fin de semana y el de "cache todavia
+    fresco" -- para el refresco programado de pre-mercado
+    (oi_scheduler.py) y el endpoint manual /market/refresh-oi. El cooldown
+    de fallos (FAILURE_COOLDOWN_SECONDS) NO se salta ni con force=True,
+    para no permitir que un doble click accidental (o un loop del
+    scheduler) generen ráfagas de requests."""
     settings = get_settings()
     if not settings.marketdata_api_key:
         return None
@@ -70,10 +77,10 @@ async def fetch_oi_map(symbol: str) -> dict[tuple[float, str], int] | None:
         # de nuevo. Devuelve el último cache que haya (aunque sea de
         # varios días, sigue siendo mejor que el proxy de volumen) sin
         # tocar la red.
-        if _is_weekend_ny():
+        if not force and _is_weekend_ny():
             return cached[1] if cached is not None else None
 
-        if cached is not None and (time.time() - cached[0]) < REFRESH_INTERVAL_SECONDS:
+        if not force and cached is not None and (time.time() - cached[0]) < REFRESH_INTERVAL_SECONDS:
             return cached[1]
 
         last_attempt = _last_attempt.get(symbol, 0.0)

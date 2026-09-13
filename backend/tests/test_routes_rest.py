@@ -199,6 +199,41 @@ def test_compounded_levels_formats_matches_as_dicts(authed_client, monkeypatch):
     }]
 
 
+def test_refresh_oi_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/market/refresh-oi?symbol=VIX")
+    assert resp.status_code == 401
+
+
+def test_refresh_oi_rejects_symbol_not_using_marketdata(authed_client):
+    resp = authed_client.post("/market/refresh-oi?symbol=QQQ")
+    assert resp.status_code == 400
+
+
+def test_refresh_oi_forces_fetch_and_reports_strike_count(authed_client, monkeypatch):
+    async def _fake_fetch(symbol, force=False):
+        assert symbol == "VIX"
+        assert force is True
+        return {(15.0, "call"): 100, (15.0, "put"): 50}
+
+    monkeypatch.setattr(routes_rest, "fetch_oi_map", _fake_fetch)
+
+    resp = authed_client.post("/market/refresh-oi?symbol=VIX")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "strikes": 2}
+
+
+def test_refresh_oi_reports_failure(authed_client, monkeypatch):
+    async def _fake_fetch(symbol, force=False):
+        return None
+
+    monkeypatch.setattr(routes_rest, "fetch_oi_map", _fake_fetch)
+
+    resp = authed_client.post("/market/refresh-oi?symbol=NDX")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": False, "strikes": 0}
+
+
 def test_ai_diagnosis_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/market/ai-diagnosis", json={"symbol": "QQQ"})

@@ -13,12 +13,13 @@ from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.vol_surface import compute_vol_surface
 from app.integrations.groq_client import query_groq
+from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
 from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
 from app.services.ai_context import NoActiveFeedError, build_ai_context, dte_from_exp_key
 from app.services.cross_check import fetch_ndx_compounded_levels
-from app.services.market_feed import feed_registry
+from app.services.market_feed import MARKETDATA_OI_SYMBOLS, feed_registry
 from app.services.tradingview_string_updater import latest_strings as tv_latest_strings
 
 # Cuántas expiraciones (de la más cercana en adelante) se preseleccionan
@@ -190,6 +191,21 @@ async def get_compounded_levels(symbol: str = "QQQ", _username: str = Depends(re
             for m in result["matches"]
         ],
     }
+
+
+@router.post("/refresh-oi")
+async def force_refresh_oi(symbol: str, _username: str = Depends(require_auth)):
+    """Fuerza un fetch real de Open Interest a MarketData.app para NDX/VIX,
+    saltando el cache normal (15 min a 1h, ver marketdata_client.py) y el
+    corte de fin de semana -- pensado como margen manual de emergencia
+    (ver oi_scheduler.py para el refresco automático de pre-mercado), NO
+    para uso rutinario: cada llamada consume una unidad real del cupo
+    diario de la cuenta. Sigue respetando el cooldown de fallos, así que
+    un doble click no dispara dos requests seguidos."""
+    if symbol not in MARKETDATA_OI_SYMBOLS:
+        raise HTTPException(status_code=400, detail=f"'{symbol}' no usa MarketData.app -- solo aplica a {sorted(MARKETDATA_OI_SYMBOLS)}.")
+    oi_map = await fetch_oi_map(symbol, force=True)
+    return {"ok": oi_map is not None, "strikes": len(oi_map) if oi_map else 0}
 
 
 @router.post("/ai-diagnosis", response_model=AiDiagnosisResponse)

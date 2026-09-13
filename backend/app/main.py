@@ -10,6 +10,7 @@ from app.api.routes_rest import router as rest_router
 from app.api.ws_market import router as ws_router
 from app.config import get_settings
 from app.services.iv_percentile_updater import iv_percentile_updater_loop
+from app.services.oi_scheduler import oi_daily_refresh_loop
 from app.services.quantower_pusher import quantower_pusher_loop
 from app.services.snapshot_writer import snapshot_writer_loop
 from app.services.tradingview_string_updater import tradingview_string_updater_loop
@@ -27,11 +28,16 @@ async def lifespan(app: FastAPI):
     quantower_task = asyncio.create_task(quantower_pusher_loop())
     iv_percentile_task = asyncio.create_task(iv_percentile_updater_loop())
     tv_string_task = asyncio.create_task(tradingview_string_updater_loop())
+    # Este NO depende de ningún subscriptor -- ver oi_scheduler.py: debe
+    # correr todos los días hábiles sin excepción, tenga alguien NDX/VIX
+    # abiertos o no.
+    oi_scheduler_task = asyncio.create_task(oi_daily_refresh_loop())
     yield
     snapshot_task.cancel()
     quantower_task.cancel()
     iv_percentile_task.cancel()
     tv_string_task.cancel()
+    oi_scheduler_task.cancel()
 
 
 app = FastAPI(title="GEX Terminal API", lifespan=lifespan)
