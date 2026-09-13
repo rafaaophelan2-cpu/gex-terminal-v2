@@ -95,6 +95,22 @@ export function renderChainFull(el, payload, spot, viewMode = 'net') {
     Plotly.react(el, traces, baseLayout(spot, viewMode), { responsive: true, displaylogo: false })
   }
   initializedMode = viewMode
+  forceResize(el)
+}
+
+// Mismo bug/arreglo ya confirmado en vivo en LIVE GAMMA (ver
+// liveGammaChart.js): Plotly.react() reusa el ancho ya cacheado del
+// chart en vez de volver a medir el contenedor -- si el contenedor
+// cambió de tamaño mientras esta pestaña estaba oculta (cambio de
+// división del sidebar, split-view, etc.), el chart queda dibujado
+// chiquito/en una esquina hasta el próximo resize real del navegador.
+// requestAnimationFrame difiere la medición al siguiente frame, después
+// de que el navegador ya pintó el layout real del contenedor recién
+// visible (medir en el mismo tick daba 0 o un tamaño intermedio).
+function forceResize(el) {
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
 }
 
 /** Actualización liviana (Plotly.restyle/relayout) en cada 'tick' -- nunca
@@ -128,6 +144,7 @@ export function updateTick(el, payload, spot, viewMode = 'net') {
     })
   }
   Plotly.relayout(el, { shapes: spotLineShape(spot) })
+  forceResize(el)
 }
 
 export function resetGexInfoChart() {

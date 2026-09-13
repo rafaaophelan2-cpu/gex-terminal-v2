@@ -185,6 +185,19 @@ body {
   align-items: center;
   gap: 6px;
   padding: 18px 0;
+  /* Pedido explícito: que no se mueva con el scroll del resto de la web.
+     #dashboard-view es 'align-items: stretch' (así el riel llega hasta
+     abajo del todo cuando el contenido de <main> es más alto que el
+     viewport) -- eso mismo hacía que el riel fuera una columna larga
+     donde los íconos, pegados arriba, se scrolleaban junto con el resto.
+     align-self: flex-start anula ese stretch SOLO acá, dejando al riel
+     con su alto real (100vh) en vez del alto de todo el documento, y
+     position: sticky lo fija contra el viewport mientras el resto
+     scrollea por su cuenta. */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
 }
 
 /* Marca "GEX Terminal": el isotipo (gradiente propio, ver icon-gamma-mark)
@@ -1241,6 +1254,18 @@ main {
 @media (max-width: 720px) {
   #dashboard-view {
     flex-direction: column;
+  }
+
+  /* El sticky-sidebar de arriba asume el layout de escritorio (fila,
+     riel a la izquierda tan alto como el contenido) -- en columna
+     (#dashboard-view arriba) un riel "position: sticky; height: 100vh"
+     se convertiría en una franja vacía del alto de toda la pantalla
+     antes del contenido. Se vuelve al comportamiento de siempre acá
+     (franja compacta arriba, altura por contenido, sin fijarse al
+     scroll -- mismo criterio que ya tenía esta vista mobile). */
+  #icon-rail {
+    position: static;
+    height: auto;
   }
 
   .top-bar {
