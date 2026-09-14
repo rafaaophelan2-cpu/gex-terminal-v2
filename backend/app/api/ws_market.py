@@ -12,12 +12,21 @@ logger = logging.getLogger(__name__)
 
 
 @router.websocket("/ws/diag")
-async def websocket_diagnostic(websocket: WebSocket):
+async def websocket_diagnostic(websocket: WebSocket, token: str | None = Query(default=None)):
     """Endpoint mínimo sin dependencia de Schwab/mercado, para chequear
     rápido si el host sigue sosteniendo WebSocket (ya verificado en
     ya verificado con Back4app: 90s sostenidos sin cortes -- pendiente
-    reverificar en Render, que es el host final, ver plan)."""
+    reverificar en Render, que es el host final, ver plan).
+
+    Requiere ?token=<JWT> igual que /ws/market -- sin esto, cualquiera con
+    la URL podía abrir conexiones ilimitadas a una tarea que manda un tick
+    por segundo para siempre, sin login (sumidero de recursos abierto sin
+    ninguna auth, aunque no exponga datos de mercado)."""
     await websocket.accept()
+    username = decode_access_token(token) if token else None
+    if not username:
+        await websocket.close(code=4401, reason="No autenticado.")
+        return
     send_task = None
     try:
         send_task = asyncio.create_task(_send_diag_ticks(websocket))
@@ -122,8 +131,19 @@ async def websocket_market(websocket: WebSocket, token: str | None = Query(defau
         sender_task = asyncio.create_task(_tick_sender(websocket, state))
         try:
             while True:
-                msg = await websocket.receive_json()
-                await _handle_client_message(websocket, state, msg)
+                # Un mensaje mal formado (no-JSON, o un campo con el tipo
+                # equivocado -- ej. strike_range no numérico) no debe
+                # tumbar la conexión entera: antes, cualquier excepción acá
+                # que no fuera WebSocketDisconnect escapaba de este loop y
+                # terminaba la conexión de forma abrupta en vez de
+                # simplemente ignorar ESE mensaje puntual.
+                try:
+                    msg = await websocket.receive_json()
+                    await _handle_client_message(websocket, state, msg)
+                except WebSocketDisconnect:
+                    raise
+                except Exception:
+                    logger.exception("Mensaje WS inválido de %s -- se ignora, la conexión sigue.", username)
         finally:
             sender_task.cancel()
     except WebSocketDisconnect:

@@ -55,4 +55,18 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # Sin esto, un JWT_SECRET vacío (env var no seteada en Render, o un
+    # despliegue nuevo antes de configurarla) hace que create_access_token/
+    # decode_access_token firmen y verifiquen silenciosamente con clave
+    # vacía -- python-jose no rechaza una clave HS256 vacía, así que
+    # CUALQUIERA podría forjar un token válido para cualquiera de los 3
+    # usuarios sin ninguna credencial. Falla rápido al arrancar en vez de
+    # dejar la API entera abierta sin ningún aviso.
+    if not settings.jwt_secret:
+        raise RuntimeError(
+            "JWT_SECRET no está configurado -- la API no puede arrancar así "
+            "(firmaría/verificaría tokens con una clave vacía, forjable por "
+            "cualquiera). Configurá la variable de entorno JWT_SECRET."
+        )
+    return settings

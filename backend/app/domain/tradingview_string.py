@@ -37,5 +37,10 @@ def build_tradingview_levels_string(ticker: str, walls: dict, zero_gamma: float,
         ("Put Wall 1", walls.get('pw1')), ("Put Wall 2", walls.get('pw2')), ("Put Wall 3", walls.get('pw3')),
         ("Gamma Flip", zero_gamma), ("Gamma Wall", dominant_wall),
     ]
-    body = ", ".join(f"{name}, {_fmt_num(value)}" for name, value in pairs if value is not None)
+    # 'value == value' descarta NaN además de None -- 'is not None' solo
+    # no alcanza porque NaN "is not None" es True, así que un wall NaN
+    # (dato corrupto río arriba) se colaba y _fmt_num lo formateaba como
+    # el string literal "nan" dentro del string que consume el indicador
+    # de Pine Script, en vez de omitirse como cualquier otro nivel ausente.
+    body = ", ".join(f"{name}, {_fmt_num(value)}" for name, value in pairs if value is not None and value == value)
     return f"${ticker}!: {body}."

@@ -17,6 +17,15 @@ def test_empty_df_returns_empty_profile():
     assert result == {"prices": [], "net_gamma": []}
 
 
+def test_num_points_of_one_does_not_divide_by_zero():
+    # Bug real: step = (hi - lo) / (num_points - 1) crashea con
+    # ZeroDivisionError si num_points=1. Ningún caller actual pasa 1, pero
+    # la función no tenía ningún resguardo propio contra eso.
+    df = pd.DataFrame({'strike': [100.0], 'call_gex': [1.0], 'put_gex': [-1.0]})
+    result = compute_gamma_price_profile(df, spot_ref=100.0, t_exp=0.01, iv=0.2, num_points=1)
+    assert result == {"prices": [], "net_gamma": []}
+
+
 def test_zero_spot_returns_empty_profile():
     result = compute_gamma_price_profile(_sample_chain(), 0.0, 1 / 365, 0.20)
     assert result == {"prices": [], "net_gamma": []}

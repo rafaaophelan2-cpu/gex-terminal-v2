@@ -26,11 +26,13 @@ QQQ_NQ_KEYWORDS = {
     # Big tech / semis / IA (los pesos más grandes de QQQ)
     "apple", "microsoft", "nvidia", "amazon", "meta", "alphabet",
     "google", "tesla", "broadcom", "amd", "chip", "semiconductor",
-    "artificial intelligence", " ai ", "tech stocks", "big tech",
+    "artificial intelligence", "ai", "tech stocks", "big tech",
     "earnings",
     # Petróleo / geopolítica (mueve risk sentiment -> Nasdaq futures)
     "oil", "crude", "opec", "iran", "israel", "russia", "ukraine",
-    "hormuz", "war", "attack", "sanctions", "tariff", "china",
+    "hormuz", "war", "attack", "attacks", "attacked", "invasion",
+    "sanctions", "sanction", "tariff", "china", "emergency", "nuclear",
+    "default",
     # USD / bonos (VIX/NQ correlacionan con esto)
     "treasury", "yield", "dollar", "usd", "bond market",
 }

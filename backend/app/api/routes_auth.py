@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from app.config import get_settings
 from app.core.security import (
+    _DUMMY_ARGON2_HASH,
     create_access_token,
     hash_password_argon2,
     login_rate_limiter,
@@ -41,12 +42,20 @@ async def login(payload: LoginRequest, request: Request, response: Response):
         )
 
     user_record = await fetch_user_by_username(username)
-    if not user_record:
-        login_rate_limiter.register_failure(username, ip)
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
-
-    stored_hash = str(user_record.get("password_hash", ""))
+    # Canal lateral de tiempo: antes, un username inexistente devolvía acá
+    # mismo SIN pasar por verify_password (que para argon2 es deliberadamente
+    # lento/memory-hard), mientras que un username real siempre corría ese
+    # chequeo lento -- alguien midiendo la latencia de /auth/login podía
+    # distinguir "no existe" de "existe, contraseña incorrecta" y así
+    # enumerar los 3 usuarios válidos sin ninguna credencial. Se corre
+    # SIEMPRE un verify_password (contra un hash señuelo si el usuario no
+    # existe) para que el tiempo de respuesta sea equivalente en ambos casos.
+    if user_record:
+        stored_hash = str(user_record.get("password_hash", ""))
+    else:
+        stored_hash = _DUMMY_ARGON2_HASH
     is_valid, needs_rehash = verify_password(password, stored_hash)
+    is_valid = is_valid and user_record is not None
 
     if not is_valid:
         login_rate_limiter.register_failure(username, ip)

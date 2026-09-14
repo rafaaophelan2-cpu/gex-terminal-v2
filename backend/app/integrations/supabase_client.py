@@ -245,15 +245,29 @@ async def fetch_chat_history(username: str, limit: int = 50) -> list[dict]:
         return []
 
     def _query():
+        # Bug real: 'order(desc=False).limit(limit)' devuelve los PRIMEROS
+        # `limit` mensajes (los más VIEJOS), no los últimos -- una vez que
+        # el historial de un usuario supera `limit`, cada llamada seguía
+        # devolviendo ese mismo bloque viejo para siempre, nunca los
+        # intercambios recientes. Esto rompe tanto /chat/history (se
+        # supone que muestra lo último) como el 'history' que se le manda
+        # a Groq como memoria conversacional (routes_chat.py:
+        # CHAT_HISTORY_TURNS=12, pensado como "los últimos ~6 idas y
+        # vueltas", no los primeros). Se pide DESCENDENTE (los `limit` más
+        # recientes) y se revierte en Python para devolver en orden
+        # cronológico normal (más viejo -> más nuevo), que es lo que
+        # ambos callers esperan.
         res = (
             client.table("chat_messages")
             .select("role, content")
             .eq("user_email", username)
-            .order("created_at", desc=False)
+            .order("created_at", desc=True)
             .limit(limit)
             .execute()
         )
-        return res.data or []
+        rows = res.data or []
+        rows.reverse()
+        return rows
 
     return await asyncio.to_thread(_query)
 

@@ -46,7 +46,15 @@ def _to_equivalent(nq_value: float, conversion_ratio: float | None) -> float | N
     return nq_value / conversion_ratio
 
 
-def _fmt_level(value: float, conversion_ratio: float | None, ticker: str) -> str:
+def _fmt_level(value: float | None, conversion_ratio: float | None, ticker: str) -> str:
+    # Antes esto crasheaba con un TypeError si 'value' era None -- un POC/
+    # VAH/VAL/outlier realmente None (ej. sesión Overnight con muy poco
+    # volumen, sin suficiente data todavía para calcular un Value Area)
+    # tira _to_equivalent(None, ratio) -> None / ratio. Se distingue acá
+    # de un valor 0.0 REAL (que sí debe formatearse normal, no es "sin
+    # dato").
+    if value is None:
+        return "sin dato"
     equiv = _to_equivalent(value, conversion_ratio)
     if equiv is None:
         return f"{value:.2f} pts NQ/MNQ (sin ratio de conversión para comparar contra {ticker})"
@@ -78,9 +86,12 @@ def _fmt_outliers(outliers: list[dict] | None, conversion_ratio: float | None, t
     shown = outliers[:MAX_LEVELS_SHOWN]
     parts = []
     for o in shown:
-        price = o.get('price', 0)
-        delta = o.get('delta', 0)
-        parts.append(f"{_fmt_level(price, conversion_ratio, ticker)} (delta {delta:+.0f})")
+        price = o.get('price')
+        delta = o.get('delta')
+        # delta=None crasheaba en '{delta:+.0f}' -- mismo motivo que el
+        # guard de None en _fmt_level, para un outlier con delta faltante.
+        delta_str = f"{delta:+.0f}" if delta is not None else "sin dato"
+        parts.append(f"{_fmt_level(price, conversion_ratio, ticker)} (delta {delta_str})")
     extra = f" (+{len(outliers) - MAX_LEVELS_SHOWN} más)" if len(outliers) > MAX_LEVELS_SHOWN else ""
     return "; ".join(parts) + extra
 
@@ -96,14 +107,20 @@ def format_session_profile(label: str, profile: dict | None, conversion_ratio: f
     if not profile:
         return f"{label}: sin datos disponibles todavía (el indicador de Quantower aún no empujó esta sesión)."
 
+    # .get(key) SIN default -- antes ('poc', 0) etc.) una clave
+    # genuinamente AUSENTE del payload (no None explícito, sino nunca
+    # enviada) se formateaba como "0.00 pts NQ/MNQ (equivalente...: 0.00)",
+    # un nivel real-pero-falso indistinguible de un POC de verdad en
+    # precio cero -- directo al prompt que lee la IA. Con default None,
+    # _fmt_level ahora lo muestra explícitamente como "sin dato".
     return (
         f"{label}:\n"
-        f"  POC (Point of Control): {_fmt_level(profile.get('poc', 0), conversion_ratio, ticker)}\n"
-        f"  VAH: {_fmt_level(profile.get('vah', 0), conversion_ratio, ticker)}\n"
-        f"  VAL: {_fmt_level(profile.get('val', 0), conversion_ratio, ticker)}\n"
+        f"  POC (Point of Control): {_fmt_level(profile.get('poc'), conversion_ratio, ticker)}\n"
+        f"  VAH: {_fmt_level(profile.get('vah'), conversion_ratio, ticker)}\n"
+        f"  VAL: {_fmt_level(profile.get('val'), conversion_ratio, ticker)}\n"
         f"  HVN (nodos de alto volumen -- zonas de aceptación/imán): {_fmt_levels(profile.get('hvn'), conversion_ratio, ticker)}\n"
         f"  LVN (nodos de bajo volumen -- zonas de aceleración, el precio tiende a cruzarlas rápido): {_fmt_levels(profile.get('lvn'), conversion_ratio, ticker)}\n"
         f"  Delta outliers (flujo agresivo concentrado en un nivel puntual): {_fmt_outliers(profile.get('delta_outliers'), conversion_ratio, ticker)}\n"
-        f"  TPO POC: {_fmt_level(profile.get('tpo_poc', 0), conversion_ratio, ticker)}\n"
+        f"  TPO POC: {_fmt_level(profile.get('tpo_poc'), conversion_ratio, ticker)}\n"
         f"  TPO LVN: {_fmt_levels(profile.get('tpo_lvn'), conversion_ratio, ticker)}"
     )

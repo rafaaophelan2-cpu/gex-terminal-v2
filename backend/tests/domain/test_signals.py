@@ -102,6 +102,29 @@ def test_compute_squeeze_screener_call_wall_proximity_maxed_when_spot_above_wall
     assert cw_factor["score"] == 25
 
 
+def test_compute_squeeze_screener_delta_oi_alignment_not_zeroed_when_spot_above_wall():
+    # Bug real: la ventana [spot, cw1] quedaba invertida/vacía cuando
+    # spot >= cw1 (precio ya rompió el Call Wall) -- exactamente el caso
+    # en que Call Wall Proximity da puntaje MÁXIMO (25/25) unas líneas
+    # arriba. Con spot=725 > cw1=720 y strikes reales con OI de calls
+    # bien por encima de puts entre 720 y 725 (BY_STRIKE), el factor
+    # Delta OI Alignment debe reflejar ese sesgo real, no anularse a 0.
+    result = compute_squeeze_screener(BY_STRIKE, spot=725.0, walls=WALLS, net_dex_total=0.0)
+    delta_oi_factor = next(f for f in result["factors"] if f["label"] == "Delta OI Alignment")
+    assert delta_oi_factor["score"] > 0
+
+
+def test_compute_squeeze_screener_bias_requires_both_fuel_and_alignment():
+    # Bug real: bias usaba OR entre gamma negativo (combustible) y DEX
+    # no-negativo (alineación) -- un régimen de gamma fuertemente
+    # POSITIVO (opuesto al combustible de un squeeze) seguía devolviendo
+    # "BULLISH" con solo que el DEX no fuera negativo, contradiciendo el
+    # probability/state calculado en la misma respuesta.
+    positive_gamma_df = BY_STRIKE.copy()  # net_gex total ya es positivo
+    result = compute_squeeze_screener(positive_gamma_df, SPOT, WALLS, net_dex_total=1.0)
+    assert result["bias"] == "NEUTRAL"
+
+
 def test_compute_squeeze_screener_gamma_regime_zero_when_positive():
     positive_df = BY_STRIKE.copy()  # ya es net positivo en conjunto
     result = compute_squeeze_screener(positive_df, SPOT, WALLS, net_dex_total=0.0)

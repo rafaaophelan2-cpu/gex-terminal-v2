@@ -1,9 +1,11 @@
+import logging
 from datetime import date as date_cls
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.domain.session_profile import format_session_profile
 
+logger = logging.getLogger(__name__)
 NY_TZ = ZoneInfo("America/New_York")
 
 
@@ -46,6 +48,7 @@ def build_intraday_context(candles: list[dict], current_price: float) -> str:
             f"En los últimos {move_min} min se movió {move_pts:+.2f} pts ({direccion})."
         )
     except Exception:
+        logger.exception("build_intraday_context() falló con %d velas -- se usa el placeholder.", len(candles))
         return "Sin datos de velas intradía disponibles todavía."
 
 
@@ -442,6 +445,19 @@ def build_system_prompt(
         if include_setup_mechanics else ""
     )
 
+    # Regla 6 más abajo tenía una excepción ("CW2/PW2 solo si están cerca")
+    # que CONTRADECÍA directamente a ESTILO CORTO PLAZO ("NUNCA CW2/CW3/
+    # PW2/PW3") -- ambos bloques se mandan juntos en response_mode
+    # "short_term" (y en "chat", donde el modelo debe elegir el formato
+    # él mismo), así que el modelo recibía instrucciones opuestas sobre
+    # si CW2/PW2 son niveles operables. En modo short_term la respuesta es
+    # inequívoca (nunca), así que ahí se saca la excepción; en los demás
+    # modos la regla general (con la excepción) sigue aplicando tal cual.
+    cw2_pw2_clause = (
+        "Priorizá siempre CW1/PW1."
+        if response_mode == "short_term" else
+        "Priorizá siempre CW1/PW1 (y CW2/PW2 solo si están razonablemente cerca)."
+    )
     hard_price_rules_block = (
         f"""
     REGLAS DURAS DE COHERENCIA DE PRECIOS (verificalas numéricamente antes de responder; si las violás, la respuesta es inútil):
@@ -450,7 +466,7 @@ def build_system_prompt(
     3. No cacés una reversión (short tras caída fuerte, long tras subida fuerte) sin razón estructural explícita (rechazo confirmado, agotamiento de mecha, absorción visible).
     4. Usá el contexto de movimiento reciente de abajo para calibrar escenarios -- si ya hubo un movimiento grande, priorizá continuación con retest o agotamiento en un nivel específico.
     5. NUNCA multipliques/dividas manualmente un nivel por el ratio de conversión USD {ticker} <-> puntos NQ/MNQ -- ya viene calculado arriba ("Niveles de gamma en puntos NQ/MNQ" y cada nivel de PERFILES DE SESIÓN). Copiá esos números tal cual; una cuenta hecha a mano en el texto es la fuente más común de errores aritméticos.
-    6. DISTANCIA MÁXIMA REALISTA (trades de 5-30 min): no uses CW3/PW3 ni el Rango Semanal/Macro como entrada/TP si está a más de ~1% del spot (para {ticker} en {spot:.2f}, ±{spot * 0.01:.2f} USD). Un nivel más lejano podés MENCIONARLO como techo/piso estructural, pero no armes ahí un setup completo -- en 5-30 min no es alcanzable. Priorizá siempre CW1/PW1 (y CW2/PW2 solo si están razonablemente cerca).
+    6. DISTANCIA MÁXIMA REALISTA (trades de 5-30 min): no uses CW3/PW3 ni el Rango Semanal/Macro como entrada/TP si está a más de ~1% del spot (para {ticker} en {spot:.2f}, ±{spot * 0.01:.2f} USD). Un nivel más lejano podés MENCIONARLO como techo/piso estructural, pero no armes ahí un setup completo -- en 5-30 min no es alcanzable. {cw2_pw2_clause}
     """
         if include_setup_mechanics else ""
     )

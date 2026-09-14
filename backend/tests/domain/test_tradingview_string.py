@@ -43,3 +43,13 @@ def test_build_tradingview_levels_string_strips_trailing_decimal_zeros():
     assert "Call Wall 1, 717.5," in result
     assert "Gamma Flip, 709.25," in result
     assert result.startswith("$SPY!:")
+
+
+def test_build_tradingview_levels_string_omits_nan_wall_instead_of_literal_nan():
+    # Bug real: 'value is not None' no excluye NaN -- un wall NaN (dato
+    # corrupto río arriba) se colaba y salía como el string literal "nan"
+    # dentro del texto que consume el indicador de Pine Script.
+    walls = {"cw1": float("nan"), "cw2": 725.0, "cw3": 730.0, "pw1": 718.0, "pw2": 710.0, "pw3": 715.0}
+    result = build_tradingview_levels_string("QQQ", walls, zero_gamma=709.0, dominant_wall=705.0)
+    assert "nan" not in result.lower()
+    assert "Call Wall 1" not in result

@@ -22,8 +22,13 @@ def generate_local_diagnosis(ticker: str, spot: float, metrics: dict, vix_val: f
             "MISMA dirección, lo que **amplifica** la volatilidad y favorece movimientos de tendencia."
         )
 
-    dist_cw1 = metrics['cw1'] - spot
-    dist_pw1 = spot - metrics['pw1']
+    # abs(), no distancia con signo -- con signo, esto solo daba el wall
+    # más cercano de verdad cuando cw1 > spot > pw1 (el layout normal). Si
+    # el precio ya rompió un wall (spot > cw1, o spot < pw1 -- nada raro
+    # intradía), la distancia al wall roto se vuelve negativa y "gana"
+    # la comparación aunque el otro wall esté realmente mucho más cerca.
+    dist_cw1 = abs(metrics['cw1'] - spot)
+    dist_pw1 = abs(spot - metrics['pw1'])
     nivel_cercano = "Call Wall 1" if dist_cw1 <= dist_pw1 else "Put Wall 1"
 
     return f"""**1. Estado Actual y Contexto Intradía**

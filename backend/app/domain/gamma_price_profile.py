@@ -26,7 +26,7 @@ def compute_gamma_price_profile(
     hipotético; es barato (vectorizado con NumPy, la cadena de opciones
     tiene unas pocas decenas de filas)."""
     empty = {"prices": [], "net_gamma": []}
-    if df_nearest is None or df_nearest.empty or spot_ref <= 0:
+    if df_nearest is None or df_nearest.empty or spot_ref <= 0 or num_points < 2:
         return empty
 
     lo = spot_ref * (1 - pct_range)

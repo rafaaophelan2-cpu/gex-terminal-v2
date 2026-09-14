@@ -96,17 +96,24 @@ def compute_call_put_walls(df_grouped: pd.DataFrame, spot_ref: float, gap: float
             spot_ref - gap * 2.5, spot_ref - gap * 5, spot_ref - gap * 7.5,
         )
 
+    # Espaciado de fallback UNIFICADO con el caso "sin ningún dato" de
+    # arriba (gap*2.5 por nivel) -- antes este caso parcial (hay cw1 real
+    # pero no cw2/cw3) encadenaba +gap fijo desde el último wall en vez de
+    # gap*2.5, dos convenciones de espaciado sintético distintas para la
+    # misma situación de fondo ("no hay wall real acá"). Sigue siendo un
+    # valor FABRICADO sin respaldo real de OI/gamma, no un wall de
+    # verdad -- misma limitación que antes, solo consistente ahora.
     calls_side = df_grouped[df_grouped['net_gex'] > 0].sort_values('net_gex', ascending=False)
     top_calls = calls_side['strike'].tolist()
     cw1 = top_calls[0] if len(top_calls) > 0 else spot_ref + gap * 2.5
-    cw2 = top_calls[1] if len(top_calls) > 1 else cw1 + gap
-    cw3 = top_calls[2] if len(top_calls) > 2 else cw2 + gap
+    cw2 = top_calls[1] if len(top_calls) > 1 else cw1 + gap * 2.5
+    cw3 = top_calls[2] if len(top_calls) > 2 else cw2 + gap * 2.5
 
     puts_side = df_grouped[df_grouped['net_gex'] < 0].sort_values('net_gex', ascending=True)
     top_puts = puts_side['strike'].tolist()
     pw1 = top_puts[0] if len(top_puts) > 0 else spot_ref - gap * 2.5
-    pw2 = top_puts[1] if len(top_puts) > 1 else pw1 - gap
-    pw3 = top_puts[2] if len(top_puts) > 2 else pw2 - gap
+    pw2 = top_puts[1] if len(top_puts) > 1 else pw1 - gap * 2.5
+    pw3 = top_puts[2] if len(top_puts) > 2 else pw2 - gap * 2.5
 
     return cw1, cw2, cw3, pw1, pw2, pw3
 

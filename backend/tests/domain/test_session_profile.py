@@ -88,3 +88,31 @@ def test_format_session_profile_without_ratio_flags_missing_conversion():
     assert "sin ratio de conversión" in text
     # Sin ratio, no debe inventar un equivalente numérico.
     assert "488.75" not in text
+
+
+def test_format_session_profile_none_poc_does_not_crash():
+    # Bug real: un POC/VAH/VAL en None (sesión con poco volumen todavía)
+    # crasheaba con TypeError en _to_equivalent(None, ratio) -> None / ratio.
+    profile = {"poc": None, "vah": 101.0, "val": 99.0, "hvn": [], "lvn": [], "delta_outliers": [], "tpo_poc": 100.0, "tpo_lvn": []}
+    text = format_session_profile("Overnight", profile, conversion_ratio=41.125)
+    assert "sin dato" in text
+
+
+def test_format_session_profile_missing_key_is_not_shown_as_fake_zero():
+    # Bug real: profile.get('poc', 0) hacía que una clave AUSENTE (no
+    # None explícito, directamente nunca enviada) se mostrara como
+    # "0.00 pts NQ/MNQ" -- un nivel real-pero-falso, indistinguible de un
+    # POC genuino en precio cero, directo en el prompt de la IA.
+    profile = {"vah": 101.0, "val": 99.0, "hvn": [], "lvn": [], "delta_outliers": [], "tpo_lvn": []}
+    text = format_session_profile("Overnight", profile, conversion_ratio=41.125)
+    assert "POC (Point of Control): sin dato" in text
+    assert "0.00 pts NQ/MNQ (equivalente QQQ: 0.00)" not in text
+
+
+def test_format_session_profile_outlier_with_none_delta_does_not_crash():
+    profile = {
+        "poc": 100.0, "vah": 101.0, "val": 99.0, "hvn": [], "lvn": [],
+        "delta_outliers": [{"price": 100.0, "delta": None}], "tpo_poc": 100.0, "tpo_lvn": [],
+    }
+    text = format_session_profile("Overnight", profile, conversion_ratio=41.125)
+    assert "delta sin dato" in text

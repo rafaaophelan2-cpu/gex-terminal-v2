@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from app.domain.gex_math import (
     compute_call_put_walls,
@@ -71,6 +72,22 @@ def test_compute_call_put_walls_empty_uses_fallback():
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(pd.DataFrame(), spot_ref=100.0)
     assert cw1 > 100.0
     assert pw1 < 100.0
+
+
+def test_compute_call_put_walls_partial_fallback_uses_same_spacing_as_empty_fallback():
+    # Bug real: con un solo strike real de cada lado, cw2/cw3 y pw2/pw3
+    # sintéticos usaban un espaciado (+gap fijo encadenado) DISTINTO al
+    # del fallback "sin ningún dato" (gap*2.5 por nivel desde spot_ref) --
+    # dos convenciones distintas para la misma situación de fondo (no hay
+    # wall real). Ahora ambos casos usan gap*2.5 por nivel, consistente.
+    df_grouped = pd.DataFrame({'strike': [95.0, 105.0], 'net_gex': [8.0, -9.0]})
+    cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(df_grouped, spot_ref=100.0, gap=2.0)
+    assert cw1 == 95.0  # real
+    assert cw2 == pytest.approx(95.0 + 2.0 * 2.5)
+    assert cw3 == pytest.approx(95.0 + 2.0 * 5.0)
+    assert pw1 == 105.0  # real
+    assert pw2 == pytest.approx(105.0 - 2.0 * 2.5)
+    assert pw3 == pytest.approx(105.0 - 2.0 * 5.0)
 
 
 def test_compute_zero_gamma_crossing():

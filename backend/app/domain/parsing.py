@@ -1,8 +1,25 @@
+import logging
+
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_iv(opt_dict: dict) -> float:
     vol = float(opt_dict.get('volatility', opt_dict.get('impliedVolatility', 0.0)))
+    # LIMITACIÓN CONOCIDA, no arreglada acá: Schwab manda 'volatility' en
+    # escala de porcentaje (20.0 = 20%, confirmado por test), y este umbral
+    # asume que CUALQUIER valor > 2.0 está en esa escala. Para VIX
+    # específicamente (que puede tener IV real de varios cientos de % en
+    # estrés extremo) no hay forma de distinguir con certeza "250.0 en
+    # escala porcentaje" (correcto dividir -> 2.5) de "2.5 ya en decimal"
+    # (NO debería dividirse) sin saber el símbolo -- y subir el umbral a
+    # ciegas para "arreglar" ese caso rompería el caso normal (IV real de
+    # 2-5% en un día muy calmo se leería como si ya estuviera en decimal y
+    # quedaría sin dividir). Blast radius hoy limitado: iv_c/iv_p solo
+    # alimentan el IV ATM/skew mostrado (metrics.py), no la matemática de
+    # gamma en sí. Requeriría el símbolo real de Schwab (chain_data no lo
+    # expone hoy de forma confirmada) para resolverse bien -- no adivinar.
     if vol > 2.0:
         vol = vol / 100.0
     return max(vol, 0.001)
@@ -42,6 +59,12 @@ def parse_schwab_chain(chain_data: dict) -> tuple[pd.DataFrame, str | None]:
         try:
             dte_val = int(parts[1]) if len(parts) > 1 else 0
         except ValueError:
+            # Silencioso antes -- un exp_key mal formado quedaba etiquetado
+            # como DTE 0 (la MÁS cercana) sin ningún rastro, lo que puede
+            # hacer que una expiración lejana se trate como "0DTE/la más
+            # cercana" en toda la app (walls, IV, greeks) sin que nada lo
+            # avise.
+            logger.warning("parse_schwab_chain: exp_key mal formado %r -- dte forzado a 0.", exp_key)
             dte_val = 0
 
         calls_for_exp = call_map.get(exp_key) or {}
@@ -66,7 +89,7 @@ def parse_schwab_chain(chain_data: dict) -> tuple[pd.DataFrame, str | None]:
             opt = opt_list[0]
             strike = float(strike_str)
             r = _ensure_record(strike)
-            r['openInterest_c'] = int(opt.get('openInterest', 0))
+            r['openInterest_c'] = int(opt.get('openInterest', 0) or 0)
             r['gamma_c'] = _clean_greek(opt.get('gamma'))
             r['delta_c'] = abs(_clean_greek(opt.get('delta')))
             r['theta_c'] = _clean_greek(opt.get('theta'))
@@ -80,7 +103,7 @@ def parse_schwab_chain(chain_data: dict) -> tuple[pd.DataFrame, str | None]:
             opt = opt_list[0]
             strike = float(strike_str)
             r = _ensure_record(strike)
-            r['openInterest_p'] = int(opt.get('openInterest', 0))
+            r['openInterest_p'] = int(opt.get('openInterest', 0) or 0)
             r['gamma_p'] = _clean_greek(opt.get('gamma'))
             r['delta_p'] = -abs(_clean_greek(opt.get('delta')))
             r['theta_p'] = _clean_greek(opt.get('theta'))

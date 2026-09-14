@@ -69,6 +69,22 @@ def test_parse_schwab_chain_volume_split():
     assert row100['volume_p'] == 450
 
 
+def test_parse_schwab_chain_null_open_interest_does_not_crash():
+    # Bug real: int(opt.get('openInterest', 0)) solo usa el default cuando
+    # la CLAVE falta, no cuando está presente con valor None -- una sola
+    # strike ilíquida con "openInterest": null (normal para strikes sin
+    # interés, sobre todo en NDX/SPX/VIX) tiraba un TypeError y mataba el
+    # parseo de la cadena ENTERA, no solo esa strike.
+    chain = {
+        "callExpDateMap": {"2026-09-10:0": {"100.0": [{"openInterest": None, "totalVolume": 5}]}},
+        "putExpDateMap": {"2026-09-10:0": {"100.0": [{"openInterest": None, "totalVolume": 3}]}},
+    }
+    df, _ = parse_schwab_chain(chain)
+    row100 = df[df['strike'] == 100.0].iloc[0]
+    assert row100['openInterest_c'] == 0
+    assert row100['openInterest_p'] == 0
+
+
 def test_parse_schwab_chain_empty_input():
     df, exp_key = parse_schwab_chain({})
     assert df.empty

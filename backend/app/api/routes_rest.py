@@ -52,6 +52,17 @@ NY_TZ = ZoneInfo("America/New_York")
 NQ_QQQ_RATIO = 41.125
 
 
+def _normalize_symbol(symbol: str) -> str:
+    """ws_market.py SIEMPRE normaliza el símbolo (.upper().strip()) antes
+    de usarlo como clave de FeedRegistry/tv_latest_strings -- sin hacer lo
+    mismo acá, un pedido REST con distinta capitalización ('qqq' en vez de
+    'QQQ') no encuentra el feed en vivo ya suscripto bajo la clave
+    normalizada (feed_registry.get() devuelve None aunque el feed SÍ esté
+    activo) y /refresh-oi rechaza símbolos válidos como 'ndx' por no
+    coincidir con el set MARKETDATA_OI_SYMBOLS (que está en mayúsculas)."""
+    return symbol.strip().upper()
+
+
 def _parse_day(date: str | None) -> datetime:
     if date:
         try:
@@ -84,6 +95,7 @@ async def get_drift(symbol: str = "QQQ", date: str | None = None, otm_only: bool
     "todas las strikes" y su vista "OTM" -- cuando viene en True, filtra
     cada snapshot a calls con strike>=spot y puts con strike<=spot antes
     de sumar (ver domain/drift.py)."""
+    symbol = _normalize_symbol(symbol)
     snapshots = await _fetch_day_snapshots(symbol, date)
     return compute_drift_series(snapshots, otm_only=otm_only)
 
@@ -100,6 +112,7 @@ async def get_heatmap(symbol: str = "QQQ", date: str | None = None, _username: s
     domain/heatmap.py::compute_gamma_trend_lines) para las líneas de
     tendencia que el frontend superpone al heatmap -- mismo endpoint,
     respuesta extendida, no rompe a quien ya lo consumía."""
+    symbol = _normalize_symbol(symbol)
     snapshots = await _fetch_day_snapshots(symbol, date)
     matrix = compute_heatmap_matrix(snapshots)
     trend_lines = compute_gamma_trend_lines(snapshots)
@@ -117,6 +130,7 @@ async def get_charm_heatmap(symbol: str = "QQQ", date: str | None = None, _usern
     Suma también charm_zero (ver
     domain/heatmap.py::compute_charm_trend_line) -- la única línea de
     tendencia que Aleks Rosme dibuja sobre este panel."""
+    symbol = _normalize_symbol(symbol)
     snapshots = await _fetch_day_snapshots(symbol, date)
     matrix = compute_charm_heatmap_matrix(snapshots)
     trend_line = compute_charm_trend_line(snapshots)
@@ -128,6 +142,7 @@ async def get_candles(symbol: str = "QQQ", date: str | None = None, _username: s
     """Velas reales de 1 minuto (Schwab) para superponer sobre el heatmap
     de LIVE GAMMA -- reemplaza la línea simple de spot por velas
     japonesas de verdad, igual que hacía app.py con fetch_history_schwab."""
+    symbol = _normalize_symbol(symbol)
     day = _parse_day(date)
     return await fetch_price_history(symbol, day)
 
@@ -169,6 +184,7 @@ async def get_news(_username: str = Depends(require_auth)):
 async def get_available_dates(symbol: str = "QQQ", _username: str = Depends(require_auth)):
     """Fechas (NY, más recientes primero) con al menos un snapshot
     guardado -- selector de día de BACKGAMMA."""
+    symbol = _normalize_symbol(symbol)
     dates = await fetch_available_dates(symbol, NY_TZ)
     return {"dates": dates}
 
@@ -181,6 +197,7 @@ async def get_tradingview_string(symbol: str = "QQQ", _username: str = Depends(r
     Session (08:31-15:00 hora Lima). 'string' viene None si todavía no se
     generó ninguno hoy (antes de las 08:31, o sin feed activo para el
     símbolo)."""
+    symbol = _normalize_symbol(symbol)
     entry = tv_latest_strings.get(symbol)
     if entry is None:
         return {"symbol": symbol, "string": None, "updated_at": None}
@@ -203,6 +220,7 @@ async def get_implied_range(symbol: str = "QQQ", _username: str = Depends(requir
     """Banda de movimiento esperado (expected move) desde la IV ATM de la
     expiración más cercana del feed YA activo -- ver domain/implied_range.py.
     No pide ningún dato nuevo a Schwab, deriva todo de feed.df."""
+    symbol = _normalize_symbol(symbol)
     feed = feed_registry.get(symbol)
     if feed is None or feed.df.empty or feed.spot_price <= 0:
         return {"expected_move": None, "one_sd": None, "two_sd": None}
@@ -218,6 +236,7 @@ async def get_compounded_levels(symbol: str = "QQQ", _username: str = Depends(re
     services/cross_check.py). Solo aplica para QQQ/SPY (ambos sobre
     Nasdaq-100, el mismo mercado que NDX); para cualquier otro símbolo
     devuelve matches=[] sin pedir nada a Schwab."""
+    symbol = _normalize_symbol(symbol)
     feed = feed_registry.get(symbol)
     if feed is None or feed.df.empty or feed.spot_price <= 0:
         return {"ratio": None, "ndx_spot": None, "matches": []}
@@ -251,6 +270,7 @@ async def force_refresh_oi(symbol: str, _username: str = Depends(require_auth)):
     para uso rutinario: cada llamada consume una unidad real del cupo
     diario de la cuenta. Sigue respetando el cooldown de fallos, así que
     un doble click no dispara dos requests seguidos."""
+    symbol = _normalize_symbol(symbol)
     if symbol not in MARKETDATA_OI_SYMBOLS:
         raise HTTPException(status_code=400, detail=f"'{symbol}' no usa MarketData.app -- solo aplica a {sorted(MARKETDATA_OI_SYMBOLS)}.")
     oi_map = await fetch_oi_map(symbol, force=True)
@@ -294,15 +314,16 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
     # incluyen -- ver build_system_prompt: un botón ya sabe qué formato
     # quiere, así que no hace falta mandarle a Groq las instrucciones de
     # LOS OTROS DOS formatos que este pedido puntual no va a usar nunca.
-    if body.tipo_analisis == "Análisis para el día":
+    tipo_analisis = body.tipo_analisis.strip()
+    if tipo_analisis == "Análisis para el día":
         response_mode = "daily_briefing"
         user_prompt = build_daily_briefing_user_prompt()
-    elif body.tipo_analisis == "Corto Plazo":
+    elif tipo_analisis == "Corto Plazo":
         response_mode = "short_term"
         user_prompt = build_short_term_user_prompt()
     else:
         response_mode = "full"
-        user_prompt = build_default_user_prompt(body.tipo_analisis)
+        user_prompt = build_default_user_prompt(tipo_analisis)
 
     system_prompt = build_system_prompt(
         ticker=body.symbol,
@@ -338,6 +359,7 @@ async def get_expirations(symbol: str = "QQQ", _username: str = Depends(require_
     ANCHA, ver market_feed.py), no feed.df (angosta, la del tick en vivo
     de GEX INFO/GREEKS), para que las expiraciones lejanas también traigan
     datos reales en vez de aparecer casi vacías."""
+    symbol = _normalize_symbol(symbol)
     feed = feed_registry.get(symbol)
     if feed is None or feed.deep_df.empty:
         return {"expirations": []}
@@ -350,6 +372,7 @@ async def get_gamma_grid(symbol: str = "QQQ", exp_keys: str = "", _username: str
     elegidas (ver domain/gamma_grid.py) -- 'exp_keys' es una lista
     separada por comas; si viene vacía, se preseleccionan las primeras
     DEFAULT_GRID_EXPIRATION_COUNT expiraciones más cercanas."""
+    symbol = _normalize_symbol(symbol)
     feed = feed_registry.get(symbol)
     if feed is None or feed.deep_df.empty:
         raise HTTPException(
@@ -371,6 +394,7 @@ async def get_gamma_surface(symbol: str = "QQQ", exp_keys: str = "", _username: 
     (ver domain/gamma_grid.py) -- reusa compute_gamma_grid, solo cambia
     cuántas expiraciones se preseleccionan por defecto (más, para una
     malla 3D más completa) sin tocar el default del GRID tabular."""
+    symbol = _normalize_symbol(symbol)
     feed = feed_registry.get(symbol)
     if feed is None or feed.deep_df.empty:
         raise HTTPException(
@@ -390,6 +414,7 @@ async def get_gamma_surface(symbol: str = "QQQ", exp_keys: str = "", _username: 
 async def get_vol_surface(symbol: str = "QQQ", exp_keys: str = "", _username: str = Depends(require_auth)):
     """3D VOL SURFACE: IV% (convención OTM) por strike x expiración -- ver
     domain/vol_surface.py."""
+    symbol = _normalize_symbol(symbol)
     feed = feed_registry.get(symbol)
     if feed is None or feed.deep_df.empty:
         raise HTTPException(

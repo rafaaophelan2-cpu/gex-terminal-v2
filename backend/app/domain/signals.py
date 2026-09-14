@@ -107,7 +107,10 @@ def compute_signals(by_strike: pd.DataFrame, spot: float, walls: dict) -> list[d
     # régimen de gamma negativo (más volatilidad).
     pw1 = walls.get('pw1')
     zero_gamma = walls.get('zero_gamma')
-    candidates = [lvl for lvl in [pw1, zero_gamma] if lvl and lvl < spot]
+    # 'lvl is not None' (no 'lvl' solo) -- un nivel de exactamente 0.0
+    # es falsy en Python, así que el filtro anterior lo excluía como si
+    # no existiera en vez de compararlo contra spot como cualquier otro.
+    candidates = [lvl for lvl in [pw1, zero_gamma] if lvl is not None and lvl < spot]
     if candidates:
         level = max(candidates)
         row = by_strike[by_strike['strike'] == level]
@@ -165,7 +168,13 @@ def compute_squeeze_screener(by_strike: pd.DataFrame, spot: float, walls: dict, 
 
     # Delta OI Alignment (0-5): sesgo de open interest calls vs puts entre
     # spot y el Call Wall -- más calls que puts ahí apoya la tesis.
-    window = by_strike[(by_strike['strike'] >= spot) & (by_strike['strike'] <= cw1)]
+    # min/max (no spot/cw1 directo): si el precio YA rompió el Call Wall
+    # (spot >= cw1 -- exactamente el caso al que cw_proximity_score le da
+    # puntaje MÁXIMO más arriba), el filtro 'strike >= spot AND strike <=
+    # cw1' queda invertido/vacío, y este factor se anulaba a 0 justo en el
+    # escenario de mayor convicción del screener.
+    window_low, window_high = min(spot, cw1), max(spot, cw1)
+    window = by_strike[(by_strike['strike'] >= window_low) & (by_strike['strike'] <= window_high)]
     oi_c = float(window['openInterest_c'].sum()) if 'openInterest_c' in window.columns else 0.0
     oi_p = float(window['openInterest_p'].sum()) if 'openInterest_p' in window.columns else 0.0
     total_oi = oi_c + oi_p
@@ -191,7 +200,16 @@ def compute_squeeze_screener(by_strike: pd.DataFrame, spot: float, walls: dict, 
 
     return {
         "direction": "Bullish Squeeze",
-        "bias": "BULLISH" if (net_gex_total <= 0 or net_dex_total >= 0) else "NEUTRAL",
+        # AND, no OR -- "combustible" (gamma negativo) y "alineación"
+        # (DEX no-negativo) son dos condiciones DISTINTAS que el resto de
+        # esta función trata como necesarias juntas para un squeeze real
+        # (ver comentarios de gamma_regime_score/flow_score arriba). Con
+        # OR, un régimen de gamma fuertemente POSITIVO (lo opuesto a
+        # combustible de squeeze) seguía devolviendo "BULLISH" con solo
+        # que el DEX no fuera negativo -- contradiciendo el propio
+        # probability/state calculado unas líneas arriba en la misma
+        # respuesta.
+        "bias": "BULLISH" if (net_gex_total <= 0 and net_dex_total >= 0) else "NEUTRAL",
         "state": state,
         "probability": round(probability),
         "factors": [

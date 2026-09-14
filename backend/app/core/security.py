@@ -44,6 +44,12 @@ def hash_password_argon2(password: str) -> str:
     return _argon2.hash(password)
 
 
+# Hash "señuelo" para el chequeo de tiempo constante en login() -- ver
+# ese comentario. Cualquier password fijo sirve, nunca se compara contra
+# un valor real.
+_DUMMY_ARGON2_HASH = hash_password_argon2("dummy-password-para-tiempo-constante")
+
+
 def create_access_token(subject: str) -> str:
     now = datetime.now(timezone.utc)
     expires = now + timedelta(minutes=settings.jwt_access_ttl_minutes)
@@ -99,6 +105,17 @@ class LoginRateLimiter:
     o sea por SESIÓN de navegador), esto sí protege a nivel de servidor:
     5 intentos fallidos -> bloqueo de 60s para esa combinación."""
 
+    # Tope de combinaciones (username::ip) distintas trackeadas -- sin
+    # esto, alguien mandando muchos usernames inventados a /auth/login
+    # (el username se usa como clave ANTES de validar que exista, ver
+    # routes_auth.py) hace crecer _failures/_locked_until sin límite
+    # durante toda la vida del proceso, ya que register_success solo
+    # limpia la entrada de un login que salió bien. Al llegar al tope se
+    # descarta la entrada MÁS VIEJA (dict preserva orden de inserción)
+    # para dejar lugar a la nueva -- un ataque de este tipo en una app de
+    # 3 usuarios reales no necesita más margen que esto.
+    MAX_TRACKED_KEYS = 2000
+
     def __init__(self, max_attempts: int = 5, lockout_seconds: int = 60):
         self.max_attempts = max_attempts
         self.lockout_seconds = lockout_seconds
@@ -107,6 +124,14 @@ class LoginRateLimiter:
 
     def _key(self, username: str, ip: str) -> str:
         return f"{username.strip().lower()}::{ip}"
+
+    def _evict_oldest_if_full(self) -> None:
+        if len(self._failures) >= self.MAX_TRACKED_KEYS:
+            oldest_key = next(iter(self._failures))
+            self._failures.pop(oldest_key, None)
+        if len(self._locked_until) >= self.MAX_TRACKED_KEYS:
+            oldest_key = next(iter(self._locked_until))
+            self._locked_until.pop(oldest_key, None)
 
     def check_locked(self, username: str, ip: str) -> float:
         """Devuelve segundos restantes de bloqueo (0 si no está bloqueado)."""
@@ -117,6 +142,8 @@ class LoginRateLimiter:
 
     def register_failure(self, username: str, ip: str) -> None:
         key = self._key(username, ip)
+        if key not in self._failures:
+            self._evict_oldest_if_full()
         self._failures[key] = self._failures.get(key, 0) + 1
         if self._failures[key] >= self.max_attempts:
             self._locked_until[key] = time.time() + self.lockout_seconds
