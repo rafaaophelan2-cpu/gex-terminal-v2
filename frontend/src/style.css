@@ -1260,13 +1260,24 @@ main {
      altura explícita acá, el navegador calcula el alto "auto" de este
      contenedor SOLO a partir de lo que queda en flujo normal (el modebar
      de Plotly, ~26px), no del SVG absolutamente posicionado, y
-     overflow:hidden recortaba el chart entero a esos 26px. En GEX INFO
-     nunca pasó porque ese chart vive dentro de un contenedor flex
-     (.gex-info-charts-column) que le da alto por flex:1 1 auto, no por
-     "auto" de bloque -- acá no hay ese flex padre, así que hace falta
-     esta altura mínima explícita (mismo valor que layout.height en los
-     charts de Plotly, ver charts/liveGammaChart.js).*/
-  min-height: 650px;
+     overflow:hidden recortaba el chart entero a esos 26px.
+     height FIJO en vez de min-height -- otro bug real reproducido en
+     vivo (GEX INFO, reportado como "los gráficos se agrandan infinito"):
+     con solo min-height, el alto real del contenedor termina
+     resolviéndolo el CONTENIDO (el SVG de Plotly) en vez de este CSS.
+     Con responsive:true, cada Plotly.Plots.resize()/react() vuelve a
+     medir el contenedor y reajusta el SVG a eso -- si esa medición da
+     1-2px de más por cualquier motivo (redondeo, el modebar), el SVG
+     crece esos px, el contenedor (con min-height, sin techo) crece con
+     él, y el PRÓXIMO resize mide un contenedor todavía más grande -- un
+     lazo sin techo que dispara cada vez que el chart se redibuja del
+     todo (cambio de símbolo/DTE, split-view, reconexión del WebSocket
+     que fuerza un 'chain_full', ver ws.js). Ningún chart de la app
+     necesita ser más alto que esto en flujo normal (todos usan
+     layout.height/height ≈650 en su config de Plotly/Lightweight
+     Charts), así que height fijo cierra el lazo en todos a la vez, sin
+     perder nada. */
+  height: 650px;
 }
 
 @media (max-width: 720px) {
@@ -1756,9 +1767,20 @@ main {
   flex-direction: column;
 }
 
+/* flex: 0 0 auto (no 1 1 auto) -- .chart-container ya fija su propio
+   height:650px (ver ese comentario para el porqué, el fix real del
+   crecimiento infinito reportado en vivo); acá solo hace falta que este
+   item de un flex column (.gex-info-charts-column) no reciba presión de
+   flex-grow/shrink que lo empuje a desviarse de ese height fijo. */
 .gex-info-chart {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
+  width: 100%;
+}
+
+/* Mismo motivo que .gex-info-chart de arriba. */
+.gamma-price-profile-chart {
+  flex: 0 0 auto;
   width: 100%;
 }
 
