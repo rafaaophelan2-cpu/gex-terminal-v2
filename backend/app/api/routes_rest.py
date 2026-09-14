@@ -283,6 +283,27 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
     # prioridad total, igual criterio que en el indicador.
     conversion_ratio = body.conversion_ratio if body.conversion_ratio and body.conversion_ratio > 0 else NQ_QQQ_RATIO
 
+    # Briefings tiene 3 botones: "Análisis para el día" dispara el modo
+    # corto/en prosa (ver ESTILO DE BRIEFING DIARIO en ai_prompt.py),
+    # "Corto Plazo" dispara el foco en niveles internos (ver ESTILO CORTO
+    # PLAZO); cualquier otro valor (incluido "Posibles Escenarios", o un
+    # tipo_analisis viejo cacheado en el cliente de alguien) cae al
+    # informe completo de siempre -- degrada sin romper. Se calcula ANTES
+    # de armar el system_prompt (no después, como antes) porque
+    # response_mode ahora también decide qué secciones del prompt se
+    # incluyen -- ver build_system_prompt: un botón ya sabe qué formato
+    # quiere, así que no hace falta mandarle a Groq las instrucciones de
+    # LOS OTROS DOS formatos que este pedido puntual no va a usar nunca.
+    if body.tipo_analisis == "Análisis para el día":
+        response_mode = "daily_briefing"
+        user_prompt = build_daily_briefing_user_prompt()
+    elif body.tipo_analisis == "Corto Plazo":
+        response_mode = "short_term"
+        user_prompt = build_short_term_user_prompt()
+    else:
+        response_mode = "full"
+        user_prompt = build_default_user_prompt(body.tipo_analisis)
+
     system_prompt = build_system_prompt(
         ticker=body.symbol,
         spot=ctx["spot"],
@@ -299,19 +320,8 @@ async def post_ai_diagnosis(body: AiDiagnosisRequest, _username: str = Depends(r
         macro_levels=ctx.get("macro_levels"),
         vix_gamma_levels=ctx.get("vix_gamma_levels"),
         economic_calendar=ctx.get("economic_calendar"),
+        response_mode=response_mode,
     )
-    # Briefings tiene 3 botones: "Análisis para el día" dispara el modo
-    # corto/en prosa (ver ESTILO DE BRIEFING DIARIO en ai_prompt.py),
-    # "Corto Plazo" dispara el foco en niveles internos (ver ESTILO CORTO
-    # PLAZO); cualquier otro valor (incluido "Posibles Escenarios", o un
-    # tipo_analisis viejo cacheado en el cliente de alguien) cae al
-    # informe completo de siempre -- degrada sin romper.
-    if body.tipo_analisis == "Análisis para el día":
-        user_prompt = build_daily_briefing_user_prompt()
-    elif body.tipo_analisis == "Corto Plazo":
-        user_prompt = build_short_term_user_prompt()
-    else:
-        user_prompt = build_default_user_prompt(body.tipo_analisis)
 
     ai_text = await query_groq(system_prompt, user_prompt)
     if ai_text:

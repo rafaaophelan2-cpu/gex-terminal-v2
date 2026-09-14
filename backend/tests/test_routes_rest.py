@@ -369,6 +369,12 @@ def test_ai_diagnosis_uses_groq_when_available(authed_client, monkeypatch):
 
     async def _fake_query_groq(system_prompt, user_prompt):
         assert "481.23" in system_prompt
+        # response_mode="full" -- no debe mandarle a Groq las instrucciones
+        # de los otros dos formatos (briefing/corto plazo) que este botón
+        # no usa, pero sí las reglas del informe completo de 5 secciones.
+        assert "ESTILO DE BRIEFING DIARIO" not in system_prompt
+        assert "ESTILO CORTO PLAZO" not in system_prompt
+        assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" in system_prompt
         return "diagnóstico narrativo de groq"
 
     monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
@@ -392,6 +398,10 @@ def test_ai_diagnosis_daily_briefing_uses_short_user_prompt(authed_client, monke
     async def _fake_query_groq(system_prompt, user_prompt):
         assert "briefing corto" in user_prompt
         assert "informe cuantitativo completo" not in user_prompt
+        # response_mode="daily_briefing" -- no debe mandarle a Groq las
+        # instrucciones de los otros dos formatos que este botón no usa.
+        assert "ESTILO CORTO PLAZO" not in system_prompt
+        assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" not in system_prompt
         return "briefing corto de groq"
 
     monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)
@@ -415,6 +425,10 @@ def test_ai_diagnosis_short_term_uses_focused_user_prompt(authed_client, monkeyp
         assert "extremos grandes del rango del día" in user_prompt
         assert "informe cuantitativo completo" not in user_prompt
         assert "briefing corto de hoy" not in user_prompt
+        # response_mode="short_term" -- no debe mandarle a Groq las
+        # instrucciones de los otros dos formatos que este botón no usa.
+        assert "ESTILO DE BRIEFING DIARIO" not in system_prompt
+        assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" not in system_prompt
         return "análisis corto plazo de groq"
 
     monkeypatch.setattr(routes_rest, "query_groq", _fake_query_groq)

@@ -345,3 +345,87 @@ def test_build_system_prompt_no_warning_when_oi_is_real():
         oi_is_volume_proxy=False,
     )
     assert "ADVERTENCIA DE CALIDAD DE DATO" not in prompt
+
+
+# response_mode gatea qué secciones de estilo/reglas se arman -- ver
+# docstring de build_system_prompt. El motivo es de presupuesto: el
+# prompt base (chat, todas las secciones) mide ~20.700 caracteres antes
+# de sumar ningún dato de mercado real, ya cerca del límite de 8000
+# Tokens Por Minuto de la cuenta de Groq -- cada botón de Briefings YA
+# sabe qué formato quiere, así que no hace falta mandarle a Groq las
+# instrucciones de LOS OTROS DOS formatos.
+def test_build_system_prompt_default_mode_is_chat_and_includes_everything():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "CÓMO DECIDIR EL FORMATO" in prompt
+    assert "ESTILO DE BRIEFING DIARIO" in prompt
+    assert "ESTILO CORTO PLAZO" in prompt
+    assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" in prompt
+
+
+def test_build_system_prompt_daily_briefing_mode_omits_other_formats():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba", response_mode="daily_briefing",
+    )
+    assert "ESTILO DE BRIEFING DIARIO" in prompt
+    assert "Pivot Point" in prompt
+    assert "ESTILO CORTO PLAZO" not in prompt
+    assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" not in prompt
+    assert "CÓMO DECIDIR EL FORMATO" not in prompt
+    # Sin setups numéricos en este modo -- no hace falta la mecánica de
+    # los 3 setups ni las reglas duras de coherencia de precios.
+    assert "PERFIL DEL TRADER" not in prompt
+    assert "REGLA DE DIRECCIONALIDAD" not in prompt
+
+
+def test_build_system_prompt_short_term_mode_omits_other_formats():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba", response_mode="short_term",
+    )
+    assert "ESTILO CORTO PLAZO" in prompt
+    assert "extremos grandes del rango del día" in prompt
+    assert "ESTILO DE BRIEFING DIARIO" not in prompt
+    assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" not in prompt
+    assert "CÓMO DECIDIR EL FORMATO" not in prompt
+    # Este modo SÍ propone un setup con entrada/TP -- necesita la mecánica
+    # de los 3 setups y las reglas duras de coherencia de precios.
+    assert "PERFIL DEL TRADER" in prompt
+    assert "REGLA DE DIRECCIONALIDAD" in prompt
+
+
+def test_build_system_prompt_full_mode_omits_short_and_daily_styles():
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba", response_mode="full",
+    )
+    assert "REGLAS DE RESPUESTA CUANDO SÍ CORRESPONDE EL ANÁLISIS COMPLETO" in prompt
+    assert "PERFIL DEL TRADER" in prompt
+    assert "REGLA DE DIRECCIONALIDAD" in prompt
+    assert "ESTILO DE BRIEFING DIARIO" not in prompt
+    assert "ESTILO CORTO PLAZO" not in prompt
+    assert "CÓMO DECIDIR EL FORMATO" not in prompt
+
+
+def test_build_system_prompt_mode_gating_shrinks_the_static_baseline():
+    # El hallazgo original: el prompt base (modo "chat", sin datos de
+    # mercado reales) medía ~27.500 caracteres -- ya por encima del
+    # límite de 8000 TPM de Groq por sí solo. Cada modo de botón debe
+    # quedar sustancialmente más chico que el modo "chat" sin recortar,
+    # o el gateo por modo no está cumpliendo su propósito.
+    kwargs = dict(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    chat_len = len(build_system_prompt(**kwargs, response_mode="chat"))
+    for mode in ("full", "daily_briefing", "short_term"):
+        mode_len = len(build_system_prompt(**kwargs, response_mode=mode))
+        assert mode_len < chat_len
+    # El briefing diario (2-4 frases de prosa, sin setups) es el más
+    # liviano de los tres por un margen amplio.
+    daily_len = len(build_system_prompt(**kwargs, response_mode="daily_briefing"))
+    full_len = len(build_system_prompt(**kwargs, response_mode="full"))
+    assert daily_len < full_len
