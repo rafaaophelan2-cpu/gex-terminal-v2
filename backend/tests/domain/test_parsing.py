@@ -69,6 +69,24 @@ def test_parse_schwab_chain_volume_split():
     assert row100['volume_p'] == 450
 
 
+def test_parse_schwab_chain_mark_split():
+    chain = {
+        "callExpDateMap": {"2026-09-10:0": {"100.0": [{"openInterest": 500, "mark": 1.57}]}},
+        "putExpDateMap": {"2026-09-10:0": {"100.0": [{"openInterest": 300, "mark": 2.34}]}},
+    }
+    df, _ = parse_schwab_chain(chain)
+    row100 = df[df['strike'] == 100.0].iloc[0]
+    assert row100['mark_c'] == 1.57
+    assert row100['mark_p'] == 2.34
+
+
+def test_parse_schwab_chain_mark_defaults_to_zero_when_missing():
+    df, _ = parse_schwab_chain(SAMPLE_CHAIN)
+    row100 = df[df['strike'] == 100.0].iloc[0]
+    assert row100['mark_c'] == 0.0
+    assert row100['mark_p'] == 0.0
+
+
 def test_parse_schwab_chain_null_open_interest_does_not_crash():
     # Bug real: int(opt.get('openInterest', 0)) solo usa el default cuando
     # la CLAVE falta, no cuando está presente con valor None -- una sola

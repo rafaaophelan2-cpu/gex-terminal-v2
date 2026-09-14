@@ -62,7 +62,30 @@ async def _write_snapshot_for_feed(feed) -> None:
     # clave no rompe filas viejas que no la tienen (quedan sin ese dato en
     # el heatmap de charm, nada más).
     charm_col = ['net_chex'] if 'net_chex' in df_nearest.columns else []
-    by_strike = df_nearest.groupby('strike', as_index=False)[['call_gex', 'put_gex', 'net_gex'] + charm_col].sum()
+    # volume_c/volume_p (mark_c/mark_p) alimentan el proxy experimental de
+    # Net Drift por PREMIUM real operado (ver domain/drift.py::
+    # compute_volume_premium_drift_series) -- a diferencia de call_gex/
+    # put_gex (que ya son un valor "de estado" por snapshot, útil sumado
+    # directo), volume_c/volume_p son ACUMULADOS DEL DÍA: la reconstrucción
+    # necesita el DELTA entre dos snapshots consecutivos, no la suma, así
+    # que se guardan crudos acá y el delta se calcula recién al leer el
+    # historial. Solo se agregan si existen (chains viejas/tests sin estos
+    # campos siguen funcionando igual que antes).
+    has_volume = 'volume_c' in df_nearest.columns and 'volume_p' in df_nearest.columns
+    has_mark = 'mark_c' in df_nearest.columns and 'mark_p' in df_nearest.columns
+    agg_cols = ['call_gex', 'put_gex', 'net_gex'] + charm_col
+    agg_spec: dict[str, str] = {col: 'sum' for col in agg_cols}
+    if has_volume:
+        agg_spec['volume_c'] = 'sum'
+        agg_spec['volume_p'] = 'sum'
+    if has_mark:
+        # 'max' y no 'sum': mark es un PRECIO, no una cantidad -- con un
+        # solo contrato por strike en el nearest-DTE (caso normal) da lo
+        # mismo, pero evita sumar precios si alguna vez hay más de una fila.
+        agg_spec['mark_c'] = 'max'
+        agg_spec['mark_p'] = 'max'
+
+    by_strike = df_nearest.groupby('strike', as_index=False).agg(agg_spec)
 
     strikes_payload = [
         {
@@ -71,6 +94,8 @@ async def _write_snapshot_for_feed(feed) -> None:
             "call_gex": float(row.call_gex),
             "put_gex": float(row.put_gex),
             **({"net_chex": float(row.net_chex)} if charm_col else {}),
+            **({"volume_c": int(row.volume_c), "volume_p": int(row.volume_p)} if has_volume else {}),
+            **({"mark_c": float(row.mark_c), "mark_p": float(row.mark_p)} if has_mark else {}),
         }
         for row in by_strike.itertuples()
     ]

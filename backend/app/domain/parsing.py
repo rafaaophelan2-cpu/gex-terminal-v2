@@ -80,6 +80,7 @@ def parse_schwab_chain(chain_data: dict) -> tuple[pd.DataFrame, str | None]:
                     'theta_c': 0.0, 'theta_p': 0.0, 'vega_c': 0.0, 'vega_p': 0.0,
                     'vanna_c': 0.0, 'vanna_p': 0.0, 'iv_c': 0.0, 'iv_p': 0.0,
                     'volume_c': 0, 'volume_p': 0,
+                    'mark_c': 0.0, 'mark_p': 0.0,
                 }
             return records[strike]
 
@@ -96,6 +97,7 @@ def parse_schwab_chain(chain_data: dict) -> tuple[pd.DataFrame, str | None]:
             r['vega_c'] = _clean_greek(opt.get('vega'))
             r['iv_c'] = _extract_iv(opt)
             r['volume_c'] = int(opt.get('totalVolume', 0) or 0)
+            r['mark_c'] = float(opt.get('mark', 0.0) or 0.0)
 
         for strike_str, opt_list in puts_for_exp.items():
             if not opt_list:
@@ -110,6 +112,7 @@ def parse_schwab_chain(chain_data: dict) -> tuple[pd.DataFrame, str | None]:
             r['vega_p'] = _clean_greek(opt.get('vega'))
             r['iv_p'] = _extract_iv(opt)
             r['volume_p'] = int(opt.get('totalVolume', 0) or 0)
+            r['mark_p'] = float(opt.get('mark', 0.0) or 0.0)
 
         all_records.extend(records.values())
 

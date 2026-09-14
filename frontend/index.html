@@ -164,6 +164,7 @@
             <div class="gex-info-view-toggle">
               <button type="button" class="view-toggle-btn active" data-view="net">NET GEX</button>
               <button type="button" class="view-toggle-btn" data-view="callput">CALL VS PUT</button>
+              <button type="button" class="view-toggle-btn" data-view="absolute">ABSOLUTE</button>
             </div>
             <div id="oi-proxy-warning" class="oi-proxy-warning" hidden>
               ⚠️ No se pudo traer Open Interest real para este símbolo ahora mismo (Schwab no lo da para índices, y la fuente alternativa -- MarketData.app -- falló o no respondió a tiempo) -- el GEX de abajo está aproximado con volumen del día, no posicionamiento acumulado real.
@@ -247,9 +248,10 @@
             <div class="drift-toolbar">
               <label for="drift-date-input">Fecha</label>
               <input id="drift-date-input" type="date" />
-              <div class="drift-otm-toggle" role="group" aria-label="Filtro de strikes">
-                <button id="drift-otm-all-btn" type="button" class="drift-otm-btn active" data-otm="false">Todas</button>
-                <button id="drift-otm-only-btn" type="button" class="drift-otm-btn" data-otm="true">Solo OTM</button>
+              <div class="drift-otm-toggle" role="group" aria-label="Modo de NET DRIFT">
+                <button id="drift-otm-all-btn" type="button" class="drift-otm-btn active" data-mode="gex" data-otm="false">Todas</button>
+                <button id="drift-otm-only-btn" type="button" class="drift-otm-btn" data-mode="gex" data-otm="true">Solo OTM</button>
+                <button id="drift-volume-premium-btn" type="button" class="drift-otm-btn" data-mode="volume_premium" data-otm="false" title="Prototipo experimental: premium real operado (delta de volumen x mark), no Open Interest. Para comparar contra un Net Drift real antes de decidir si reemplaza al de arriba.">Premium (beta)</button>
               </div>
             </div>
             <div id="net-drift-chart" class="chart-container"></div>

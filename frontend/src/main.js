@@ -711,14 +711,18 @@ function todayInLima() {
 // Réplica del toggle "todas las strikes" vs. "solo OTM" de Aleks Rosme
 // (ver domain/drift.py::compute_drift_series) -- estado en JS en vez de
 // leer los botones en cada fetch, mismo patrón que driftDateAutoSelected
-// más abajo.
+// más abajo. driftMode agrega un tercer modo ('volume_premium', ver
+// domain/drift.py::compute_volume_premium_drift_series) sin pisar los
+// dos anteriores -- prototipo pedido por el usuario para comparar contra
+// un Net Drift real antes de decidir si reemplaza al basado en GEX.
 let driftOtmOnly = false
+let driftMode = 'gex' // 'gex' | 'volume_premium'
 
 async function loadNetDrift() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const date = driftDateInput.value || todayInLima()
-    const series = await fetchDrift(symbol, date, driftOtmOnly)
+    const series = await fetchDrift(symbol, date, driftOtmOnly, driftMode)
     if (!isStillCurrentSymbol(symbol)) return
     renderNetDriftChart(netDriftChartEl, series, date)
   } catch (err) {
@@ -1500,6 +1504,7 @@ driftDateInput.addEventListener('change', () => {
 driftOtmButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     driftOtmOnly = btn.dataset.otm === 'true'
+    driftMode = btn.dataset.mode || 'gex'
     driftOtmButtons.forEach((b) => b.classList.toggle('active', b === btn))
     loadNetDrift()
   })

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
 from app.domain.ai_prompt import build_daily_briefing_user_prompt, build_default_user_prompt, build_short_term_user_prompt, build_system_prompt, classify_vix
-from app.domain.drift import compute_drift_series
+from app.domain.drift import compute_drift_series, compute_volume_premium_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
 from app.domain.heatmap import (
     compute_charm_heatmap_matrix,
@@ -85,7 +85,13 @@ async def _fetch_day_snapshots(symbol: str, date: str | None) -> list[dict]:
 
 
 @router.get("/drift")
-async def get_drift(symbol: str = "QQQ", date: str | None = None, otm_only: bool = False, _username: str = Depends(require_auth)):
+async def get_drift(
+    symbol: str = "QQQ",
+    date: str | None = None,
+    otm_only: bool = False,
+    mode: str = "gex",
+    _username: str = Depends(require_auth),
+):
     """Serie de NET DRIFT (horario de mercado, 09:30-16:00 NY) para
     'symbol' en el día calendario 'date' (YYYY-MM-DD, por defecto hoy en
     NY). Es REST (no WebSocket) porque no necesita empujarse en tiempo
@@ -94,9 +100,20 @@ async def get_drift(symbol: str = "QQQ", date: str | None = None, otm_only: bool
     'otm_only': igual que el toggle de Aleks Rosme entre su vista de
     "todas las strikes" y su vista "OTM" -- cuando viene en True, filtra
     cada snapshot a calls con strike>=spot y puts con strike<=spot antes
-    de sumar (ver domain/drift.py)."""
+    de sumar (ver domain/drift.py).
+
+    'mode': "gex" (default, compute_drift_series -- reconstruido de Open
+    Interest) o "volume_premium" (compute_volume_premium_drift_series --
+    PROTOTIPO/EXPERIMENTAL, reconstruido del premium real operado vía
+    delta de volumen entre snapshots -- agregado 14-sep-2026 para
+    comparar en vivo contra un Net Drift real antes de decidir si
+    reemplaza al de arriba). Un 'mode' desconocido cae al comportamiento
+    de "gex" -- nunca deja al frontend sin datos por un typo en el query
+    param."""
     symbol = _normalize_symbol(symbol)
     snapshots = await _fetch_day_snapshots(symbol, date)
+    if mode == "volume_premium":
+        return compute_volume_premium_drift_series(snapshots, otm_only=otm_only)
     return compute_drift_series(snapshots, otm_only=otm_only)
 
 

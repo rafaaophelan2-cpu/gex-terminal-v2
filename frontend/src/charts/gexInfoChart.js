@@ -1,14 +1,36 @@
 import Plotly from 'plotly.js-dist-min'
-import { COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
+import { COLOR_ABSOLUTE, COLOR_ACCENT, COLOR_BG, COLOR_NEGATIVE, COLOR_POSITIVE } from '../theme.js'
 import { strongestOutline } from '../utils/chartHighlight.js'
 
-// 'net' | 'callput' | null -- a diferencia del 'initialized' booleano
-// anterior, hace falta saber en qué MODO se inicializó el gráfico: el
-// modo 'net' dibuja 1 traza, 'callput' dibuja 2 (call/put agrupadas por
-// strike) -- restyle() asume que la cantidad de trazas no cambia entre
-// llamadas, así que un cambio de modo necesita un redibujado completo
-// (Plotly.react), no un restyle liviano.
+// 'net' | 'callput' | 'absolute' | null -- a diferencia del 'initialized'
+// booleano anterior, hace falta saber en qué MODO se inicializó el
+// gráfico: 'net'/'absolute' dibujan 1 traza, 'callput' dibuja 2 (call/put
+// agrupadas por strike) -- restyle() asume que la cantidad de trazas no
+// cambia entre llamadas, así que un cambio de modo necesita un
+// redibujado completo (Plotly.react), no un restyle liviano.
 let initializedMode = null
+
+function titleForMode(viewMode) {
+  if (viewMode === 'callput') return 'Call vs Put GEX Profile'
+  if (viewMode === 'absolute') return 'Absolute Gamma Profile'
+  return 'Net GEX Profile'
+}
+
+function yAxisTitleForMode(viewMode) {
+  if (viewMode === 'callput') return 'GEX ($)'
+  if (viewMode === 'absolute') return 'Gamma Absoluto ($)'
+  return 'Net GEX ($)'
+}
+
+// |call_gex| + |put_gex| por strike -- gamma TOTAL en juego sin importar
+// el signo, a diferencia de Net GEX (que puede cancelarse a ~0 en un
+// strike con mucho volumen de ambos lados). Mismo criterio que
+// domain/gex_math.py::compute_gamma_wall (call_gex siempre >=0 y
+// put_gex siempre <=0 en esta app, así que sumar sus valores absolutos
+// es sumar |call_gex| + |put_gex|).
+function absoluteGamma(s) {
+  return Math.abs(s.call_gex) + Math.abs(s.put_gex)
+}
 
 function spotLineShape(spot) {
   if (!spot) return []
@@ -24,10 +46,10 @@ function baseLayout(spot, viewMode) {
     plot_bgcolor: COLOR_BG,
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
-    title: { text: isCallPut ? 'Call vs Put GEX Profile' : 'Net GEX Profile', font: { color: '#F0F6FC', size: 15 } },
+    title: { text: titleForMode(viewMode), font: { color: '#F0F6FC', size: 15 } },
     xaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', zeroline: false },
     yaxis: {
-      title: isCallPut ? 'GEX ($)' : 'Net GEX ($)', gridcolor: 'rgba(255,255,255,0.05)',
+      title: yAxisTitleForMode(viewMode), gridcolor: 'rgba(255,255,255,0.05)',
       zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)',
     },
     // 'overlay' en vez de 'group': las barras de Calls y Puts van a todo
@@ -68,6 +90,18 @@ function buildTraces(payload, viewMode) {
         hovertemplate: 'Strike: $%{x}<br>Put GEX: %{y:,.0f}<extra></extra>',
       },
     ]
+  }
+
+  if (viewMode === 'absolute') {
+    const absGamma = payload.by_strike.map(absoluteGamma)
+    const outline = strongestOutline(absGamma)
+    return [{
+      type: 'bar',
+      x: strikes,
+      y: absGamma,
+      marker: { color: COLOR_ABSOLUTE, line: { color: outline.colors, width: outline.widths } },
+      hovertemplate: 'Strike: $%{x}<br>Gamma Absoluto: %{y:,.0f}<extra></extra>',
+    }]
   }
 
   const netGex = payload.by_strike.map((s) => s.net_gex)
@@ -149,6 +183,14 @@ export function updateTick(el, payload, spot, viewMode = 'net') {
       x: [strikes, strikes], y: [callGex, putGex],
       'marker.line.color': [callOutline.colors, putOutline.colors],
       'marker.line.width': [callOutline.widths, putOutline.widths],
+    })
+  } else if (viewMode === 'absolute') {
+    const strikes = payload.by_strike.map((s) => s.strike)
+    const absGamma = payload.by_strike.map(absoluteGamma)
+    const outline = strongestOutline(absGamma)
+    Plotly.restyle(el, {
+      x: [strikes], y: [absGamma], 'marker.color': [COLOR_ABSOLUTE],
+      'marker.line.color': [outline.colors], 'marker.line.width': [outline.widths],
     })
   } else {
     const strikes = payload.by_strike.map((s) => s.strike)

@@ -81,6 +81,45 @@ def test_drift_otm_only_query_param_reaches_compute_drift_series(authed_client, 
     assert seen["otm_only"] is True
 
 
+def test_drift_mode_volume_premium_routes_to_compute_volume_premium_drift_series(authed_client, monkeypatch):
+    # Confirma el wiring de mode=volume_premium, no la lógica en sí (ver
+    # tests/domain/test_drift.py) -- que llegue al cálculo correcto y no
+    # al de compute_drift_series (el default).
+    called = {"volume_premium": False, "gex": False}
+
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        return FAKE_SNAPSHOTS
+
+    def _fake_gex(snapshots, otm_only=False):
+        called["gex"] = True
+        return {"time": [], "spot": [], "call_gex": [], "put_gex": [], "net_gex": []}
+
+    def _fake_volume_premium(snapshots, otm_only=False):
+        called["volume_premium"] = True
+        return {"time": [], "spot": [], "call_gex": [], "put_gex": [], "net_gex": []}
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+    monkeypatch.setattr(routes_rest, "compute_drift_series", _fake_gex)
+    monkeypatch.setattr(routes_rest, "compute_volume_premium_drift_series", _fake_volume_premium)
+
+    resp = authed_client.get("/market/drift?symbol=QQQ&mode=volume_premium")
+    assert resp.status_code == 200
+    assert called["volume_premium"] is True
+    assert called["gex"] is False
+
+
+def test_drift_unknown_mode_falls_back_to_gex(authed_client, monkeypatch):
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        return FAKE_SNAPSHOTS
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+
+    resp = authed_client.get("/market/drift?symbol=QQQ&mode=algo-raro")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["call_gex"] == [3.0]  # mismo resultado que el modo "gex" default
+
+
 def test_heatmap_includes_gamma_trend_lines(authed_client, monkeypatch):
     snapshots = [
         {

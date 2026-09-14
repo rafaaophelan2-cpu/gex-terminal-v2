@@ -71,3 +71,43 @@ def test_write_snapshot_proceeds_on_weekday_within_session(monkeypatch):
 
     assert len(inserted) == 1
     assert inserted[0]["symbol"] == "QQQ"
+
+
+class _FakeFeedWithVolumeAndMark(_FakeFeed):
+    def __init__(self):
+        super().__init__()
+        self.df = pd.DataFrame([
+            {
+                "strike": 500.0, "exp_key": "2026-09-14:0", "dte": 0,
+                "call_gex": 1.0, "put_gex": -1.0, "net_gex": 0.0,
+                "volume_c": 1200, "volume_p": 450, "mark_c": 1.57, "mark_p": 2.34,
+            },
+        ])
+
+
+def test_write_snapshot_includes_volume_and_mark_when_present(monkeypatch):
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 11, 12, 30, tzinfo=snapshot_writer.STORAGE_TZ))
+    inserted = _install_fake_insert(monkeypatch)
+
+    asyncio.run(snapshot_writer._write_snapshot_for_feed(_FakeFeedWithVolumeAndMark()))
+
+    strike = inserted[0]["strikes"][0]
+    assert strike["volume_c"] == 1200
+    assert strike["volume_p"] == 450
+    assert strike["mark_c"] == 1.57
+    assert strike["mark_p"] == 2.34
+
+
+def test_write_snapshot_omits_volume_and_mark_when_absent(monkeypatch):
+    # _FakeFeed (sin volume_c/volume_p/mark_c/mark_p en su df) sigue
+    # funcionando igual que antes -- el guard has_volume/has_mark no debe
+    # reventar con un DataFrame que no trae esas columnas (chains viejas).
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 11, 12, 30, tzinfo=snapshot_writer.STORAGE_TZ))
+    inserted = _install_fake_insert(monkeypatch)
+
+    asyncio.run(snapshot_writer._write_snapshot_for_feed(_FakeFeed()))
+
+    strike = inserted[0]["strikes"][0]
+    assert "volume_c" not in strike
+    assert "mark_c" not in strike
+
