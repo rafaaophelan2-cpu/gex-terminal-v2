@@ -410,6 +410,42 @@ def test_build_system_prompt_full_mode_omits_short_and_daily_styles():
     assert "CÓMO DECIDIR EL FORMATO" not in prompt
 
 
+# Bug real reportado en vivo con captura: un diagnóstico de Corto Plazo con
+# spot=714.88 y nivel elegido=715.00 (spot casi pegado al nivel, apenas del
+# lado de ABAJO) llamó "Rebote" a un setup con TP muy por encima (722, del
+# MISMO lado que el spot respecto al nivel) -- mecánicamente eso es una
+# Ruptura y Retesteo, no un Rebote (un Rebote necesita el spot del lado
+# CONTRARIO al TP). Encima, la narrativa del setup pedía "absorción de
+# compra" mientras el checklist de order flow (más abajo en la misma
+# respuesta) pedía "absorción de venta" -- dos tipos de absorción
+# distintos para el mismo setup. Los tests de abajo verifican que las
+# reglas que deberían prevenir ambos errores están presentes en TODOS los
+# modos que proponen setups con entrada/TP/order-flow (full y short_term),
+# y ausentes del modo que no los necesita (daily_briefing).
+def test_build_system_prompt_directionality_rule_ties_rebote_vs_ruptura_to_spot_side():
+    for mode in ("full", "short_term"):
+        prompt = build_system_prompt(
+            ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+            intraday_context="contexto de prueba", response_mode=mode,
+        )
+        assert "REBOTE vs RUPTURA Y RETESTEO" in prompt
+        assert "MISMO lado que el TP" in prompt
+        assert "CONSISTENCIA OBLIGATORIA" in prompt
+
+
+def test_build_system_prompt_daily_briefing_mode_cannot_propose_named_setups():
+    # "Análisis para el día" nunca arma setups con entrada/TP/order-flow
+    # (solo prosa de 2-4 oraciones, ver ESTILO DE BRIEFING DIARIO) -- por
+    # construcción no puede pisar este bug, confirmado acá para que quede
+    # como regresión si algún día ese modo empieza a incluir setup_mechanics.
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=METRICS, vix_val=18.5,
+        intraday_context="contexto de prueba", response_mode="daily_briefing",
+    )
+    assert "REBOTE vs RUPTURA Y RETESTEO" not in prompt
+    assert "PERFIL DEL TRADER" not in prompt
+
+
 def test_build_system_prompt_mode_gating_shrinks_the_static_baseline():
     # El hallazgo original: el prompt base (modo "chat", sin datos de
     # mercado reales) medía ~27.500 caracteres -- ya por encima del

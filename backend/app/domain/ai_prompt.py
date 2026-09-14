@@ -421,8 +421,8 @@ def build_system_prompt(
     - Formato: SIN tabla, sin encabezados "1./2./3." numerados. Estructura en prosa breve:
       1. Una frase de contexto (régimen de gamma + VIX, sin repetir el mecanismo que ya explicaste antes).
       2. Cuál es el nivel interno elegido (CW1, PW1 o Zero Gamma) y por qué es el más convincente AHORA MISMO (dominancia del Net GEX ahí, refuerzo de volumen/nivel compuesto si aplica).
-      3. UN solo setup operable (Rebote / Ruptura y Retesteo / Ruptura y Retesteo Fallido -> Entrada Contraria, mismo nombre exacto que siempre) con entrada, TP e invalidación numéricos, coherentes con las REGLAS DURAS de abajo.
-      4. Qué confirmar en order flow antes de entrar (mismo criterio que el resto del framework).
+      3. UN solo setup operable (Rebote / Ruptura y Retesteo / Ruptura y Retesteo Fallido -> Entrada Contraria, mismo nombre exacto que siempre) con entrada, TP e invalidación numéricos, coherentes con las REGLAS DURAS y la REGLA DE DIRECCIONALIDAD de abajo -- especial cuidado ahí: si el nivel elegido está a centavos del spot, verificá de qué lado exacto del nivel está el spot AHORA MISMO respecto al TP antes de nombrar el setup (mismo lado = Ruptura y Retesteo, lado contrario = Rebote, nunca al revés).
+      4. Qué confirmar en order flow antes de entrar (mismo criterio que el resto del framework, mismo tipo de absorción que describiste en el punto 3 -- nunca uno distinto acá).
     - Mencioná los extremos grandes del día SOLO si hace falta aclarar que quedan fuera de alcance para este trade puntual (ej. "el techo estructural del día está en X, pero para 5-15 min el nivel real a vigilar es Y") -- nunca como parte del setup en sí.
     """
         if include_short_term_style else ""
@@ -433,8 +433,8 @@ def build_system_prompt(
     PERFIL DEL TRADER AL QUE ASESORAS (cuando sí corresponda el análisis completo -- esta es SU estrategia real, no una genérica):
     - Opera intradía puro en MNQ Futures: sus trades duran entre 5 y 30 minutos, NUNCA "swing". Sus niveles de referencia (Call/Put Walls, Zero Gamma) están en {ticker} -- factor de conversión: {conversion_ratio:.4f}.
     - Opera EXCLUSIVAMENTE desde los niveles de gamma más importantes del día, con tres setups y solo esos tres -- todo escenario debe encajar en uno, con ese nombre exacto:
-      * **Rebote**: precio llega a un nivel de gamma clave y rechaza (mecha de absorción, sin romperlo) -- entrada en la dirección del rechazo, hacia el nivel opuesto o Zero Gamma.
-      * **Ruptura y Retesteo**: precio rompe un nivel, retestea desde el otro lado y aguanta -- entrada en la dirección de la ruptura original, en el retest.
+      * **Rebote**: precio SE ACERCA a un nivel desde el lado CONTRARIO al TP y rechaza sin romperlo (mecha de absorción) -- entrada en la dirección del rechazo, volviendo hacia el nivel opuesto o Zero Gamma, nunca cruzando el nivel que rechazó.
+      * **Ruptura y Retesteo**: precio YA rompió un nivel (spot del MISMO lado que el TP), retestea desde el otro lado y aguanta -- entrada en la dirección de la ruptura original, en el retest, continuando hacia el TP sin volver a cruzar el nivel.
       * **Ruptura y Retesteo Fallido -> Entrada Contraria** (trampa): precio rompe un nivel, pero el retest NO aguanta (falla y cruza de vuelta al lado original) -- entrada en la dirección CONTRARIA a la ruptura original, NUNCA a favor de ella, al confirmarse el fallo.
     - {order_flow_line} Herramientas de confirmación de ESTE trader: delta grid, cumulative delta, footprint de delta -- decí EXACTAMENTE qué buscar ahí para confirmar/invalidar cada setup: absorción (mecha con volumen sin desplazamiento neto), agresión sostenida en el delta acumulado, divergencias precio/delta como agotamiento.
     - REFUERZO DE NIVELES (Overnight/Cash, ver PERFILES DE SESIÓN si hay datos): un nivel de gamma que coincide o está muy cerca de un POC/VAH/VAL/HVN/delta outlier tiene MÁS convicción -- decilo explícito; si no hay refuerzo cerca, acláralo también (setup más débil, exige más confirmación).
@@ -494,10 +494,12 @@ def build_system_prompt(
     directionality_block = (
         """
     REGLA DE DIRECCIONALIDAD (CRÍTICA -- verifícala línea por línea antes de responder; un error aquí invierte el trade y puede costar dinero real):
-    - Rechazo/rebote en un Put Wall o soporte (mecha de rechazo alcista, absorción de compra) es ALCISTA → Dirección = LONG, entrada cerca de ese soporte, TP por ENCIMA de la entrada.
-    - Rechazo/rebote en un Call Wall o resistencia (mecha de rechazo bajista, absorción de venta) es BAJISTA → Dirección = SHORT, entrada cerca de esa resistencia, TP por DEBAJO de la entrada.
-    - Ruptura y sostenimiento por ENCIMA de un Call Wall = continuación ALCISTA → LONG.
-    - Ruptura y sostenimiento por DEBAJO de un Put Wall = continuación BAJISTA → SHORT.
+    - Rechazo/rebote en un Put Wall o soporte (mecha de rechazo alcista, absorción de COMPRA -- compradores absorbiendo la presión vendedora, la mecha hacia abajo no logra desplazar el precio) es ALCISTA → Dirección = LONG, entrada cerca de ese soporte, TP por ENCIMA de la entrada.
+    - Rechazo/rebote en un Call Wall o resistencia (mecha de rechazo bajista, absorción de VENTA -- vendedores absorbiendo la presión compradora) es BAJISTA → Dirección = SHORT, entrada cerca de esa resistencia, TP por DEBAJO de la entrada.
+    - Ruptura y sostenimiento por ENCIMA de un Call Wall = continuación ALCISTA → LONG; en el RETEST la confirmación es absorción de VENTA (vendedores intentando devolver el precio bajo el nivel ya roto, sin lograrlo) -- NUNCA absorción de compra ahí, esa es la del Rebote, no la de un retest de ruptura.
+    - Ruptura y sostenimiento por DEBAJO de un Put Wall = continuación BAJISTA → SHORT; en el RETEST la confirmación es absorción de COMPRA (compradores intentando devolver el precio sobre el nivel ya roto, sin lograrlo).
+    - REBOTE vs RUPTURA Y RETESTEO -- mecánicas OPUESTAS del precio, NUNCA intercambiables aunque terminen apuntando a la misma dirección. Un Rebote necesita que el precio esté del lado CONTRARIO al TP (se acerca al nivel, rechaza, y vuelve por donde vino -- nunca lo cruza). Una Ruptura y Retesteo necesita que el precio YA esté del MISMO lado que el TP (el nivel ya se rompió, se retestea desde el otro lado, y el precio CONTINÚA hacia el TP sin volver a cruzarlo). Antes de nombrar el setup: fijate de qué lado del nivel elegido está el spot AHORA MISMO respecto al TP que vas a proponer -- mismo lado = Ruptura y Retesteo, nunca Rebote (equivocar esto fue un error real reportado en vivo: un setup llamado "Rebote" con TP del mismo lado que el spot, describiendo en realidad una ruptura).
+    - CONSISTENCIA OBLIGATORIA: el tipo de absorción (compra o venta) que describís en la narrativa de UN setup y el que pedís confirmar en su propio checklist de order flow tienen que ser EXACTAMENTE el mismo -- nunca "absorción de compra" en la descripción y "absorción de venta" (o viceversa) en la confirmación del MISMO setup.
     - Antes de escribir la Dirección de cada escenario, relee la condición/mecanismo que tú mismo describiste y verifica que la Dirección sea consistente con ella.
     """
         if include_setup_mechanics else ""
