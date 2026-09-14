@@ -57,4 +57,17 @@ export function renderGammaSurfaceChart(el, grid) {
   }
 
   Plotly.react(el, [trace], layout, { responsive: true, displaylogo: false })
+  forceResize(el)
+}
+
+// Mismo bug/arreglo ya confirmado en vivo en LIVE GAMMA/GEX INFO: esta
+// pestaña vive oculta (display:none) hasta que el usuario entra a Chain
+// Analytics, así que Plotly mide el contenedor en 0/ancho viejo la
+// primera vez -- Plotly.Plots.resize(el) en el próximo frame (después de
+// que el navegador ya pintó el layout real del contenedor recién
+// visible) lo corrige.
+function forceResize(el) {
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
 }

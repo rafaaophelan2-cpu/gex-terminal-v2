@@ -45,4 +45,13 @@ export function renderVolSurfaceChart(el, grid) {
   }
 
   Plotly.react(el, [trace], layout, { responsive: true, displaylogo: false })
+  forceResize(el)
+}
+
+// Mismo bug/arreglo ya confirmado en vivo en LIVE GAMMA/GEX INFO -- ver
+// el comentario en gammaSurfaceChart.js::forceResize.
+function forceResize(el) {
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
 }

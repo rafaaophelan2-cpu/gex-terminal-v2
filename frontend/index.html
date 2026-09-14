@@ -210,13 +210,16 @@
             </div>
             <div class="grid-toolbar">
               <div class="dte-selector">
-                <button id="grid-dte-btn" type="button">📅 DTEs <span id="grid-dte-count"></span></button>
+                <button id="grid-dte-btn" type="button" class="dte-btn">
+                  <svg class="dte-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                  DTEs <span id="grid-dte-count" class="dte-btn-count"></span>
+                </button>
                 <div id="grid-dte-panel" class="dte-panel" hidden>
                   <div id="grid-dte-list" class="dte-list">
                     <p class="dte-list-placeholder">Cargando expiraciones…</p>
                   </div>
                   <div class="dte-panel-actions">
-                    <button id="grid-dte-apply-btn" type="button">Aplicar</button>
+                    <button id="grid-dte-apply-btn" type="button" class="dte-apply-btn">Aplicar</button>
                   </div>
                 </div>
               </div>
@@ -328,13 +331,16 @@
           <div id="chain-analytics-view" hidden>
             <div class="grid-toolbar">
               <div class="dte-selector">
-                <button id="surface3d-dte-btn" type="button">📅 DTEs <span id="surface3d-dte-count"></span></button>
+                <button id="surface3d-dte-btn" type="button" class="dte-btn">
+                  <svg class="dte-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                  DTEs <span id="surface3d-dte-count" class="dte-btn-count"></span>
+                </button>
                 <div id="surface3d-dte-panel" class="dte-panel" hidden>
                   <div id="surface3d-dte-list" class="dte-list">
                     <p class="dte-list-placeholder">Cargando expiraciones…</p>
                   </div>
                   <div class="dte-panel-actions">
-                    <button id="surface3d-dte-apply-btn" type="button">Aplicar</button>
+                    <button id="surface3d-dte-apply-btn" type="button" class="dte-apply-btn">Aplicar</button>
                   </div>
                 </div>
               </div>
