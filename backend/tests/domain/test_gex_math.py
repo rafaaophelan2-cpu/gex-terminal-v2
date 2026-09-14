@@ -3,6 +3,7 @@ import pytest
 
 from app.domain.gex_math import (
     compute_call_put_walls,
+    compute_gamma_wall,
     compute_greeks_exposures,
     compute_zero_crossing,
     compute_zero_gamma,
@@ -88,6 +89,29 @@ def test_compute_call_put_walls_partial_fallback_uses_same_spacing_as_empty_fall
     assert pw1 == 105.0  # real
     assert pw2 == pytest.approx(105.0 - 2.0 * 2.5)
     assert pw3 == pytest.approx(105.0 - 2.0 * 5.0)
+
+
+def test_compute_gamma_wall_uses_absolute_exposure_not_net():
+    # 100: 10M calls + 10M puts -> se cancela a 0 en net_gex pero es |20M|
+    # en gamma absoluto -- eso lo hace el Gamma Wall pese a no ganar en
+    # ningun lado. 95 tiene 12M netos en calls, mas que cualquier lado de
+    # 100, pero menos que el total absoluto de 100.
+    df_grouped = pd.DataFrame({
+        'strike': [95.0, 100.0, 105.0],
+        'net_gex': [12.0, 0.0, -9.0],
+        'call_gex': [12.0, 10.0, 0.0],
+        'put_gex': [0.0, -10.0, -9.0],
+    })
+    assert compute_gamma_wall(df_grouped, spot_ref=100.0) == 100.0
+
+
+def test_compute_gamma_wall_empty_uses_spot_fallback():
+    assert compute_gamma_wall(pd.DataFrame(), spot_ref=123.45) == 123.45
+
+
+def test_compute_gamma_wall_without_call_put_columns_uses_spot_fallback():
+    df_grouped = pd.DataFrame({'strike': [95.0, 105.0], 'net_gex': [8.0, -9.0]})
+    assert compute_gamma_wall(df_grouped, spot_ref=100.0) == 100.0
 
 
 def test_compute_zero_gamma_crossing():

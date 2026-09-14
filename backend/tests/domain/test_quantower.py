@@ -20,22 +20,49 @@ def test_build_live_levels_payload_none_for_empty_or_invalid():
 
 def test_build_live_levels_payload_matches_quantower_schema():
     df = pd.DataFrame([
-        {"strike": 495.0, "net_gex": 50.0, "exp_key": "2026-09-11:0", "dte": 0},
-        {"strike": 505.0, "net_gex": -30.0, "exp_key": "2026-09-11:0", "dte": 0},
+        {"strike": 495.0, "net_gex": 50.0, "call_gex": 50.0, "put_gex": 0.0, "exp_key": "2026-09-11:0", "dte": 0},
+        {"strike": 505.0, "net_gex": -30.0, "call_gex": 0.0, "put_gex": -30.0, "exp_key": "2026-09-11:0", "dte": 0},
         # Otra expiración: get_nearest_dte_subset debe excluirla del feed de Quantower.
-        {"strike": 520.0, "net_gex": 999.0, "exp_key": "2026-09-18:7", "dte": 7},
+        {"strike": 520.0, "net_gex": 999.0, "call_gex": 999.0, "put_gex": 0.0, "exp_key": "2026-09-18:7", "dte": 7},
     ])
     payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
 
     assert payload["qqq_spot"] == 500.0
     assert payload["conversion_ratio"] == 40.0
     assert set(payload.keys()) == {
-        "qqq_spot", "conversion_ratio", "cw1", "cw2", "cw3", "pw1", "pw2", "pw3", "zero_gamma", "levels",
+        "qqq_spot", "conversion_ratio", "cw1", "cw2", "cw3", "pw1", "pw2", "pw3",
+        "zero_gamma", "gamma_wall", "levels",
     }
     strikes_pushed = {lvl["strike"] for lvl in payload["levels"]}
     assert strikes_pushed == {495.0, 505.0}
     assert all(isinstance(lvl["net_gex"], float) for lvl in payload["levels"])
     assert isinstance(payload["zero_gamma"], float)
+    assert isinstance(payload["gamma_wall"], float)
+
+
+def test_build_live_levels_payload_gamma_wall_uses_absolute_exposure():
+    # 495: 10 calls + 10 puts -> se cancela a 0 en net_gex pero es 20 en
+    # gamma absoluto. 505: 15 calls netos -> domina el Call Wall (net_gex)
+    # pero el Gamma Wall sigue siendo 495 porque ahi hay mas gamma en juego.
+    df = pd.DataFrame([
+        {"strike": 495.0, "net_gex": 0.0, "call_gex": 10.0, "put_gex": -10.0, "exp_key": "e0", "dte": 0},
+        {"strike": 505.0, "net_gex": 15.0, "call_gex": 15.0, "put_gex": 0.0, "exp_key": "e0", "dte": 0},
+    ])
+    payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
+    assert payload["gamma_wall"] == 495.0
+    assert payload["cw1"] == 505.0
+
+
+def test_build_live_levels_payload_gamma_wall_falls_back_to_spot_without_call_put_columns():
+    # DataFrames viejos (o de un feed sin call_gex/put_gex por alguna
+    # razon) no deben romper el payload -- gamma_wall cae al spot, mismo
+    # criterio de fallback que compute_call_put_walls/compute_zero_gamma.
+    df = pd.DataFrame([
+        {"strike": 495.0, "net_gex": 50.0, "exp_key": "e0", "dte": 0},
+        {"strike": 505.0, "net_gex": -30.0, "exp_key": "e0", "dte": 0},
+    ])
+    payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
+    assert payload["gamma_wall"] == 500.0
 
 
 def test_build_live_levels_payload_zero_gamma_is_the_flip_strike():

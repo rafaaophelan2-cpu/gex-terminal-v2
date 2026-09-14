@@ -118,6 +118,28 @@ def compute_call_put_walls(df_grouped: pd.DataFrame, spot_ref: float, gap: float
     return cw1, cw2, cw3, pw1, pw2, pw3
 
 
+def compute_gamma_wall(df_grouped: pd.DataFrame, spot_ref: float) -> float:
+    """Strike con mayor gamma expuesto en VALOR ABSOLUTO (|call_gex| +
+    |put_gex|), a diferencia de Call Wall / Put Wall (compute_call_put_walls,
+    arriba) que miran el net_gex con signo. Un strike con, por ejemplo, 10M
+    en calls y 10M en puts se cancela a 0 en net_gex y nunca aparecería como
+    wall, pero sigue siendo el strike con más actividad de gamma en juego --
+    eso es lo que el Gamma Wall captura. df_grouped debe tener una fila por
+    strike con columnas 'call_gex' y 'put_gex' ya agregadas (ver
+    domain/quantower.py::build_live_levels_payload)."""
+    if df_grouped is None or df_grouped.empty:
+        return spot_ref
+    if 'call_gex' not in df_grouped.columns or 'put_gex' not in df_grouped.columns:
+        return spot_ref
+
+    abs_exposure = df_grouped['call_gex'].abs() + df_grouped['put_gex'].abs()
+    if abs_exposure.empty or abs_exposure.max() <= 0:
+        return spot_ref
+
+    idx = abs_exposure.idxmax()
+    return float(df_grouped.loc[idx, 'strike'])
+
+
 def compute_zero_crossing(df_by_strike: pd.DataFrame, value_col: str, spot_ref: float) -> float:
     """Strike donde la suma acumulada de 'value_col' (ordenado por strike)
     cruza cero -- generalización de compute_zero_gamma (antes hardcodeada a

@@ -156,16 +156,22 @@ async def fetch_economic_calendar() -> list[dict]:
         impact = str(item.get("impact") or "").lower()
         if impact not in RELEVANT_IMPACT:
             continue
-        # 'date' viene como ISO8601 CON el offset de hora de Nueva York ya
-        # embebido (ej. "2026-09-16T08:30:00-04:00" -- ForexFactory
-        # siempre publica en hora del Este, y el offset ya refleja
-        # EDT/EST según la época del año) -- se puede cortar el string
-        # directo sin volver a hacer conversión de huso horario, mismo
-        # criterio que ya usaba el campo 'time' de Finnhub.
+        # 'date' viene como "MM/DD/AAAA HH:MM:SS" en hora de Nueva York, SIN
+        # offset (confirmado en vivo, 14-sep-2026, sobre el feed real de
+        # nfs.faireconomy.media -- ej. "09/16/2026 13:00:00"). Antes se
+        # asumía ISO8601 con offset embebido (ej. "2026-09-16T08:30:00-04:00")
+        # y se cortaba el string directo con raw_date[:10]/[11:16]; con el
+        # formato real eso comparaba "09/16/2026" contra rangos "2026-09-14"
+        # y NUNCA matcheaba nada -- el calendario quedaba silenciosamente
+        # vacío pese a que el feed sí traía eventos USD. Se parsea explícito
+        # en vez de cortar substrings a ciegas.
         raw_date = str(item.get("date") or "")
-        if len(raw_date) < 16:
+        try:
+            parsed = datetime.strptime(raw_date, "%m/%d/%Y %H:%M:%S")
+        except ValueError:
             continue
-        date_part, time_part = raw_date[:10], raw_date[11:16]
+        date_part = parsed.date().isoformat()
+        time_part = parsed.strftime("%H:%M")
         if not (week_start_str <= date_part <= week_end_str):
             continue
 

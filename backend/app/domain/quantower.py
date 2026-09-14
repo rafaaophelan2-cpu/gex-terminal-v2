@@ -1,6 +1,6 @@
 import pandas as pd
 
-from app.domain.gex_math import compute_call_put_walls, compute_zero_gamma
+from app.domain.gex_math import compute_call_put_walls, compute_gamma_wall, compute_zero_gamma
 from app.domain.metrics import get_nearest_dte_subset
 
 DEFAULT_CONVERSION_RATIO = 41.125
@@ -19,7 +19,7 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
     """Arma el payload exacto que espera GexProfileCloud.cs (indicador
     "Rafoph's Gex Manual 2.0" en Quantower) en el nodo /live_levels de
     Firebase: {qqq_spot, conversion_ratio, cw1..cw3, pw1..pw3, zero_gamma,
-    levels: [{strike, net_gex}]}. Port de la sección final de
+    gamma_wall, levels: [{strike, net_gex}]}. Port de la sección final de
     export_live_levels_to_quantower en app.py (~línea 1685):
     SIEMPRE la expiración más cercana (0DTE), nunca el DTE que cualquier
     conexión WS tenga seleccionado -- el feed de Quantower es compartido
@@ -31,9 +31,19 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
     if df_sel is None or df_sel.empty:
         return None
 
-    by_strike = df_sel.groupby('strike', as_index=False)['net_gex'].sum().sort_values('strike')
+    # call_gex/put_gex se agregan solo si existen -- el mismo patrón
+    # defensivo que ya usa domain/metrics.py (línea ~82) para el resto de
+    # los consumidores de este DataFrame.
+    agg_cols: dict[str, str] = {'net_gex': 'sum'}
+    if 'call_gex' in df_sel.columns:
+        agg_cols['call_gex'] = 'sum'
+    if 'put_gex' in df_sel.columns:
+        agg_cols['put_gex'] = 'sum'
+
+    by_strike = df_sel.groupby('strike', as_index=False).agg(agg_cols).sort_values('strike')
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, spot_price)
     zero_gamma = compute_zero_gamma(by_strike, spot_price)
+    gamma_wall = compute_gamma_wall(by_strike, spot_price)
 
     return {
         "qqq_spot": float(spot_price),
@@ -41,6 +51,7 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
         "cw1": float(cw1), "cw2": float(cw2), "cw3": float(cw3),
         "pw1": float(pw1), "pw2": float(pw2), "pw3": float(pw3),
         "zero_gamma": float(zero_gamma),
+        "gamma_wall": float(gamma_wall),
         "levels": [
             {"strike": float(r.strike), "net_gex": float(r.net_gex)}
             for r in by_strike.itertuples()
