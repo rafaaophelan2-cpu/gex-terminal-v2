@@ -32,11 +32,14 @@ NY_TZ = ZoneInfo("America/New_York")
 # evita el problema de raíz en vez de solo mitigar sus síntomas.
 THISWEEK_URL = "https://gex-terminal-8vb.pages.dev/ff-calendar"
 
-# ForexFactory limita este feed a 2 requests cada 5 min por IP (para
-# cualquier formato) -- un cache de 30 min deja muchísimo margen incluso
-# con el refresco periódico de la pestaña News + cada diagnóstico de IA
-# pidiendo el mismo dato.
-CACHE_TTL_SECONDS = 1800
+# ForexFactory lo deja explícito en el 429 que devuelve cuando se excede
+# (confirmado en vivo, 14-sep-2026): "updated once per hour. Requesting
+# it more than that is unnecessary and can result in being blocked." --
+# 3600s (1h), no los 1800s de antes, para respetar eso literal y no
+# volver a gatillar un bloqueo (esta vez, ni siquiera fue Render: fue
+# probar el proxy nuevo -- ver ff-calendar.js -- a mano varias veces
+# seguidas en un rato corto lo que lo disparó).
+CACHE_TTL_SECONDS = 3600
 
 # Cooldown mínimo entre INTENTOS (éxito o fallo) -- confirmado en vivo en
 # Render (13-sep-2026, "429 Too Many Requests" en CADA pedido): sin esto,
