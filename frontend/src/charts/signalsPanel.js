@@ -41,7 +41,10 @@ function renderSignalCard(signal) {
 }
 
 function renderFactorRow(factor) {
-  const pct = factor.max > 0 ? (factor.score / factor.max) * 100 : 0
+  // Math.min(..., 100) -- si score > max (no debería pasar, pero sin
+  // resguardo propio acá del lado del backend) la barra se dibujaba más
+  // ancha que su propio track en vez de tope en 100%.
+  const pct = factor.max > 0 ? Math.min((factor.score / factor.max) * 100, 100) : 0
   const maxed = factor.max > 0 && factor.score >= factor.max
   return `
     <div class="factor-row">
@@ -84,6 +87,11 @@ export function renderSignalsPanel(listEl, squeezeEl, biasBadgeEl, data) {
   const kl = squeeze.key_levels || {}
   const cwPct = kl.call_wall_pct ?? 0
   const cwSign = cwPct >= 0 ? '+' : ''
+  // Antes hardcodeado a 'val-positive' sin importar el signo -- un Call
+  // Wall por DEBAJO del precio actual (cwPct negativo, ej. tras una
+  // ruptura fuerte) se mostraba en verde igual, mismo criterio que
+  // pctClass en renderSignalCard más arriba.
+  const cwClass = cwPct > 0 ? 'val-positive' : cwPct < 0 ? 'val-negative' : ''
 
   squeezeEl.innerHTML = `
     <div class="squeeze-direction-row">
@@ -107,7 +115,7 @@ export function renderSignalsPanel(listEl, squeezeEl, biasBadgeEl, data) {
     <div class="key-levels-box">
       <p class="key-levels-title">KEY LEVELS</p>
       <div class="key-levels-row"><span>Current Price</span><span>$${(kl.current_price ?? 0).toFixed(2)}</span></div>
-      <div class="key-levels-row"><span>Call Wall</span><span class="val-positive">(${cwSign}${cwPct.toFixed(2)}%) $${(kl.call_wall ?? 0).toFixed(2)}</span></div>
+      <div class="key-levels-row"><span>Call Wall</span><span class="${cwClass}">(${cwSign}${cwPct.toFixed(2)}%) $${(kl.call_wall ?? 0).toFixed(2)}</span></div>
       <div class="key-levels-row"><span>Trigger Level</span><span class="key-levels-trigger">$${(kl.trigger_level ?? 0).toFixed(2)}</span></div>
     </div>
   `

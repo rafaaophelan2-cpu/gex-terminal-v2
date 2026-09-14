@@ -8,6 +8,18 @@ const HOVER = {
   bordercolor: 'rgba(255,255,255,0.15)',
 }
 
+// Mismo patrón ya establecido en gexInfoChart.js/gammaSurfaceChart.js/
+// volSurfaceChart.js -- BACKGAMMA vive en un tab que puede estar oculto
+// (display:none) la primera vez que se renderiza, así que Plotly.react()
+// reusa un ancho cacheado viejo/chico en vez de volver a medir el
+// contenedor recién visible. Faltaba acá (único chart de Plotly de la
+// app sin este arreglo).
+function forceResize(el) {
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
+}
+
 export function renderBackgammaSpotChart(el, heatmap, currentIndex) {
   if (!heatmap.times || heatmap.times.length === 0) return
 
@@ -36,6 +48,7 @@ export function renderBackgammaSpotChart(el, heatmap, currentIndex) {
   }
 
   Plotly.react(el, traces, layout, { responsive: true, displaylogo: false })
+  forceResize(el)
 }
 
 export function renderBackgammaStrikeChart(el, heatmap, currentIndex) {
@@ -91,4 +104,5 @@ export function renderBackgammaStrikeChart(el, heatmap, currentIndex) {
   }
 
   Plotly.react(el, [trace], layout, { responsive: true, displaylogo: false })
+  forceResize(el)
 }

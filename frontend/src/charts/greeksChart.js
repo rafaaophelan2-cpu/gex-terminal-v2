@@ -14,6 +14,12 @@ const GREEK_TITLE = {
 // Como con gexInfoChart: una sola instancia en pantalla para este MVP.
 let initializedGreek = null
 
+function forceResize(el) {
+  requestAnimationFrame(() => {
+    Plotly.Plots.resize(el)?.catch(() => {})
+  })
+}
+
 function baseLayout(title) {
   return {
     plot_bgcolor: COLOR_BG,
@@ -53,6 +59,11 @@ export function renderGreeksChart(el, greekKey, payload, forceRedraw = false) {
   if (forceRedraw || initializedGreek !== greekKey) {
     Plotly.react(el, [trace], baseLayout(GREEK_TITLE[greekKey]), { responsive: true, displaylogo: false })
     initializedGreek = greekKey
+    // Mismo motivo/arreglo que gexInfoChart.js/gammaSurfaceChart.js --
+    // main.js llama acá con forceRedraw=true justo cuando el tab GREEKS
+    // se vuelve visible (el escenario para el que existe este arreglo en
+    // todos lados), pero a este chart le faltaba.
+    forceResize(el)
   } else {
     Plotly.restyle(el, {
       x: [strikes], y: [values], 'marker.color': [colors],

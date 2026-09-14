@@ -231,8 +231,19 @@ function attachRightAxisWheelZoom(el) {
 /** dateStr: la fecha (YYYY-MM-DD) seleccionada en el picker -- necesaria
  * para convertir los "HH:MM" de la serie a timestamps reales. */
 export function renderNetDriftChart(el, series, dateStr) {
-  if (!series.time || series.time.length === 0) return
   ensureChart(el)
+  if (!series.time || series.time.length === 0) {
+    // Antes esto salía sin limpiar -- si el usuario cambiaba a un
+    // símbolo/fecha sin datos todavía, las líneas de Calls/Puts/Net/Spot/
+    // ola del símbolo/fecha ANTERIOR se quedaban en pantalla indefinidamente,
+    // sin ningún indicador de que ya no corresponden a lo seleccionado.
+    callsSeries.setData([])
+    putsSeries.setData([])
+    netSeries.setData([])
+    spotSeries.setData([])
+    netWaveSeries.setData([])
+    return
+  }
 
   const times = series.time.map((t) => nyWallClockToUtcSeconds(dateStr, t))
   const callsValues = series.call_gex.map((v) => Math.abs(v))

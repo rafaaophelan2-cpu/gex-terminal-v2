@@ -228,6 +228,19 @@ function isTabVisible(tabKey) {
   return el ? el.classList.contains('active') || el.classList.contains('split-secondary') : false
 }
 
+// Bug real: cada loader captura 'symbol' al EMPEZAR (símbolo actual en
+// ese instante) y, al terminar su fetch, aplica el resultado sin volver
+// a chequear si sigue siendo el símbolo vigente -- no hay garantía de
+// orden en las respuestas HTTP. Cambiar de símbolo rápido (ej. escribir
+// "AAPL" y al toque "TSLA") puede hacer que la respuesta de AAPL llegue
+// DESPUÉS que la de TSLA y pise en pantalla datos de un símbolo que ya
+// no es el seleccionado, sin ningún aviso. Se llama justo antes de
+// aplicar cada resultado -- 'symbol' es el capturado al empezar ESE
+// pedido puntual, se compara contra el símbolo VIGENTE ahora mismo.
+function isStillCurrentSymbol(symbol) {
+  return (symbolInput.value.trim().toUpperCase() || 'QQQ') === symbol
+}
+
 function isGreeksTabActive() {
   return isTabVisible('greeks')
 }
@@ -331,19 +344,21 @@ function switchIconRailSection(section) {
   // split-view, no tiene sentido mostrar el mismo nodo ahí Y como
   // apartado de pantalla completa a la vez -- se cierra split-view en vez
   // de dejar un panel roto (vacío, donde ese apartado solía estar).
-  if (isUtilidad) {
-    if (splitMode && splitSecondaryTab === 'utilidad') disableSplitMode()
-    moveUtilidadHome()
-  }
-  utilidadView.hidden = !isUtilidad
-  syncUtilidadRefresh()
+  if (isUtilidad && splitMode && splitSecondaryTab === 'utilidad') disableSplitMode()
+  if (isChain && splitMode && splitSecondaryTab === 'chain-analytics') disableSplitMode()
 
-  if (isChain) {
-    if (splitMode && splitSecondaryTab === 'chain-analytics') disableSplitMode()
-    moveChainAnalyticsHome()
-  }
-  chainAnalyticsView.hidden = !isChain
-  syncChainAnalyticsRefresh()
+  // applySplitSecondaryTab() (no el .hidden manual que había acá antes)
+  // -- bug real: 'utilidadView.hidden = !isUtilidad' / 'chainAnalyticsView.hidden
+  // = !isChain' se aplicaban SIN mirar si esa vista es el panel SECUNDARIO
+  // de split-view ahora mismo. Navegar a cualquier OTRA sección del
+  // icon-rail (ej. Tools abierto como secundario de split, y el usuario
+  // hace click en "News") forzaba esa vista a hidden=true para siempre,
+  // sin ningún código que la volviera a mostrar al volver -- el panel
+  // secundario quedaba en blanco permanentemente. applySplitSecondaryTab()
+  // ya sabe recalcular esto bien para las dos vistas juntas, y de paso
+  // sincroniza los timers de refresco (syncTabLifecycle/syncUtilidadRefresh/
+  // syncChainAnalyticsRefresh), que tampoco se llamaban acá antes.
+  applySplitSecondaryTab()
 }
 
 iconRailGexBtn.addEventListener('click', () => switchIconRailSection('gex-analytics'))
@@ -387,6 +402,7 @@ async function loadTvString() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const data = await fetchTradingViewString(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
     if (data.string) {
       tvStringBox.textContent = data.string
       tvStringBox.dataset.hasString = 'true'
@@ -703,6 +719,7 @@ async function loadNetDrift() {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const date = driftDateInput.value || todayInLima()
     const series = await fetchDrift(symbol, date, driftOtmOnly)
+    if (!isStillCurrentSymbol(symbol)) return
     renderNetDriftChart(netDriftChartEl, series, date)
   } catch (err) {
     console.error('Error cargando NET DRIFT:', err)
@@ -720,7 +737,10 @@ async function driftRefreshTick() {
     try {
       const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
       const dates = await fetchAvailableDates(symbol)
-      if (dates[0] && dates[0] !== driftDateInput.value) {
+      // 'return' NO -- eso saltearía el loadNetDrift() final de abajo,
+      // que SIEMPRE debe correr (con guardia propia) sin importar si el
+      // símbolo cambió durante esta resolución de fecha puntual.
+      if (isStillCurrentSymbol(symbol) && dates[0] && dates[0] !== driftDateInput.value) {
         driftDateInput.value = dates[0]
       }
     } catch (err) {
@@ -757,6 +777,7 @@ async function loadLiveGamma() {
       fetchHeatmap(symbol, date),
       fetchCandles(symbol, date).catch(() => []),
     ])
+    if (!isStillCurrentSymbol(symbol)) return
     renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles, date)
     // ALL-DAY GAMMA: mismo heatmap/candles/date que arriba, ningún fetch
     // extra -- pedido explícito del usuario, gráfico separado en vez de
@@ -785,6 +806,7 @@ async function loadCharmHeatmap() {
       fetchCharmHeatmap(symbol, date),
       fetchCandles(symbol, date).catch(() => []),
     ])
+    if (!isStillCurrentSymbol(symbol)) return
     renderLiveGammaChart(charmHeatmapChartEl, charmHeatmap, latestWalls, candles, date, 'Charm Exposure')
   } catch (err) {
     console.error('Error cargando Charm Heatmap:', err)
@@ -860,6 +882,7 @@ async function loadImpliedRange() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const range = await fetchImpliedRange(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
     if (!range || !range.one_sd) {
       metricEls.impliedRange.textContent = '--'
       return
@@ -887,6 +910,7 @@ async function loadCompoundedLevels() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const result = await fetchCompoundedLevels(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
     if (!result || result.ratio == null) {
       compoundedLevelsSectionEl.hidden = true
       return
@@ -944,7 +968,9 @@ function renderDteChecklist() {
 async function loadGridExpirations() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-    gridExpirations = await fetchExpirations(symbol)
+    const expirations = await fetchExpirations(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
+    gridExpirations = expirations
     renderDteChecklist()
   } catch (err) {
     console.error('Error cargando expiraciones del GRID:', err)
@@ -1031,6 +1057,7 @@ async function loadGammaGrid() {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     gridStatusEl.textContent = 'Actualizando…'
     const grid = await fetchGammaGrid(symbol, gridSelectedExpKeys)
+    if (!isStillCurrentSymbol(symbol)) return
     renderGammaGridTable(gammaGridTableEl, grid)
     renderGammaVolumeProfile(gammaVolumeProfileEl, grid)
 
@@ -1088,7 +1115,9 @@ function renderSurface3dDteChecklist() {
 async function loadSurface3dExpirations() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-    surface3dExpirations = await fetchExpirations(symbol)
+    const expirations = await fetchExpirations(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
+    surface3dExpirations = expirations
     renderSurface3dDteChecklist()
   } catch (err) {
     console.error('Error cargando expiraciones del 3D:', err)
@@ -1132,6 +1161,7 @@ async function loadSurface3d() {
       fetchGammaSurface(symbol, surface3dSelectedExpKeys),
       fetchVolSurface(symbol, surface3dSelectedExpKeys),
     ])
+    if (!isStillCurrentSymbol(symbol)) return
     latestGammaSurface = gammaSurface
     latestVolSurface = volSurface
 
@@ -1176,6 +1206,7 @@ async function loadBackgammaDates() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const dates = await fetchAvailableDates(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
     backgammaDateSelect.innerHTML = ''
     dates.forEach((d) => {
       const opt = document.createElement('option')
@@ -1195,7 +1226,9 @@ async function loadBackgammaDay(date) {
   try {
     stopBackgammaPlay()
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-    backgammaHeatmap = await fetchHeatmap(symbol, date)
+    const heatmap = await fetchHeatmap(symbol, date)
+    if (!isStillCurrentSymbol(symbol)) return
+    backgammaHeatmap = heatmap
     const lastIndex = Math.max(backgammaHeatmap.times.length - 1, 0)
     backgammaScrubber.max = String(lastIndex)
     backgammaScrubber.value = String(lastIndex)
@@ -1224,6 +1257,7 @@ async function setDefaultDriftDate() {
     // usar el primero cubre ambos casos sin adivinar con el reloj.
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const dates = await fetchAvailableDates(symbol)
+    if (!isStillCurrentSymbol(symbol)) return
     driftDateInput.value = dates[0] || todayInLima()
   } catch {
     driftDateInput.value = todayInLima()
@@ -1286,6 +1320,18 @@ function showLogin() {
   surface3dSelectedExpKeys = null
   latestGammaSurface = null
   latestVolSurface = null
+  // Bug real: estas 4 quedaban con el último valor de la sesión anterior
+  // -- showDashboard() llama a syncTabLifecycle() al final de un login
+  // nuevo (ver comentario ahí), que si GEX INFO/GREEKS ya están .active
+  // en el HTML estático redibuja de inmediato con lo que haya acá, ANTES
+  // de que llegue el primer tick real de WS de la sesión nueva (~2s) --
+  // un login (mismo usuario u otro) podía mostrar por un instante los
+  // datos de la sesión anterior como si fueran los de la nueva.
+  latestGexInfo = null
+  latestGreeksPayload = null
+  latestSpot = null
+  latestWalls = null
+  backgammaHeatmap = null
   chatHistoryLoaded = false
   chatMessagesEl.innerHTML = '<p class="chat-placeholder">Pregunta sobre VIX, GEX, Griegas o niveles de mercado del símbolo activo.</p>'
   closeChatPanel()
@@ -1472,6 +1518,7 @@ function applySymbolChange() {
   strikeRangeInput.value = strikeRange
   resetGexInfoChart()
   resetGammaPriceProfileChart()
+  resetGreeksChart()
   wsClient?.subscribe(symbol, strikeRange)
 
   // Las expiraciones/selección del GRID y del 3D son por símbolo -- al
@@ -1486,15 +1533,44 @@ function applySymbolChange() {
   surface3dDteCount.textContent = ''
   latestGammaSurface = null
   latestVolSurface = null
+  // BACKGAMMA nunca se recargaba solo -- syncTabLifecycle() solo llama a
+  // loadBackgammaDates() cuando 'backgammaHeatmap' todavía es null/falsy
+  // (para no recargar en cada visita al tab), pero nada lo reseteaba al
+  // cambiar de símbolo -- podía quedar mostrando el heatmap del símbolo
+  // VIEJO indefinidamente, incluso tras cerrar sesión y volver a entrar.
+  backgammaHeatmap = null
+  // Que NET DRIFT vuelva a resolver "la última sesión" del símbolo NUEVO
+  // en vez de arrastrar una fecha elegida a mano para el símbolo anterior
+  // (que puede no existir/estar vacía para este símbolo).
+  driftDateAutoSelected = true
+
+  // Refresca YA los paneles VISIBLES que tienen su propio timer largo
+  // (15-30s) -- antes se quedaban mostrando datos del símbolo VIEJO hasta
+  // que ese timer disparara solo, sin ningún indicador de "actualizando".
+  if (isTabVisible('net-drift')) loadNetDrift()
+  if (isTabVisible('live-gamma')) loadLiveGamma()
+  if (isTabVisible('greeks') && activeGreek === 'chex') loadCharmHeatmap()
+  loadTvString()
 
   // El SymbolFeed nuevo recién tiene datos después de su primer tick
   // (~2s, ver TICK_INTERVAL_SECONDS en market_feed.py) -- pedir Implied
   // Range/niveles compuestos ANTES de eso solo devuelve nulls. Se espera
   // un poco en vez de dejarlo solo al próximo tick del timer periódico
   // (30-60s), para que la UI se sienta al día apenas se cambia de símbolo.
+  // GRID/3D SURFACE necesitan feed.deep_df (ciclo de refresco propio, más
+  // lento) -- se piden acá también, mismo margen de espera, en vez de
+  // dejarlos con las strikes del símbolo viejo hasta su propio timer
+  // (15-20s).
   setTimeout(() => {
     loadImpliedRange()
     loadCompoundedLevels()
+    if (isTabVisible('gex-info')) loadGammaGrid()
+    // Chain Analytics es una SECCIÓN del icon-rail (no un sub-tab de
+    // #tab-content como net-drift/gex-info/etc.), así que no tiene un
+    // '#tab-chain-analytics' que isTabVisible() pueda mirar -- chequea
+    // directo su propio 'hidden', que applySplitSecondaryTab() ya
+    // mantiene correcto tanto en pantalla completa como en split-view.
+    if (!chainAnalyticsView.hidden) loadSurface3d()
   }, 3000)
 }
 
