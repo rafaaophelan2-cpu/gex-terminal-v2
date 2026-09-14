@@ -198,6 +198,24 @@ body {
   top: 0;
   align-self: flex-start;
   height: 100vh;
+  /* position: sticky arriba hace que el riel SIEMPRE forme su propio
+     contexto de apilamiento (a diferencia de position: static de antes,
+     esto aplica incluso con z-index: auto -- es una regla especial de
+     sticky/fixed/relative+z-index, no de static). El problema: .metric
+     (metrics-bar, más abajo en el DOM dentro de <main>) también forma
+     contexto propio por su backdrop-filter: blur() -- CUALQUIER filter/
+     backdrop-filter/transform/opacity<1 hace lo mismo, sin necesidad de
+     position ni z-index. Con ambos en z-index: auto, el desempate es por
+     orden en el DOM, y .metric viene DESPUÉS del riel -- así que la
+     franja "Spot/Net GEX/..." terminaba pintándose ENCIMA de los
+     tooltips del riel (::after, z-index: 60) en vez de al revés, porque
+     ese z-index: 60 solo pesa DENTRO del contexto propio del riel, no
+     contra contextos hermanos de afuera. z-index acá saca al riel del
+     grupo "auto" (que se resuelve por orden del DOM) y lo pasa al grupo
+     de z-index positivo, que siempre pinta después -- así gana pase lo
+     que pase en <main>, sin tener que perseguir cada filter/transform
+     nuevo que aparezca ahí adentro. */
+  z-index: 20;
 }
 
 /* Marca "GEX Terminal": el isotipo (gradiente propio, ver icon-gamma-mark)
