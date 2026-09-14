@@ -2171,7 +2171,7 @@ main {
 /* --- GEX INFO: encabezados de sub-secciones (Gamma Price Profile, Gamma
    Grid, ambos ahora dentro de GEX INFO en vez de pestañas separadas) --- */
 .gex-info-section-heading {
-  margin: 24px 0 4px;
+  margin: 16px 0 4px;
 }
 
 .gex-info-section-sub {

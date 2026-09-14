@@ -41,6 +41,23 @@ def test_find_compounded_levels_ignores_none_values():
     assert find_compounded_levels({"cw1": None}, {"cw1_ndx": None}, ratio=41.0, primary_spot=700.0) == []
 
 
+def test_find_compounded_levels_merges_primary_levels_sharing_the_same_value():
+    # Reportado en vivo: Zero Gamma y Gamma Wall cayendo en el mismo
+    # precio hacían que CADA nivel NDX coincidente saliera duplicado, una
+    # fila por cada nombre primario. Con el mismo valor deben combinarse
+    # en una sola fila "Zero Gamma / Gamma Wall", no dos filas idénticas.
+    primary_spot = 700.0
+    ratio = 29000.0 / primary_spot
+    primary_levels = {"Zero Gamma": 710.0, "Gamma Wall": 710.0, "Call Wall 1": 690.0}
+    secondary_levels = {"Call Wall 1 NDX": 710.0 * ratio}
+
+    matches = find_compounded_levels(primary_levels, secondary_levels, ratio, primary_spot)
+
+    assert len(matches) == 1
+    assert matches[0].primary_name == "Zero Gamma / Gamma Wall"
+    assert matches[0].primary_value == 710.0
+
+
 def test_find_compounded_levels_invalid_ratio_or_spot():
     assert find_compounded_levels({"cw1": 700.0}, {"cw1_ndx": 700.0}, ratio=0.0, primary_spot=700.0) == []
     assert find_compounded_levels({"cw1": 700.0}, {"cw1_ndx": 700.0}, ratio=41.0, primary_spot=0.0) == []

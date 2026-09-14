@@ -46,14 +46,28 @@ def find_compounded_levels(
         return []
 
     tolerance = primary_spot * COMPOUND_TOLERANCE_PCT
-    out: list[CompoundedLevel] = []
+
+    # Dos niveles primarios distintos (ej. Zero Gamma y Gamma Wall) a
+    # veces caen en el MISMO precio -- sin agrupar acá, el cruce de abajo
+    # los trata como entradas independientes y cada nivel NDX coincidente
+    # sale duplicado, una vez por cada nombre primario (reportado en
+    # vivo: "Zero Gamma (715.00) = Call Wall 1 NDX" y "Gamma Wall (715.00)
+    # = Call Wall 1 NDX" mostrando el MISMO número dos veces). Se agrupan
+    # por valor (redondeado a centavos, la precisión real de un precio)
+    # ANTES de cruzar, combinando sus nombres en una sola fila.
+    grouped_primary: dict[float, list[str]] = {}
     for p_name, p_val in primary_levels.items():
         if p_val is None:
             continue
+        grouped_primary.setdefault(round(p_val, 2), []).append(p_name)
+
+    out: list[CompoundedLevel] = []
+    for p_val, p_names in grouped_primary.items():
+        combined_name = " / ".join(p_names)
         for s_name, s_val in secondary_levels.items():
             if s_val is None:
                 continue
             s_translated = translate_level(s_val, ratio)
             if abs(p_val - s_translated) <= tolerance:
-                out.append(CompoundedLevel(p_name, p_val, s_name, s_translated))
+                out.append(CompoundedLevel(combined_name, p_val, s_name, s_translated))
     return out
