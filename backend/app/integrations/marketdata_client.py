@@ -80,11 +80,21 @@ async def fetch_oi_map(symbol: str, force: bool = False) -> dict[tuple[float, st
 
         # Sábado/domingo: el mercado no abre, así que el OI de ayer sigue
         # siendo el OI de hoy -- no tiene sentido gastar cuota pidiéndolo
-        # de nuevo. Devuelve el último cache que haya (aunque sea de
-        # varios días, sigue siendo mejor que el proxy de volumen) sin
-        # tocar la red.
-        if not force and _is_weekend_ny():
-            return cached[1] if cached is not None else None
+        # de nuevo, y con cache disponible se devuelve tal cual (aunque
+        # sea de varios días, sigue siendo mejor que el proxy de volumen)
+        # sin tocar la red.
+        # PERO -- bug real visto en vivo: _cache es solo de PROCESO (un
+        # dict en memoria), así que un redeploy en fin de semana (pasó
+        # varias veces seguidas mientras se debuggeaba otra cosa) lo deja
+        # completamente vacío -- sin ESTE chequeo de "cached is not None"
+        # acá, el gate de fin de semana devolvía None sin ni intentar la
+        # red, dejando al usuario con el proxy de volumen para NDX/VIX el
+        # fin de semana entero aunque la cuota diaria de MarketData.app
+        # siguiera intacta. Sin cache que perder, no hay motivo para NO
+        # intentar -- un solo fetch no gasta cuota real, y el cooldown de
+        # fallos (más abajo) sigue protegiendo contra reintentos en loop.
+        if not force and _is_weekend_ny() and cached is not None:
+            return cached[1]
 
         if not force and cached is not None and (time.time() - cached[0]) < REFRESH_INTERVAL_SECONDS:
             return cached[1]

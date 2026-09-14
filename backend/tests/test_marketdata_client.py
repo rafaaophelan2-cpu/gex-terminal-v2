@@ -57,15 +57,19 @@ def _patch_response(monkeypatch, response: _FakeResponse):
     monkeypatch.setattr(marketdata_client.httpx, "AsyncClient", lambda **kwargs: _FakeAsyncClient(response))
 
 
-def test_fetch_oi_map_skips_network_on_weekend_no_cache(monkeypatch):
+def test_fetch_oi_map_hits_network_on_weekend_without_a_cache_to_fall_back_on(monkeypatch):
+    # Bug real visto en vivo: _cache vive solo en memoria de proceso, así
+    # que un redeploy en fin de semana lo deja vacío -- el gate de fin de
+    # semana NO debe devolver None sin intentar la red cuando no hay nada
+    # que perder (sin esto, el usuario queda con el proxy de volumen para
+    # NDX/VIX todo el fin de semana aunque la cuota diaria siga intacta).
     monkeypatch.setattr(marketdata_client, "_is_weekend_ny", lambda: True)
-    calls = {"count": 0}
-    monkeypatch.setattr(marketdata_client.httpx, "AsyncClient", lambda **kwargs: calls.__setitem__("count", calls["count"] + 1))
+    payload = {"s": "ok", "strike": [15.0], "side": ["call"], "openInterest": [100]}
+    _patch_response(monkeypatch, _FakeResponse(200, payload))
 
     result = asyncio.run(fetch_oi_map("VIX"))
 
-    assert result is None
-    assert calls["count"] == 0
+    assert result == {(15.0, "call"): 100}
 
 
 def test_fetch_oi_map_skips_network_on_weekend_returns_stale_cache(monkeypatch):
