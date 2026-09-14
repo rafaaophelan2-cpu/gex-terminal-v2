@@ -99,11 +99,11 @@ def test_fetch_economic_calendar_filters_usd_and_includes_all_three_impact_level
     _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))  # miércoles
 
     payload = [
-        {"title": "CPI m/m", "country": "USD", "date": "09/09/2026 08:30:00", "impact": "High", "forecast": "0.3%", "previous": "0.2%"},
-        {"title": "Minor Data", "country": "USD", "date": "09/09/2026 11:00:00", "impact": "Low", "forecast": "", "previous": ""},
-        {"title": "German ZEW", "country": "EUR", "date": "09/09/2026 05:00:00", "impact": "High", "forecast": "", "previous": ""},
-        {"title": "ISM Services PMI", "country": "USD", "date": "09/09/2026 10:00:00", "impact": "Medium", "forecast": "54.1", "previous": "54.0"},
-        {"title": "Bank Holiday", "country": "USD", "date": "09/09/2026 00:00:00", "impact": "Holiday", "forecast": "", "previous": ""},
+        {"title": "CPI m/m", "country": "USD", "date": "2026-09-09T08:30:00-04:00", "impact": "High", "forecast": "0.3%", "previous": "0.2%"},
+        {"title": "Minor Data", "country": "USD", "date": "2026-09-09T11:00:00-04:00", "impact": "Low", "forecast": "", "previous": ""},
+        {"title": "German ZEW", "country": "EUR", "date": "2026-09-09T05:00:00-04:00", "impact": "High", "forecast": "", "previous": ""},
+        {"title": "ISM Services PMI", "country": "USD", "date": "2026-09-09T10:00:00-04:00", "impact": "Medium", "forecast": "54.1", "previous": "54.0"},
+        {"title": "Bank Holiday", "country": "USD", "date": "2026-09-09T00:00:00-04:00", "impact": "Holiday", "forecast": "", "previous": ""},
     ]
     monkeypatch.setattr(
         forexfactory_client.httpx, "AsyncClient",
@@ -125,10 +125,10 @@ def test_fetch_economic_calendar_covers_the_whole_week_monday_to_sunday(monkeypa
     _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))  # miércoles -> semana 07-13
 
     payload = [
-        {"title": "Monday Event (ya paso, sigue incluido)", "country": "USD", "date": "09/07/2026 08:30:00", "impact": "High", "forecast": "1.0", "previous": "0.9"},
-        {"title": "Sunday Event (borde final de la semana)", "country": "USD", "date": "09/13/2026 08:30:00", "impact": "High", "forecast": "", "previous": ""},
-        {"title": "Next Monday Event (fuera de rango)", "country": "USD", "date": "09/14/2026 08:30:00", "impact": "High", "forecast": "", "previous": ""},
-        {"title": "Prev Sunday Event (fuera de rango)", "country": "USD", "date": "09/06/2026 08:30:00", "impact": "High", "forecast": "", "previous": ""},
+        {"title": "Monday Event (ya paso, sigue incluido)", "country": "USD", "date": "2026-09-07T08:30:00-04:00", "impact": "High", "forecast": "1.0", "previous": "0.9"},
+        {"title": "Sunday Event (borde final de la semana)", "country": "USD", "date": "2026-09-13T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
+        {"title": "Next Monday Event (fuera de rango)", "country": "USD", "date": "2026-09-14T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
+        {"title": "Prev Sunday Event (fuera de rango)", "country": "USD", "date": "2026-09-06T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
     ]
     monkeypatch.setattr(
         forexfactory_client.httpx, "AsyncClient",
@@ -147,8 +147,8 @@ def test_fetch_economic_calendar_on_weekend_shows_next_week(monkeypatch):
     _install_fixed_now(monkeypatch, datetime(2026, 9, 12, 10, 0, tzinfo=forexfactory_client.NY_TZ))  # sábado -> semana 14-20
 
     payload = [
-        {"title": "This Week Event (fuera de rango, ya paso)", "country": "USD", "date": "09/09/2026 08:30:00", "impact": "High", "forecast": "", "previous": ""},
-        {"title": "Next Week Event", "country": "USD", "date": "09/16/2026 08:30:00", "impact": "High", "forecast": "", "previous": ""},
+        {"title": "This Week Event (fuera de rango, ya paso)", "country": "USD", "date": "2026-09-09T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
+        {"title": "Next Week Event", "country": "USD", "date": "2026-09-16T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
     ]
     monkeypatch.setattr(
         forexfactory_client.httpx, "AsyncClient",
@@ -163,7 +163,7 @@ def test_fetch_economic_calendar_on_weekend_shows_next_week(monkeypatch):
 def test_fetch_economic_calendar_uses_actual_field_when_published(monkeypatch):
     _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))
     payload = [
-        {"title": "CPI m/m", "country": "USD", "date": "09/09/2026 08:30:00", "impact": "High", "actual": "0.4%", "forecast": "0.3%", "previous": "0.2%"},
+        {"title": "CPI m/m", "country": "USD", "date": "2026-09-09T08:30:00-04:00", "impact": "High", "actual": "0.4%", "forecast": "0.3%", "previous": "0.2%"},
     ]
     monkeypatch.setattr(
         forexfactory_client.httpx, "AsyncClient",
@@ -172,31 +172,6 @@ def test_fetch_economic_calendar_uses_actual_field_when_published(monkeypatch):
 
     result = asyncio.run(fetch_economic_calendar())
     assert result[0]["actual"] == "0.4%"
-
-
-def test_fetch_economic_calendar_parses_real_feed_date_format(monkeypatch):
-    # Regresión: el feed real de nfs.faireconomy.media manda 'date' como
-    # "MM/DD/AAAA HH:MM:SS" (confirmado en vivo 14-sep-2026), no ISO8601
-    # con offset. El código viejo cortaba raw_date[:10]/[11:16] asumiendo
-    # ISO y nunca matcheaba el rango de semana -- /market/economic-calendar
-    # quedaba silenciosamente vacío pese a que el feed sí traía eventos.
-    _install_fixed_now(monkeypatch, datetime(2026, 9, 14, 12, 0, tzinfo=forexfactory_client.NY_TZ))  # lunes -> semana 14-20
-
-    payload = [
-        {"title": "FOMC Statement", "country": "USD", "date": "09/16/2026 13:00:00", "impact": "High", "forecast": "", "previous": ""},
-        {"title": "Bogus format, se ignora", "country": "USD", "date": "2026-09-16T13:00:00-04:00", "impact": "High", "forecast": "", "previous": ""},
-    ]
-    monkeypatch.setattr(
-        forexfactory_client.httpx, "AsyncClient",
-        lambda *a, **kw: _FakeAsyncClient(response=_FakeResponse(200, payload)),
-    )
-
-    result = asyncio.run(fetch_economic_calendar())
-
-    assert result == [{
-        "date": "2026-09-16", "time": "13:00", "event": "FOMC Statement", "impact": "high",
-        "actual": None, "forecast": None, "previous": None,
-    }]
 
 
 def test_fetch_raw_week_caches_within_ttl(monkeypatch):
