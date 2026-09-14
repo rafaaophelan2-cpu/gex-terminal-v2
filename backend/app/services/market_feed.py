@@ -399,6 +399,19 @@ class FeedRegistry:
             if feed is None:
                 feed = SymbolFeed(symbol, strikes_count)
                 self._feeds[symbol] = feed
+            elif strikes_count > feed.strikes_count:
+                # Bug real: el feed de un símbolo es COMPARTIDO entre
+                # todos los que lo miran (ref-count, un solo fetch a
+                # Schwab por símbolo) -- antes 'strikes_count' solo se
+                # usaba al CREAR el feed, así que el segundo usuario que
+                # pedía un rango más ancho para el mismo símbolo quedaba
+                # silenciosamente recortado al rango del primero, sin
+                # ningún error. Se ensancha el feed compartido al máximo
+                # rango pedido por cualquier suscriptor activo -- nunca se
+                # achica solo (si el suscriptor ancho se va, el feed queda
+                # más ancho de lo estrictamente necesario, un costo menor
+                # y aceptable frente a recortar datos que alguien pidió).
+                feed.strikes_count = strikes_count
             feed.add_subscriber()
             feed.start()
             return feed

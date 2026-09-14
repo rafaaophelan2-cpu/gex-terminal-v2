@@ -42,8 +42,20 @@ async def build_ai_context(symbol: str) -> dict:
     if feed is None or feed.df.empty or feed.spot_price <= 0:
         raise NoActiveFeedError(symbol)
 
+    # Se captura UNA vez acá y se reusa esta variable local en TODO lo que
+    # sigue -- antes 'metrics'/'ndx_compounded' (arriba, antes del
+    # gather) y 'candles'/'implied_range'/el "spot" final (abajo, DESPUÉS
+    # del gather) leían feed.spot_price por separado. El gather de más
+    # abajo puede tardar varios segundos (llamadas a Schwab serializadas
+    # detrás de un lock único, ver schwab_client.py), y el tick de fondo
+    # de este mismo feed sigue corriendo cada ~2s mientras tanto -- sin
+    # esto, el prompt de la IA podía terminar mezclando walls calculados
+    # contra un spot de UN instante con un "precio actual" declarado de
+    # un instante posterior, un desajuste real aunque sutil.
+    spot = feed.spot_price
+
     exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
-    metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
+    metrics = compute_metrics_for_dte(feed.df, exp_keys, spot)
     # compute_metrics_for_dte no sabe nada del percentil REAL que
     # iv_percentile_updater_loop calcula contra el historial de Supabase
     # (ver market_feed.SymbolFeed._iv_rank_is_real) -- sin este override
@@ -60,16 +72,16 @@ async def build_ai_context(symbol: str) -> dict:
         fetch_session_profile(overnight_key_for(now_lima)),
         fetch_session_profile(cash_key_for(now_lima)),
         fetch_vix_term_structure(),
-        fetch_ndx_compounded_levels(symbol, feed.spot_price, metrics),
+        fetch_ndx_compounded_levels(symbol, spot, metrics),
         fetch_vix_gamma_levels(symbol),
         fetch_economic_calendar(),
     )
-    intraday_context = build_intraday_context(candles, feed.spot_price)
-    implied_range = compute_implied_range(feed.spot_price, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
+    intraday_context = build_intraday_context(candles, spot)
+    implied_range = compute_implied_range(spot, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
     ndx_cross_check = format_ndx_cross_check_text(symbol, ndx_compounded)
 
     return {
-        "spot": feed.spot_price,
+        "spot": spot,
         "metrics": metrics,
         "vix_val": vix_val,
         "intraday_context": intraday_context,

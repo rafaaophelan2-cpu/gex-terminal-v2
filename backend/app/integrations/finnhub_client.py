@@ -15,6 +15,16 @@ NEWS_URL = "https://finnhub.io/api/v1/news"
 # usuarios pueden tenerla abierta a la vez).
 NEWS_CACHE_TTL_SECONDS = 300
 
+# Mismo patrón ya usado en marketdata_client.py/forexfactory_client.py,
+# que faltaba acá -- sin esto, una vez que el cache vence, CUALQUIER
+# apertura de la pestaña News (de cualquier usuario) durante una caída/
+# rate-limit sostenido de Finnhub vuelve a golpear la API sin ningún
+# backoff. Más corto que las otras integraciones (5 min, no 300-600s):
+# esto no corre en un tick de 2s como Schwab, solo cuando alguien abre la
+# pestaña, así que el riesgo de ráfaga es mucho menor.
+FAILURE_COOLDOWN_SECONDS = 300
+_last_attempt: float = 0.0
+
 _cache: dict[str, tuple[float, list[dict]]] = {}
 
 
@@ -43,10 +53,15 @@ async def fetch_market_news() -> list[dict]:
     if not settings.finnhub_api_key:
         return []
 
+    global _last_attempt
     cache_key = "general"
     cached = _cache.get(cache_key)
     if cached is not None and (time.time() - cached[0]) < NEWS_CACHE_TTL_SECONDS:
         return cached[1]
+
+    if (time.time() - _last_attempt) < FAILURE_COOLDOWN_SECONDS:
+        return cached[1] if cached is not None else []
+    _last_attempt = time.time()
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:

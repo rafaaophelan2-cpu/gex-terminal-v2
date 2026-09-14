@@ -1,7 +1,7 @@
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
-from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from schwab.auth import client_from_access_functions
@@ -33,6 +33,20 @@ _call_lock = asyncio.Lock()
 # del proceso (lru_cache/instancia única, no se reinicializa solo).
 _last_good: dict[str, object] = {}
 
+# Cooldown entre REINTENTOS tras un fallo real (excepción, no "vacío" --
+# ver la distinción más abajo) -- mismo patrón ya usado en
+# marketdata_client.py/forexfactory_client.py, que faltaba acá. Sin esto,
+# una falla sostenida de Schwab (network error, 5xx, rate limit) hacía que
+# CADA símbolo activo reintentara cada ~2s (TICK_INTERVAL_SECONDS de
+# market_feed.py) indefinidamente, todo serializado detrás de _call_lock --
+# si la llamada que falla es lenta (timeout) en vez de fallar rápido, eso
+# puede llegar a demorar el feed de TODOS los símbolos en cadena, no solo
+# el que está fallando. 15s (no los 300-600s de las otras integraciones):
+# Schwab alimenta un feed que se supone en vivo, no puede esperar minutos
+# para recuperarse, pero 15s igual corta la tasa de reintentos más de 7x.
+FAILURE_COOLDOWN_SECONDS = 15
+_last_failure_attempt: dict[str, float] = {}
+
 
 def _read_token_sync() -> dict | None:
     client = get_supabase_client()
@@ -51,34 +65,84 @@ def _write_token_sync(token_metadata: dict, *args, **kwargs) -> None:
 
     *args/**kwargs: schwab-py invoca este callback pasando también los
     kwargs internos de authlib (ej. refresh_token=...) además del token
-    ya envuelto -- se ignoran, solo se persiste token_metadata."""
-    client = get_supabase_client()
-    if client is None:
-        return
-    client.table("schwab_oauth_token").upsert({"id": 1, "token_json": token_metadata}).execute()
+    ya envuelto -- se ignoran, solo se persiste token_metadata.
+
+    schwab-py (con asyncio=True) llama a este callback de forma SÍNCRONA
+    desde dentro de un wrapper async que nunca lo espera/threadea (ver
+    schwab/auth.py: 'async def oauth_client_update_token(...):
+    wrapped_token_write_func(...)', sin await ni to_thread) -- si este
+    cuerpo hace la escritura a Supabase DIRECTO acá (como hacía antes),
+    bloquea el event loop ENTERO mientras dura esa llamada de red, cada
+    vez que el token se refresca solo (~cada 30 min en horario de
+    mercado) -- congelando el tick de TODAS las conexiones WS activas al
+    mismo tiempo. Se manda a un thread aparte sin esperarlo (fire-and-
+    forget): schwab-py tampoco lo espera, así que no cambia el
+    comportamiento desde su perspectiva, solo deja de bloquear el loop."""
+    def _do_write():
+        client = get_supabase_client()
+        if client is None:
+            return
+        try:
+            client.table("schwab_oauth_token").upsert({"id": 1, "token_json": token_metadata}).execute()
+        except Exception:
+            logger.exception("_write_token_sync(): no se pudo persistir el token refrescado en Supabase.")
+
+    try:
+        asyncio.get_running_loop().create_task(asyncio.to_thread(_do_write))
+    except RuntimeError:
+        # Sin event loop corriendo (ej. un script/test síncrono) -- no hay
+        # loop que bloquear, ejecutar directo.
+        _do_write()
 
 
-@lru_cache
+_cached_schwab_client = None
+_client_init_last_attempt: float = 0.0
+# Cooldown entre INTENTOS de crear el cliente cuando el anterior falló
+# (sin credenciales o sin token en Supabase todavía) -- evita golpear
+# Supabase en cada tick (cada ~2s por símbolo activo) mientras se soluciona,
+# pero SÍ vuelve a intentar solo, sin necesitar un restart manual del proceso.
+CLIENT_INIT_COOLDOWN_SECONDS = 60
+
+
 def get_schwab_client():
     """Cliente único de Schwab para todo el proceso (equivalente al
     @st.cache_resource de app.py). El token se lee/escribe en Supabase en
     vez de un archivo en disco -- Render no tiene filesystem persistente
     entre deploys/restarts. Devuelve None si no hay credenciales o token
-    guardado todavía (ver scripts/bootstrap_schwab_token.py)."""
+    guardado todavía (ver scripts/bootstrap_schwab_token.py).
+
+    NO es @lru_cache (como era antes): un @lru_cache sobre una función sin
+    argumentos memoriza CUALQUIER resultado para siempre, incluido None --
+    si esta función se llamaba por primera vez antes de que existiera la
+    fila del token en Supabase, ese None quedaba fijo de por vida del
+    proceso, y correr bootstrap_schwab_token.py después no tenía NINGÚN
+    efecto hasta un restart manual (bug real). Acá se cachea el cliente
+    SOLO cuando la creación tuvo éxito; si falló, se reintenta solo
+    (con cooldown) en la próxima llamada."""
+    global _cached_schwab_client, _client_init_last_attempt
+    if _cached_schwab_client is not None:
+        return _cached_schwab_client
+
     if not settings.schwab_client_id or not settings.schwab_client_secret:
         return None
+
+    now = time.time()
+    if (now - _client_init_last_attempt) < CLIENT_INIT_COOLDOWN_SECONDS:
+        return None
+    _client_init_last_attempt = now
 
     token = _read_token_sync()
     if token is None:
         return None
 
-    return client_from_access_functions(
+    _cached_schwab_client = client_from_access_functions(
         api_key=settings.schwab_client_id,
         app_secret=settings.schwab_client_secret,
         token_read_func=lambda: token,
         token_write_func=_write_token_sync,
         asyncio=True,
     )
+    return _cached_schwab_client
 
 
 async def call_with_fallback(cache_key: str, empty_value, fetch_coro_fn):
@@ -87,6 +151,10 @@ async def call_with_fallback(cache_key: str, empty_value, fetch_coro_fn):
     conocido para cache_key en vez de propagar un vacío -- así un fallo
     transitorio en una llamada nunca "vacía" lo que ven las conexiones
     activas. Port async de _schwab_call_with_fallback en app.py (~línea 633)."""
+    last_failure = _last_failure_attempt.get(cache_key, 0.0)
+    if (time.time() - last_failure) < FAILURE_COOLDOWN_SECONDS:
+        return _last_good.get(cache_key, empty_value)
+
     try:
         async with _call_lock:
             result = await fetch_coro_fn()
@@ -97,6 +165,10 @@ async def call_with_fallback(cache_key: str, empty_value, fetch_coro_fn):
         if not is_empty:
             _last_good[cache_key] = result
             return result
+        # "Vacío" (sin excepción) NO activa el cooldown de fallos a
+        # propósito -- puede ser una respuesta real y momentánea (ej. el
+        # mercado todavía no abrió), no necesariamente una falla sostenida
+        # de Schwab; solo una excepción real (abajo) lo activa.
         logger.warning("call_with_fallback('%s'): resultado vacío, usando último valor bueno.", cache_key)
     except Exception:
         # Se tragaba en silencio -- si fetch_coro_fn tira (ej. el token de
@@ -106,6 +178,7 @@ async def call_with_fallback(cache_key: str, empty_value, fetch_coro_fn):
         # market_feed.py) puede verla. Sin loggear ACÁ, un fallo sostenido
         # de Schwab es indistinguible de "no hay dato nuevo todavía".
         logger.exception("call_with_fallback('%s'): fetch_coro_fn() falló, usando último valor bueno si hay.", cache_key)
+        _last_failure_attempt[cache_key] = time.time()
     return _last_good.get(cache_key, empty_value)
 
 

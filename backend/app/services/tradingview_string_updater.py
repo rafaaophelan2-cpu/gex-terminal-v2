@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 from app.domain.gex_math import compute_call_put_walls, compute_zero_gamma
 from app.domain.metrics import get_nearest_dte_subset
@@ -12,13 +13,26 @@ logger = logging.getLogger(__name__)
 
 UPDATE_INTERVAL_SECONDS = 60
 
-# El usuario pidió explícitamente "que el primer string aparezca a las
-# 8:31 y luego se siga actualizando hasta el fin de la sesión (3pm)" --
-# un minuto después de la apertura de Cash (8:30, ver session_profile.py),
-# no en el mismo instante, para dar tiempo a que el primer tick del día
-# ya haya llegado con datos reales.
-STRING_WINDOW_START = time(8, 31)
-STRING_WINDOW_END = time(15, 0)
+# NY_TZ (no SESSION_TZ/Lima) para la ventana -- bug real: esto estaba
+# fijado a horario de reloj de Lima (8:31-15:00), que solo coincide con
+# el horario REAL de mercado (9:30-16:00 hora NY) mientras NY está en
+# horario de verano (EDT, UTC-4, ~marzo-noviembre). De noviembre a marzo
+# (NY en EST, UTC-5, el MISMO offset que Lima) esa ventana arrancaba una
+# hora antes de tiempo y -- más grave -- CORTABA una hora antes del
+# cierre real, perdiéndose en silencio la última hora de la sesión
+# (15:00-16:00 EST). El horario de mercado de NYSE/Nasdaq está definido
+# en hora LOCAL de NY por definición (9:30-16:00 SIEMPRE, ahí no hay
+# ambigüedad de DST) -- comparar directo contra eso evita depender de
+# que el offset fijo de Lima coincida por casualidad con el de NY.
+NY_TZ = ZoneInfo("America/New_York")
+
+# Mismo margen de 1 minuto después de la apertura que pedía el usuario
+# originalmente (dar tiempo a que el primer tick del día ya haya llegado
+# con datos reales), pero anclado a la apertura/cierre REAL de mercado en
+# hora NY (9:30/16:00) en vez de un horario de Lima que se desalinea con
+# el mercado real la mitad del año.
+STRING_WINDOW_START = time(9, 31)
+STRING_WINDOW_END = time(16, 0)
 
 # {symbol: {"string": str, "updated_at": "HH:MM:SS", "ticker": str}} --
 # estado compartido en memoria, mismo patrón que feed_registry: no
@@ -45,12 +59,14 @@ def _build_string_for_feed(feed) -> str | None:
 
 async def tradingview_string_updater_loop() -> None:
     """Task de fondo: recalcula el string de niveles para TradingView una
-    vez por minuto, SOLO dentro de la ventana 08:31-15:00 hora Lima (Cash
-    Session + 1 minuto de margen) -- fuera de ese horario no tiene sentido
-    seguir generando strings con datos de una sesión ya cerrada."""
+    vez por minuto, SOLO dentro de la ventana 9:31-16:00 hora NY (Cash
+    Session + 1 minuto de margen, ya ajustado a DST por ZoneInfo) --
+    fuera de ese horario no tiene sentido seguir generando strings con
+    datos de una sesión ya cerrada."""
     while True:
         now_lima = datetime.now(SESSION_TZ)
-        if STRING_WINDOW_START <= now_lima.time() <= STRING_WINDOW_END:
+        now_ny = datetime.now(NY_TZ)
+        if STRING_WINDOW_START <= now_ny.time() <= STRING_WINDOW_END:
             for feed in feed_registry.active_feeds():
                 try:
                     s = _build_string_for_feed(feed)

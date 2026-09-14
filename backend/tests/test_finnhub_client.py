@@ -50,6 +50,7 @@ class _FakeSettings:
 @pytest.fixture(autouse=True)
 def _reset_module_state():
     finnhub_client._cache.clear()
+    finnhub_client._last_attempt = 0.0
 
 
 def test_fetch_market_news_returns_empty_without_api_key(monkeypatch):
@@ -99,3 +100,39 @@ def test_fetch_market_news_caches_within_ttl(monkeypatch):
     asyncio.run(fetch_market_news())
 
     assert calls["count"] == 1
+
+
+def test_fetch_market_news_does_not_retry_immediately_after_a_failure(monkeypatch):
+    # Mismo patrón ya probado en marketdata_client.py/forexfactory_client.py,
+    # que faltaba acá -- sin cooldown, cada apertura de la pestaña News
+    # durante una caída sostenida de Finnhub reintenta sin ningún backoff.
+    monkeypatch.setattr(finnhub_client, "get_settings", lambda: _FakeSettings())
+    calls = {"count": 0}
+
+    def _fake_async_client(*a, **kw):
+        calls["count"] += 1
+        return _FakeAsyncClient(exc=httpx.ConnectError("boom"))
+
+    monkeypatch.setattr(finnhub_client.httpx, "AsyncClient", _fake_async_client)
+
+    asyncio.run(fetch_market_news())
+    asyncio.run(fetch_market_news())
+
+    assert calls["count"] == 1
+
+
+def test_fetch_market_news_retries_after_cooldown_elapses(monkeypatch):
+    monkeypatch.setattr(finnhub_client, "get_settings", lambda: _FakeSettings())
+    calls = {"count": 0}
+
+    def _fake_async_client(*a, **kw):
+        calls["count"] += 1
+        return _FakeAsyncClient(exc=httpx.ConnectError("boom"))
+
+    monkeypatch.setattr(finnhub_client.httpx, "AsyncClient", _fake_async_client)
+
+    asyncio.run(fetch_market_news())
+    finnhub_client._last_attempt -= finnhub_client.FAILURE_COOLDOWN_SECONDS + 1
+    asyncio.run(fetch_market_news())
+
+    assert calls["count"] == 2

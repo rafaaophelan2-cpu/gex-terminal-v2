@@ -1,8 +1,11 @@
+import logging
+
 import httpx
 
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 async def push_live_levels(payload: dict) -> dict:
@@ -22,6 +25,12 @@ async def push_live_levels(payload: dict) -> dict:
             return {"ok": True, "code": resp.status_code, "detail": "OK"}
         return {"ok": False, "code": resp.status_code, "detail": resp.text[:200]}
     except Exception as e:
+        # El error SÍ vuelve en el dict devuelto, pero antes nunca quedaba
+        # rastro en los logs del servidor a menos que el caller lo
+        # loguee explícitamente -- una caída sostenida de Firebase (el
+        # indicador de Quantower deja de recibir datos) era indistinguible
+        # en Render de "nadie llamó a esta función" sin este log.
+        logger.exception("push_live_levels() falló.")
         return {"ok": False, "code": None, "detail": str(e)[:200]}
 
 
@@ -42,5 +51,8 @@ async def fetch_session_profile(session_key: str) -> dict | None:
             data = resp.json()
             return data if isinstance(data, dict) else None
     except Exception:
-        pass
+        # 'pass' silencioso -- una caída sostenida de Firebase acá no
+        # dejaba NINGÚN rastro en los logs, indistinguible de "todavía no
+        # hay perfil de sesión para esta clave" (un estado normal).
+        logger.exception("fetch_session_profile(%s) falló.", session_key)
     return None

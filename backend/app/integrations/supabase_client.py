@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo
@@ -8,6 +9,7 @@ from supabase import Client, create_client
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # El dedup de insert_gex_snapshot compara por symbol+time ("HH:MM", sin
 # fecha) -- necesita acotarse al día de mercado en curso para no confundir
@@ -166,6 +168,14 @@ async def fetch_daily_atm_iv_history(symbol: str, max_days: int = 400) -> list[f
     try:
         rows = await asyncio.to_thread(_query)
     except Exception:
+        # Este except cubre tanto el caso ANTICIPADO (columna 'atm_iv'
+        # todavía no existe, ver docstring) como cualquier OTRO fallo real
+        # (auth, red, un problema de schema distinto) -- antes ninguno de
+        # los dos dejaba rastro, así que un fallo real (no solo la
+        # migración pendiente) era indistinguible de "sin historial
+        # todavía" y el percentil real de IV podía quedar sin activarse
+        # para siempre sin ninguna forma de diagnosticar por qué.
+        logger.exception("fetch_daily_atm_iv_history(%s) falló -- puede ser la migración de 'atm_iv' pendiente, o un fallo real.", symbol)
         return []
 
     # Filas ya vienen de más reciente a más vieja -- la primera vez que se
