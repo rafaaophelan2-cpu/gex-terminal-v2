@@ -17,7 +17,20 @@ NY_TZ = ZoneInfo("America/New_York")
 # reemplaza acá por completo. Es el mismo feed detrás del widget de
 # calendario de forexfactory.com (no un scrape de su HTML), pensado para
 # consumo programático.
-THISWEEK_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+#
+# NO se pide directo -- se pasa por un proxy propio en Cloudflare Pages
+# (frontend/functions/ff-calendar.js, mismo dominio que ya sirve el
+# frontend). Motivo real, confirmado en vivo (14-sep-2026): el IP de
+# salida de Render (compartido entre clientes del plan free/starter)
+# quedó bloqueado por ForexFactory con 429 en CADA intento durante más
+# de 13 horas seguidas, across multiple redeploys/instancias -- mientras
+# que el MISMO fetch, desde cualquier otro IP (incluida la red de
+# Cloudflare), respondía 200 al instante. El cooldown de fallos
+# (FAILURE_COOLDOWN_SECONDS más abajo) evita reintentar en loop, pero no
+# soluciona un bloqueo de horas sobre un IP compartido que no controlamos
+# -- proxear a través de Cloudflare (una red completamente distinta)
+# evita el problema de raíz en vez de solo mitigar sus síntomas.
+THISWEEK_URL = "https://gex-terminal-8vb.pages.dev/ff-calendar"
 
 # ForexFactory limita este feed a 2 requests cada 5 min por IP (para
 # cualquier formato) -- un cache de 30 min deja muchísimo margen incluso
