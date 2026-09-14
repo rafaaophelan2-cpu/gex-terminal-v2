@@ -107,6 +107,22 @@ export function renderChainFull(el, payload, spot, viewMode = 'net') {
 // requestAnimationFrame difiere la medición al siguiente frame, después
 // de que el navegador ya pintó el layout real del contenedor recién
 // visible (medir en el mismo tick daba 0 o un tamaño intermedio).
+//
+// IMPORTANTE -- por qué esto NO va en updateTick() (más abajo): este
+// contenedor (.chart-container) no tiene una altura fija de CSS, solo
+// min-height -- su alto real lo termina resolviendo el layout flex de
+// .gex-info-charts-column. Llamar Plotly.Plots.resize() una vez está
+// bien (mide el contenedor y ajusta), pero updateTick() corre en CADA
+// tick de WebSocket (~1/seg) indefinidamente mientras la pestaña esté
+// abierta -- llamarlo ahí también hacía que el chart creciera un poco
+// en cada resize (el contenedor sin alto fijo + el propio SVG de Plotly
+// recién resizeado se retroalimentaban, sumando unos px de más por
+// ciclo) hasta quedar gigante después de un rato en pantalla (reportado
+// en vivo). El resize real que hace falta (cambio de tamaño del
+// contenedor por split-view/sidebar) ya lo cubre forceGexInfoRedraw()
+// en main.js, que llama a renderChainFull() -- y ESA sí necesita este
+// forceResize, porque corre solo ante un cambio de layout real, no en
+// cada tick.
 function forceResize(el) {
   requestAnimationFrame(() => {
     Plotly.Plots.resize(el)?.catch(() => {})
@@ -114,8 +130,9 @@ function forceResize(el) {
 }
 
 /** Actualización liviana (Plotly.restyle/relayout) en cada 'tick' -- nunca
- * newPlot/react acá salvo que el modo haya cambiado, es justo lo que
- * evita el parpadeo. */
+ * newPlot/react ni Plotly.Plots.resize() acá salvo que el modo haya
+ * cambiado (eso sí redibuja desde cero vía renderChainFull), es justo
+ * lo que evita el parpadeo Y el crecimiento acumulado del chart. */
 export function updateTick(el, payload, spot, viewMode = 'net') {
   if (initializedMode === null || initializedMode !== viewMode) {
     renderChainFull(el, payload, spot, viewMode)
@@ -144,7 +161,6 @@ export function updateTick(el, payload, spot, viewMode = 'net') {
     })
   }
   Plotly.relayout(el, { shapes: spotLineShape(spot) })
-  forceResize(el)
 }
 
 export function resetGexInfoChart() {

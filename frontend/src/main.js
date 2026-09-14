@@ -6,7 +6,7 @@ import { fetchAvailableDates, fetchCandles, fetchCharmHeatmap, fetchCompoundedLe
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
-import { renderGammaPriceProfileChart } from './charts/gammaPriceProfileChart.js'
+import { renderGammaPriceProfileChart, resetGammaPriceProfileChart, updateGammaPriceProfileTick } from './charts/gammaPriceProfileChart.js'
 import { renderGammaSurfaceChart } from './charts/gammaSurfaceChart.js'
 import { renderGammaVolumeProfile, setGammaVolumeProfileVisibleRange } from './charts/gammaVolumeProfile.js'
 import { renderChainFull, resetGexInfoChart, updateTick } from './charts/gexInfoChart.js'
@@ -1236,6 +1236,7 @@ function showDashboard(username) {
   sessionExpiredHandled = false
   userBadge.textContent = `👤 ${username}`
   resetGexInfoChart()
+  resetGammaPriceProfileChart()
   resetGreeksChart()
   switchIconRailSection('gex-analytics')
   setDefaultDriftDate()
@@ -1361,7 +1362,11 @@ function handleMarketMessage(data) {
     }
 
     if (info.price_profile && isTabVisible('gex-info')) {
-      renderGammaPriceProfileChart(gammaPriceProfileChartEl, info.price_profile)
+      if (data.type === 'chain_full') {
+        renderGammaPriceProfileChart(gammaPriceProfileChartEl, info.price_profile)
+      } else {
+        updateGammaPriceProfileTick(gammaPriceProfileChartEl, info.price_profile)
+      }
     }
 
     if (data.greeks) {
@@ -1466,6 +1471,7 @@ function applySymbolChange() {
   symbolInput.value = symbol
   strikeRangeInput.value = strikeRange
   resetGexInfoChart()
+  resetGammaPriceProfileChart()
   wsClient?.subscribe(symbol, strikeRange)
 
   // Las expiraciones/selección del GRID y del 3D son por símbolo -- al
