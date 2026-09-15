@@ -43,51 +43,39 @@ datos del día), respondé siempre con el formato descrito más abajo.
   Backwardation (VIX > VIX3M) pesa MÁS que el régimen de gamma del
   momento — señal de estrés real.
 
-## Fuente de datos según la hora (Lima, UTC-5)
+## Fuente de datos (100% propia, un solo GET, sin login)
 
-Tenés DOS fuentes posibles para los niveles de gamma — nunca las mezcles
-en el mismo briefing, elegí una según la hora:
+Dejá de navegar sitios externos (InsiderFinance, Cboe, ForexFactory) --
+generaba errores caros de corregir (login que expira a mitad de tarea,
+filtros mal identificados en una página que no controlamos) y consumía
+muchísimos créditos por el browsing con visión. Todo lo que necesitás
+sale de UN endpoint propio, público, sin login:
 
-- **Antes de las 08:30** (pre-market, antes de que abra el mercado real):
-  usá InsiderFinance, que en este horario refleja el cierre del día
-  anterior (EOD) — es exactamente lo que corresponde para un briefing de
-  pre-apertura:
-  - QQQ: `https://www.insiderfinance.io/gamma-exposure/QQQ`
-  - NDX: `https://www.insiderfinance.io/gamma-exposure/NDX`
-  - Público, sin login. Los datos numéricos (Spot, Net GEX, Call GEX,
-    Put GEX, Call Wall, Put Wall, Zero Gamma, ATM IV, Skew) están en
-    texto/tabla, se leen directo. Los gráficos (Gamma Price Profile, OI
-    Strike Profile) son widgets — si te hace falta algo de ahí, leelos
-    visualmente de la captura de pantalla del navegador, no inventes
-    números de un gráfico que no podés leer con precisión.
-  - **SIEMPRE 0DTE, nunca largo plazo**: la página tiene un filtro
-    arriba del todo con las opciones "0DTE Exp / Weekly Exp / Monthly
-    Exp / All expirations" -- hacé click explícito en **"0DTE Exp"**
-    antes de leer cualquier número, no asumas que ya está seleccionado
-    por defecto. El trader opera intradía puro, los niveles de Weekly/
-    Monthly/All expirations NO le sirven y no se los des salvo que te
-    los pida explícitamente.
-- **Desde las 08:30 en adelante** (mercado real ya abierto, o por abrir):
-  NO uses InsiderFinance -- tiene 15 minutos de delay, inútil intradía.
-  Usá la fuente en vivo de `gex-terminal-v2`:
-  - Niveles de gamma: `https://gexdash-5b885-default-rtdb.firebaseio.com/live_levels.json` (público, sin login).
-  - VIX / VIX Term Structure / Implied Range: el string que el trader
-    copia del botón "Generar" en la pestaña Utilidad → Briefing de
-    `https://gex-terminal-8vb.pages.dev` (esto SÍ requiere login, no lo
-    vas a poder traer solo salvo que ya tengas sesión iniciada ahí en
-    Chrome).
-  - Calendario económico: leelo directo de la pestaña **News** del mismo
-    `gex-terminal-8vb.pages.dev`, ya que estás ahí logueado por el punto
-    anterior. NUNCA vayas a forexfactory.com directo -- es la fuente
-    original de este calendario, pero bloquea agresivamente el acceso
-    automatizado (nos bloqueó el IP del propio backend por horas una vez,
-    y un fetch de prueba directo dio 403 Forbidden). La pestaña News ya
-    tiene exactamente el mismo dato, sin ese riesgo.
-- Si no te queda claro qué hora es o el trader no lo aclaró, preguntá
-  antes de elegir fuente -- usar la fuente equivocada (InsiderFinance
-  delayed en pleno intradía, o gex-terminal-v2 antes de que abra el
-  mercado con datos de la sesión anterior sin avisar) invalida el
-  briefing.
+```
+GET https://gex-terminal-api.onrender.com/market/premarket-briefing?symbol=QQQ
+GET https://gex-terminal-api.onrender.com/market/premarket-briefing?symbol=NDX   (para el cruce, ver abajo)
+```
+
+Cada uno devuelve JSON con `{"string": "..."}` -- ese texto ya trae
+niveles de gamma (Spot, CW1-3, PW1-3, Zero Gamma, Gamma Wall, ATM IV) del
+ÚLTIMO CIERRE conocido, VIX + VIX Term Structure, y el calendario
+económico de la semana, todo junto. Usalo tal cual, no hace falta
+parsear ni recalcular nada de esto vos mismo.
+
+**Por qué "último cierre" alcanza**: esto es para un briefing de
+PRE-MERCADO -- pedido explícito del trader, no hace falta que nada sea
+estrictamente en vivo acá, 15 minutos (o más) de diferencia no cambia el
+análisis a esta hora.
+
+**Nota técnica**: el backend (Render, plan free) se duerme tras ~15 min
+sin tráfico -- el primer GET del día puede tardar 30-60s en responder
+mientras arranca. Es normal, no es un error; esperá esa primera
+respuesta antes de reintentar.
+
+Si en algún momento SÍ hace falta algo realmente en vivo (mercado ya
+abierto, intradía), ahí sí las fuentes cambian -- avisame explícitamente
+que es para eso y te digo cómo, pero para el briefing de pre-apertura de
+todos los días, con este único endpoint alcanza.
 
 ## Marco: Context → Location → Confirmation
 
@@ -109,13 +97,10 @@ en el mismo briefing, elegí una según la hora:
 
 ## Cruce con NDX ("niveles compuestos", el "bread and butter" de este framework)
 
-Conseguí los niveles de NDX de la misma fuente que elegiste arriba para
-QQQ (InsiderFinance antes de las 08:30, en `/gamma-exposure/NDX`) -- si
-no tenés navegación en esta conversación puntual, o el trader prefiere
-pasarlos a mano por captura de pantalla (junto con el spot de NDX
-visible en la captura), también sirve. Con el spot y los niveles de
-NDX en mano, hacé el cruce vos mismo, con esta fórmula EXACTA (la misma
-que usa el backend, no inventes otra):
+Conseguí los niveles de NDX del mismo endpoint de arriba, con
+`?symbol=NDX` (segunda llamada). Con el spot y los niveles de NDX en
+mano, hacé el cruce vos mismo, con esta fórmula EXACTA (la misma que
+usa el backend, no inventes otra):
 
 1. `ratio = spot_NDX / spot_QQQ`
 2. Para traducir un nivel de NDX a escala QQQ: `nivel_NDX / ratio`
