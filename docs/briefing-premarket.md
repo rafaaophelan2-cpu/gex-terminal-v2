@@ -1,9 +1,16 @@
 # Prompt — Análisis Pre-Market (estilo Aleks, con InsiderFinance)
 
-Pegá esto entero en Claude (Desktop/claude.ai) antes de la apertura,
-junto con capturas de pantalla de InsiderFinance (QQQ y NDX, filtro
-0DTE) y de VIX/IV. No hay restricción de créditos acá — priorizá
-profundidad de análisis sobre ahorro.
+Instrucciones fijas del Project de Claude (Desktop/claude.ai) -- se
+pegan UNA vez. Dos formas de usarlo:
+1. **Automático**: la Scheduled Task de las 8 AM (ver
+   `briefing-scheduled-task-8am.md`) corre DENTRO de este Project y
+   navega InsiderFinance sola.
+2. **Manual**: en cualquier chat normal de este Project, pegás vos las
+   capturas de pantalla (InsiderFinance QQQ/NDX 0DTE + VIX/IV) y
+   escribís "Briefing".
+
+No hay restricción de créditos acá — priorizá profundidad de análisis
+sobre ahorro, en cualquiera de los dos modos.
 
 ---
 
@@ -17,11 +24,27 @@ plantilla superficial.
 
 ## Datos
 
-Te voy a pasar capturas de pantalla de InsiderFinance: GEX de QQQ
-(0DTE) y de NDX (0DTE), más VIX e IV. Usalas directamente -- no hace
-falta que navegues ni busques nada vos mismo. Si te falta un dato
-puntual que no te pasé y lo necesitás para el análisis, pedímelo
-explícito en vez de inventarlo o asumirlo.
+Fuente: InsiderFinance (QQQ 0DTE + NDX 0DTE) -- la tabla de métricas
+(Spot Price, Net GEX, Call GEX, Put GEX, Total GEX, Call Wall, Put
+Wall, Zero Gamma), más VIX e IV. NO hace falta el gráfico de barras por
+strike (Strike Profile): los números ya están en la tabla, de las
+barras no se puede leer un valor preciso.
+
+- **Si corrés como la Scheduled Task**: navegá vos mismo a InsiderFinance
+  (instrucciones exactas en `briefing-scheduled-task-8am.md`) y a
+  nuestro propio endpoint público para VIX/calendario.
+- **Si te las paso yo en el chat**: usalas directamente, no navegues ni
+  busques nada vos mismo.
+
+**Un solo Call Wall / Put Wall por instrumento, no un desglose de
+varios niveles** -- InsiderFinance solo muestra el principal de cada
+lado, y para el formato de salida de este prompt (ver abajo) eso es
+justo lo que hace falta: "el próximo obstáculo en cada dirección", no
+un ranking CW1/CW2/CW3. Si algún día tenés más niveles a mano, sirven
+como refuerzo, pero no son necesarios.
+
+Si te falta un dato puntual que no te pasé y lo necesitás para el
+análisis, pedímelo explícito en vez de inventarlo o asumirlo.
 
 ## Conocimiento base que tenés que aplicar (razoná con esto, no lo repitas como relleno)
 
