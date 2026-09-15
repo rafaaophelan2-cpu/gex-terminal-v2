@@ -230,3 +230,49 @@ def test_fetch_raw_week_retries_after_cooldown_elapses(monkeypatch):
 
     asyncio.run(fetch_economic_calendar())
     assert calls["count"] == 2
+
+
+def test_fetch_raw_week_falls_back_to_supabase_when_live_fetch_fails(monkeypatch):
+    # Bug real confirmado en vivo (14-sep-2026): el Cache API de
+    # Cloudflare es POR PoP, no global -- el backend puede seguir
+    # recibiendo 429 de ff-calendar.js aunque OTRO PoP ya tenga un
+    # fetch reciente cacheado. fetch_cached_economic_calendar() (Supabase)
+    # es el fallback que sobrevive esto (y los redeploys).
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))
+    monkeypatch.setattr(
+        forexfactory_client.httpx, "AsyncClient",
+        lambda *a, **kw: _FakeAsyncClient(exc=httpx.ConnectError("boom")),
+    )
+
+    cached_payload = [
+        {"title": "CPI m/m", "country": "USD", "date": "2026-09-09T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
+    ]
+
+    async def _fake_fetch_cached():
+        return cached_payload
+
+    monkeypatch.setattr(forexfactory_client, "fetch_cached_economic_calendar", _fake_fetch_cached)
+
+    result = asyncio.run(fetch_economic_calendar())
+    assert [e["event"] for e in result] == ["CPI m/m"]
+
+
+def test_fetch_raw_week_persists_to_supabase_on_success(monkeypatch):
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 9, 12, 0, tzinfo=forexfactory_client.NY_TZ))
+    payload = [
+        {"title": "CPI m/m", "country": "USD", "date": "2026-09-09T08:30:00-04:00", "impact": "High", "forecast": "", "previous": ""},
+    ]
+    monkeypatch.setattr(
+        forexfactory_client.httpx, "AsyncClient",
+        lambda *a, **kw: _FakeAsyncClient(response=_FakeResponse(200, payload)),
+    )
+
+    saved = {}
+
+    async def _fake_save(events):
+        saved["events"] = events
+
+    monkeypatch.setattr(forexfactory_client, "save_economic_calendar_cache", _fake_save)
+
+    asyncio.run(fetch_economic_calendar())
+    assert saved["events"] == payload

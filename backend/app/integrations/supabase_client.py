@@ -297,6 +297,54 @@ async def insert_chat_message(username: str, role: str, content: str) -> None:
     await asyncio.to_thread(_insert)
 
 
+async def fetch_cached_economic_calendar() -> list[dict]:
+    """Último calendario económico crudo (payload de ForexFactory, ANTES
+    del filtro por semana/impacto de fetch_economic_calendar) que se
+    haya guardado con éxito -- fallback DURABLE para cuando el fetch en
+    vivo falla, ya sea por un 429 real de ForexFactory o por el bug de
+    caché descubierto en vivo (14-sep-2026): el Cache API de Cloudflare
+    es POR NODO/PoP, no global -- el backend y una prueba manual pueden
+    pegarle a PoPs distintos con estados de caché distintos, así que un
+    'ya está cacheado, no debería volver a fallar' resultó falso: cada
+    PoP sin caché fresco vuelve a pegarle a ForexFactory por su cuenta.
+    A diferencia de _cache en forexfactory_client.py (memoria de
+    proceso, se resetea en cada redeploy), esto sobrevive redeploys Y
+    fallos transitorios del fetch -- un calendario de hace unas horas
+    sigue siendo mucho mejor que uno vacío, ver domain/lessons de este
+    proyecto sobre 'cache en memoria + redeploys frecuentes'."""
+    client = get_supabase_client()
+    if client is None:
+        return []
+
+    def _fetch():
+        res = client.table("economic_calendar_cache").select("events_json").eq("id", 1).limit(1).execute()
+        return res.data[0]["events_json"] if res.data else []
+
+    try:
+        return await asyncio.to_thread(_fetch)
+    except Exception:
+        logger.exception("fetch_cached_economic_calendar() falló -- se devuelve [] (mismo criterio que un fetch en vivo fallido).")
+        return []
+
+
+async def save_economic_calendar_cache(events: list[dict]) -> None:
+    """Persiste el payload crudo de ForexFactory recién fetcheado con
+    éxito -- ver fetch_cached_economic_calendar() para el motivo. Fila
+    única (id=1, upsert), igual que schwab_oauth_token en
+    schwab_client.py."""
+    client = get_supabase_client()
+    if client is None:
+        return
+
+    def _save():
+        client.table("economic_calendar_cache").upsert({"id": 1, "events_json": events}).execute()
+
+    try:
+        await asyncio.to_thread(_save)
+    except Exception:
+        logger.exception("save_economic_calendar_cache() falló -- no bloquea el fetch en vivo, solo se pierde el fallback de esta vuelta.")
+
+
 async def clear_chat_history(username: str) -> None:
     client = get_supabase_client()
     if client is None:

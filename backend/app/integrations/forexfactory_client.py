@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from app.integrations.supabase_client import fetch_cached_economic_calendar, save_economic_calendar_cache
+
 logger = logging.getLogger(__name__)
 
 NY_TZ = ZoneInfo("America/New_York")
@@ -98,7 +100,7 @@ async def _fetch_raw_week() -> list[dict]:
         return cached[1]
 
     if (time.time() - _last_attempt) < FAILURE_COOLDOWN_SECONDS:
-        return cached[1] if cached is not None else []
+        return cached[1] if cached is not None else await fetch_cached_economic_calendar()
     _last_attempt = time.time()
 
     try:
@@ -107,13 +109,23 @@ async def _fetch_raw_week() -> list[dict]:
             resp.raise_for_status()
             data = resp.json()
     except Exception:
-        logger.exception("forexfactory_client._fetch_raw_week() falló -- se mantiene el cache anterior si hay.")
-        return cached[1] if cached is not None else []
+        # Bug real confirmado en vivo (14-sep-2026): el Cache API de
+        # Cloudflare (ver ff-calendar.js) es POR PoP, no global -- un 429
+        # de ForexFactory acá no significa que TODOS los PoPs estén sin
+        # caché, pero tampoco lo contrario, así que este backend puede
+        # volver a fallar en cualquier momento sin que "ya se arregló
+        # antes" sirva de nada. _cache (memoria de proceso) también se
+        # resetea en cada redeploy. fetch_cached_economic_calendar() es
+        # el ÚNICO fallback que sobrevive ambos problemas -- un
+        # calendario de hace unas horas sigue siendo mejor que uno vacío.
+        logger.exception("forexfactory_client._fetch_raw_week() falló -- se intenta el fallback durable de Supabase.")
+        return cached[1] if cached is not None else await fetch_cached_economic_calendar()
 
     if not isinstance(data, list):
-        return cached[1] if cached is not None else []
+        return cached[1] if cached is not None else await fetch_cached_economic_calendar()
 
     _cache[cache_key] = (time.time(), data)
+    await save_economic_calendar_cache(data)
     return data
 
 
