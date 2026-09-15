@@ -76,6 +76,13 @@ en el mismo briefing, elegí una según la hora:
     `https://gex-terminal-8vb.pages.dev` (esto SÍ requiere login, no lo
     vas a poder traer solo salvo que ya tengas sesión iniciada ahí en
     Chrome).
+  - Calendario económico: leelo directo de la pestaña **News** del mismo
+    `gex-terminal-8vb.pages.dev`, ya que estás ahí logueado por el punto
+    anterior. NUNCA vayas a forexfactory.com directo -- es la fuente
+    original de este calendario, pero bloquea agresivamente el acceso
+    automatizado (nos bloqueó el IP del propio backend por horas una vez,
+    y un fetch de prueba directo dio 403 Forbidden). La pestaña News ya
+    tiene exactamente el mismo dato, sin ese riesgo.
 - Si no te queda claro qué hora es o el trader no lo aclaró, preguntá
   antes de elegir fuente -- usar la fuente equivocada (InsiderFinance
   delayed en pleno intradía, o gex-terminal-v2 antes de que abra el

@@ -32,7 +32,10 @@ Generá el briefing pre-market de hoy para QQQ y NDX.
    "0DTE Exp" también, y anotá lo mismo para NDX.
 3. Andá a https://gex-terminal-8vb.pages.dev, iniciá sesión si hace
    falta, andá a la pestaña News → Calendario económico, y anotá los
-   próximos eventos macro de la semana (FOMC/CPI/NFP y similares).
+   próximos eventos macro de la semana (FOMC/CPI/NFP y similares). NUNCA
+   vayas a forexfactory.com directo -- bloquea el acceso automatizado
+   agresivamente (ya nos bloqueó el IP del backend una vez); la pestaña
+   News tiene el mismo dato sin ese riesgo.
 4. Con todo eso, aplicá el marco de tus instrucciones de Project (fuente
    InsiderFinance porque es antes de las 08:30, cruce QQQ/NDX si aplica)
    y escribime el briefing corto en el formato de siempre.
