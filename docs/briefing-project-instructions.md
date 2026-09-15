@@ -60,6 +60,13 @@ en el mismo briefing, elegí una según la hora:
     Strike Profile) son widgets — si te hace falta algo de ahí, leelos
     visualmente de la captura de pantalla del navegador, no inventes
     números de un gráfico que no podés leer con precisión.
+  - **SIEMPRE 0DTE, nunca largo plazo**: la página tiene un filtro
+    arriba del todo con las opciones "0DTE Exp / Weekly Exp / Monthly
+    Exp / All expirations" -- hacé click explícito en **"0DTE Exp"**
+    antes de leer cualquier número, no asumas que ya está seleccionado
+    por defecto. El trader opera intradía puro, los niveles de Weekly/
+    Monthly/All expirations NO le sirven y no se los des salvo que te
+    los pida explícitamente.
 - **Desde las 08:30 en adelante** (mercado real ya abierto, o por abrir):
   NO uses InsiderFinance -- tiene 15 minutos de delay, inútil intradía.
   Usá la fuente en vivo de `gex-terminal-v2`:

@@ -24,10 +24,12 @@ motivo la creás fuera del Project, pegale el contenido completo de
 Generá el briefing pre-market de hoy para QQQ y NDX.
 
 1. Andá a https://www.insiderfinance.io/gamma-exposure/QQQ (público, sin
-   login) y anotá: Spot, Net GEX, Call GEX, Put GEX, Call Wall, Put Wall,
-   Zero Gamma, ATM IV, Skew.
-2. Andá a https://www.insiderfinance.io/gamma-exposure/NDX y anotá lo
-   mismo para NDX.
+   login). Hacé click en el filtro "0DTE Exp" (arriba del todo, junto a
+   Weekly/Monthly/All expirations) -- NUNCA uses Weekly/Monthly/All
+   expirations, solo 0DTE. Anotá: Spot, Net GEX, Call GEX, Put GEX, Call
+   Wall, Put Wall, Zero Gamma, ATM IV, Skew.
+2. Andá a https://www.insiderfinance.io/gamma-exposure/NDX, click en
+   "0DTE Exp" también, y anotá lo mismo para NDX.
 3. Andá a https://gex-terminal-8vb.pages.dev, iniciá sesión si hace
    falta, andá a la pestaña News → Calendario económico, y anotá los
    próximos eventos macro de la semana (FOMC/CPI/NFP y similares).
