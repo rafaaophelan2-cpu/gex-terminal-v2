@@ -1,6 +1,6 @@
 import pandas as pd
 
-from app.domain.quantower import build_live_levels_payload, compute_conversion_ratio
+from app.domain.quantower import build_eod_levels_from_snapshot, build_live_levels_payload, compute_conversion_ratio
 
 
 def test_compute_conversion_ratio_uses_live_prices():
@@ -51,6 +51,38 @@ def test_build_live_levels_payload_gamma_wall_uses_absolute_exposure():
     payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
     assert payload["gamma_wall"] == 495.0
     assert payload["cw1"] == 505.0
+
+
+def test_build_eod_levels_from_snapshot_computes_walls():
+    snapshot = {
+        "spot": 500.0,
+        "time": "15:59",
+        "atm_iv": 0.18,
+        "strikes": [
+            {"strike": 495.0, "net_gex": -8.0, "call_gex": 1.0, "put_gex": -9.0},
+            {"strike": 505.0, "net_gex": 12.0, "call_gex": 12.0, "put_gex": 0.0},
+        ],
+    }
+    levels = build_eod_levels_from_snapshot(snapshot)
+    assert levels["spot"] == 500.0
+    assert levels["as_of_time"] == "15:59"
+    assert levels["atm_iv"] == 0.18
+    assert levels["cw1"] == 505.0
+    assert levels["pw1"] == 495.0
+
+
+def test_build_eod_levels_from_snapshot_none_when_missing():
+    assert build_eod_levels_from_snapshot(None) is None
+    assert build_eod_levels_from_snapshot({}) is None
+    assert build_eod_levels_from_snapshot({"spot": 0.0, "strikes": [{"strike": 1.0}]}) is None
+    assert build_eod_levels_from_snapshot({"spot": 500.0, "strikes": []}) is None
+
+
+def test_build_eod_levels_from_snapshot_none_when_strikes_missing_gex_columns():
+    # Snapshots guardados antes de que existieran call_gex/put_gex en el
+    # payload (no debería pasar en la práctica, pero no debe romper).
+    snapshot = {"spot": 500.0, "strikes": [{"strike": 495.0, "net_gex": -8.0}]}
+    assert build_eod_levels_from_snapshot(snapshot) is None
 
 
 def test_build_live_levels_payload_gamma_wall_falls_back_to_spot_without_call_put_columns():

@@ -352,6 +352,96 @@ def test_briefing_complement_without_active_feed_still_returns_vix_data(authed_c
     assert "sin dato disponible" in body["string"]
 
 
+def test_premarket_briefing_does_not_require_auth(monkeypatch):
+    # A proposito -- pensado para que un agente externo (Scheduled Task)
+    # lo lea sin login, sin depender de una sesion de navegador.
+    client = TestClient(app, base_url="https://testserver")
+
+    async def _fake_vix():
+        return 17.1
+
+    async def _fake_term_structure():
+        return {"vix": 17.1, "vix3m": 19.28, "state": "contango"}
+
+    async def _fake_latest_snapshot(symbol):
+        return None
+
+    async def _fake_calendar():
+        return []
+
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure)
+    monkeypatch.setattr(routes_rest, "fetch_latest_snapshot", _fake_latest_snapshot)
+    monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_calendar)
+
+    resp = client.get("/market/premarket-briefing?symbol=QQQ")
+    assert resp.status_code == 200
+
+
+def test_premarket_briefing_includes_eod_levels_from_latest_snapshot(monkeypatch):
+    client = TestClient(app, base_url="https://testserver")
+
+    async def _fake_vix():
+        return 17.1
+
+    async def _fake_term_structure():
+        return {"vix": 17.1, "vix3m": 19.28, "state": "contango"}
+
+    async def _fake_latest_snapshot(symbol):
+        assert symbol == "QQQ"
+        return {
+            "spot": 500.0,
+            "time": "15:59",
+            "atm_iv": 0.18,
+            "strikes": [
+                {"strike": 495.0, "net_gex": -8.0, "call_gex": 1.0, "put_gex": -9.0},
+                {"strike": 505.0, "net_gex": 12.0, "call_gex": 12.0, "put_gex": 0.0},
+            ],
+        }
+
+    async def _fake_calendar():
+        return []
+
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure)
+    monkeypatch.setattr(routes_rest, "fetch_latest_snapshot", _fake_latest_snapshot)
+    monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_calendar)
+
+    resp = client.get("/market/premarket-briefing?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "Spot=500.00" in body["string"]
+    assert "CW1=505.00" in body["string"]
+    assert "PW1=495.00" in body["string"]
+    assert "15:59" in body["string"]
+    assert "VIX: 17.10" in body["string"]
+
+
+def test_premarket_briefing_without_snapshot_says_so_instead_of_failing(monkeypatch):
+    client = TestClient(app, base_url="https://testserver")
+
+    async def _fake_vix():
+        return 17.1
+
+    async def _fake_term_structure():
+        return {"vix": 17.1, "vix3m": 19.28, "state": "contango"}
+
+    async def _fake_latest_snapshot(symbol):
+        return None
+
+    async def _fake_calendar():
+        return []
+
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure)
+    monkeypatch.setattr(routes_rest, "fetch_latest_snapshot", _fake_latest_snapshot)
+    monkeypatch.setattr(routes_rest, "fetch_economic_calendar", _fake_calendar)
+
+    resp = client.get("/market/premarket-briefing?symbol=NDX")
+    assert resp.status_code == 200
+    assert "sin ningún snapshot guardado" in resp.json()["string"]
+
+
 def test_compounded_levels_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/market/compounded-levels?symbol=QQQ")

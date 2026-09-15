@@ -83,6 +83,31 @@ async def fetch_gex_history(
     return await asyncio.to_thread(_query)
 
 
+async def fetch_latest_snapshot(symbol: str) -> dict | None:
+    """El snapshot MÁS RECIENTE guardado para 'symbol', sin importar de
+    qué día -- fuera de horario de mercado (pre-market, overnight), esto
+    es naturalmente "el cierre de la última sesión", exactamente lo que
+    necesita un briefing de pre-apertura (ver GET /market/premarket-briefing).
+    A diferencia de fetch_gex_history (que pide un rango), esto no
+    necesita saber de antemano qué día calendario buscar."""
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    def _query():
+        res = (
+            client.table("gex_intraday")
+            .select("*")
+            .eq("symbol", symbol)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    return await asyncio.to_thread(_query)
+
+
 async def fetch_available_dates(symbol: str, tz) -> list[str]:
     """Fechas calendario (YYYY-MM-DD, en la zona horaria 'tz') que tienen
     al menos un snapshot DENTRO del horario de mercado (09:30-16:00 NY)

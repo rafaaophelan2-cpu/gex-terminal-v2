@@ -6,11 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
 from app.domain.ai_prompt import (
+    NY_TZ,
     build_daily_briefing_user_prompt,
     build_default_user_prompt,
     build_short_term_user_prompt,
     build_system_prompt,
     classify_vix,
+    format_economic_calendar,
     format_implied_range,
     format_vix_term_structure,
 )
@@ -25,13 +27,14 @@ from app.domain.heatmap import (
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.news_filter import filter_relevant_news
+from app.domain.quantower import build_eod_levels_from_snapshot
 from app.domain.vol_surface import compute_vol_surface
 from app.integrations.finnhub_client import fetch_market_news
 from app.integrations.forexfactory_client import fetch_economic_calendar
 from app.integrations.groq_client import query_groq
 from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_price_history, fetch_vix, fetch_vix_term_structure
-from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history
+from app.integrations.supabase_client import fetch_available_dates, fetch_gex_history, fetch_latest_snapshot
 from app.models.schemas import AiDiagnosisRequest, AiDiagnosisResponse
 from app.services.ai_context import NoActiveFeedError, build_ai_context, dte_from_exp_key
 from app.services.cross_check import fetch_ndx_compounded_levels
@@ -287,6 +290,61 @@ async def get_briefing_complement(symbol: str = "QQQ", _username: str = Depends(
     return {
         "symbol": symbol,
         "string": "\n".join(lines),
+        "updated_at": datetime.now(ZoneInfo("America/Lima")).strftime("%H:%M"),
+    }
+
+
+@router.get("/premarket-briefing")
+async def get_premarket_briefing(symbol: str = "QQQ"):
+    """PÚBLICO A PROPÓSITO (sin login) -- pensado para que un agente
+    externo (ej. una Scheduled Task de Claude Desktop) lo lea con un
+    simple GET, sin depender de una sesión de navegador que puede
+    expirar sola (bug real reportado en vivo 15-sep-2026: "tu sesión
+    expiró", sin forma de resolverlo sin intervención humana). Junta en
+    UN SOLO texto todo lo que hace falta para un briefing de
+    pre-apertura, 100% de fuentes propias (nada de InsiderFinance/Cboe/
+    ForexFactory directo):
+    - Niveles de gamma del ÚLTIMO CIERRE conocido (Supabase, ver
+      domain/quantower.py::build_eod_levels_from_snapshot) -- no
+      depende de que haya un SymbolFeed activo (nadie mirando el
+      dashboard a esta hora), a diferencia del nodo de Firebase.
+    - VIX + VIX Term Structure (no dependen de ningún feed).
+    - Calendario económico de la semana (ver forexfactory_client.py,
+      con su propio fallback durable en Supabase).
+    Pedido explícito del usuario: para un briefing de PRE-MERCADO no
+    hace falta que nada de esto sea estrictamente en vivo -- el último
+    cierre conocido es exactamente lo correcto acá, no una limitación."""
+    symbol = _normalize_symbol(symbol)
+
+    snapshot = await fetch_latest_snapshot(symbol)
+    eod = build_eod_levels_from_snapshot(snapshot)
+
+    vix_val = await fetch_vix()
+    vix_status, vix_desc, _ = classify_vix(vix_val)
+    vix_term_structure = await fetch_vix_term_structure()
+    calendar = await fetch_economic_calendar()
+    today_str = datetime.now(NY_TZ).date().isoformat()
+
+    if eod:
+        gamma_line = (
+            f"Niveles de gamma de {symbol} (último cierre conocido, {eod['as_of_time'] or '?'} hora NY): "
+            f"Spot={eod['spot']:.2f}, CW1={eod['cw1']:.2f}, CW2={eod['cw2']:.2f}, CW3={eod['cw3']:.2f}, "
+            f"PW1={eod['pw1']:.2f}, PW2={eod['pw2']:.2f}, PW3={eod['pw3']:.2f}, "
+            f"Zero Gamma={eod['zero_gamma']:.2f}, Gamma Wall={eod['gamma_wall']:.2f}, "
+            f"ATM IV={eod['atm_iv'] * 100:.1f}%"
+        )
+    else:
+        gamma_line = f"Niveles de gamma de {symbol}: sin ningún snapshot guardado todavía para este símbolo."
+
+    lines = [
+        gamma_line,
+        f"VIX: {vix_val:.2f} ({vix_status} -- {vix_desc})",
+        format_vix_term_structure(vix_term_structure),
+        format_economic_calendar(calendar, today_str),
+    ]
+    return {
+        "symbol": symbol,
+        "string": "\n\n".join(lines),
         "updated_at": datetime.now(ZoneInfo("America/Lima")).strftime("%H:%M"),
     }
 
