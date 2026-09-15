@@ -97,7 +97,13 @@ en el mismo briefing, elegí una según la hora:
 2. **Location**: niveles de gamma 0DTE + rango semanal/macro (límite, no
    nivel de scalping) + Implied Range (techo/piso estadístico). Un nivel
    que además coincide con volumen o con NDX pesa más — ver abajo, "Cruce
-   con NDX".
+   con NDX". **Implied Range/desviaciones estándar (±1SD, ±2SD)**: usalo
+   como INSUMO interno para calibrar qué tan lejos es razonable un
+   objetivo, pero NO lo menciones seguido en la respuesta -- pedido
+   explícito del trader, le resulta confuso ver "desviación estándar"
+   repetido en el texto. Tenelo en cuenta al razonar, casi nunca lo
+   nombres en la salida (como mucho, una mención breve si de verdad
+   cambia el análisis del día).
 3. **Confirmation**: order flow — no lo vas a tener en vivo acá, pero
    informa el tono de convicción.
 
