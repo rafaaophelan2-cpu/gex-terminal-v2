@@ -2,7 +2,7 @@ import './style.css'
 import { marked } from 'marked'
 import { login, logout, me } from './api/auth.js'
 import { clearChatHistory, fetchChatHistory, postChatMessage } from './api/chat.js'
-import { fetchAvailableDates, fetchCandles, fetchCharmHeatmap, fetchCompoundedLevels, fetchDrift, fetchEconomicCalendar, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchNews, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
+import { fetchAvailableDates, fetchBriefingComplement, fetchCandles, fetchCharmHeatmap, fetchCompoundedLevels, fetchDrift, fetchEconomicCalendar, fetchExpirations, fetchGammaGrid, fetchGammaSurface, fetchHeatmap, fetchImpliedRange, fetchNews, fetchTradingViewString, fetchVix, fetchVixTermStructure, fetchVolSurface, postAiDiagnosis } from './api/rest.js'
 import { MarketWebSocketClient } from './api/ws.js'
 import { renderBackgammaSpotChart, renderBackgammaStrikeChart } from './charts/backgammaChart.js'
 import { renderGammaGridTable } from './charts/gammaGridTable.js'
@@ -51,6 +51,10 @@ const copyPineBtn = document.getElementById('copy-pine-btn')
 const copyStringBtn = document.getElementById('copy-string-btn')
 const tvStringBox = document.getElementById('tv-string-box')
 const tvStringUpdated = document.getElementById('tv-string-updated')
+const briefingComplementBox = document.getElementById('briefing-complement-box')
+const briefingComplementUpdated = document.getElementById('briefing-complement-updated')
+const generateBriefingComplementBtn = document.getElementById('generate-briefing-complement-btn')
+const copyBriefingComplementBtn = document.getElementById('copy-briefing-complement-btn')
 const tabContentEl = document.getElementById('tab-content')
 const splitToggleBtn = document.getElementById('split-toggle-btn')
 const splitDropdownEl = document.getElementById('split-dropdown')
@@ -396,6 +400,26 @@ copyPineBtn.addEventListener('click', async () => {
 copyStringBtn.addEventListener('click', () => {
   const text = tvStringBox.textContent
   if (text && tvStringBox.dataset.hasString === 'true') copyToClipboard(text, copyStringBtn)
+})
+
+generateBriefingComplementBtn.addEventListener('click', async () => {
+  try {
+    const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
+    briefingComplementBox.textContent = 'Cargando...'
+    const data = await fetchBriefingComplement(symbol)
+    briefingComplementBox.textContent = data.string
+    briefingComplementBox.dataset.hasString = 'true'
+    briefingComplementUpdated.textContent = data.updated_at ? `Generado: ${data.updated_at} (hora Lima)` : ''
+  } catch (err) {
+    console.error('Error generando el complemento de briefing:', err)
+    briefingComplementBox.textContent = 'Error trayendo los datos -- probá de nuevo.'
+    briefingComplementBox.dataset.hasString = 'false'
+  }
+})
+
+copyBriefingComplementBtn.addEventListener('click', () => {
+  const text = briefingComplementBox.textContent
+  if (text && briefingComplementBox.dataset.hasString === 'true') copyToClipboard(text, copyBriefingComplementBtn)
 })
 
 async function loadTvString() {

@@ -71,6 +71,12 @@ export async function fetchTradingViewString(symbol) {
   return resp.json()
 }
 
+export async function fetchBriefingComplement(symbol) {
+  const resp = await apiFetch(`/market/briefing-complement?symbol=${encodeURIComponent(symbol)}`)
+  if (!resp.ok) throw new Error(`Error ${resp.status}`)
+  return resp.json()
+}
+
 export async function fetchExpirations(symbol) {
   const resp = await apiFetch(`/market/expirations?symbol=${encodeURIComponent(symbol)}`)
   if (!resp.ok) throw new Error(`Error ${resp.status}`)

@@ -304,6 +304,54 @@ def test_implied_range_with_active_feed_returns_band(authed_client, monkeypatch)
     assert body["one_sd"]["low"] < 481.23 < body["one_sd"]["high"]
 
 
+def test_briefing_complement_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/briefing-complement?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_briefing_complement_includes_vix_term_and_implied_range(authed_client, monkeypatch):
+    async def _fake_vix():
+        return 17.1
+
+    async def _fake_term_structure():
+        return {"vix": 17.1, "vix3m": 19.28, "state": "contango"}
+
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure)
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeFeed())
+
+    resp = authed_client.get("/market/briefing-complement?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "VIX: 17.10" in body["string"]
+    assert "Contango" in body["string"]
+    assert "Implied Range" in body["string"]
+    assert body["symbol"] == "QQQ"
+    assert body["updated_at"] is not None
+
+
+def test_briefing_complement_without_active_feed_still_returns_vix_data(authed_client, monkeypatch):
+    # Sin feed activo no hay Implied Range (necesita atm_iv/spot reales),
+    # pero VIX y VIX Term Structure no dependen de ningún feed -- no debe
+    # romperse ni devolver un string vacío.
+    async def _fake_vix():
+        return 17.1
+
+    async def _fake_term_structure():
+        return {"vix": 17.1, "vix3m": 19.28, "state": "contango"}
+
+    monkeypatch.setattr(routes_rest, "fetch_vix", _fake_vix)
+    monkeypatch.setattr(routes_rest, "fetch_vix_term_structure", _fake_term_structure)
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+
+    resp = authed_client.get("/market/briefing-complement?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "VIX: 17.10" in body["string"]
+    assert "sin dato disponible" in body["string"]
+
+
 def test_compounded_levels_requires_auth():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/market/compounded-levels?symbol=QQQ")

@@ -5,7 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.security import require_auth
 from app.domain.ai_fallback import generate_local_diagnosis
-from app.domain.ai_prompt import build_daily_briefing_user_prompt, build_default_user_prompt, build_short_term_user_prompt, build_system_prompt, classify_vix
+from app.domain.ai_prompt import (
+    build_daily_briefing_user_prompt,
+    build_default_user_prompt,
+    build_short_term_user_prompt,
+    build_system_prompt,
+    classify_vix,
+    format_implied_range,
+    format_vix_term_structure,
+)
 from app.domain.drift import compute_drift_series, compute_volume_premium_drift_series
 from app.domain.gamma_grid import compute_gamma_grid, list_expirations
 from app.domain.heatmap import (
@@ -245,6 +253,42 @@ async def get_implied_range(symbol: str = "QQQ", _username: str = Depends(requir
     exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
     metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
     return compute_implied_range(feed.spot_price, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
+
+
+@router.get("/briefing-complement")
+async def get_briefing_complement(symbol: str = "QQQ", _username: str = Depends(require_auth)):
+    """String de texto listo para copiar/pegar en el prompt de Claude
+    Desktop (ver docs/briefing-*.md) con los ÚNICOS datos de ese prompt
+    que Desktop no puede conseguir solo: VIX, VIX Term Structure, e
+    Implied Range -- los tres requieren login contra esta API, y Desktop
+    no puede autenticarse por su cuenta. Los niveles de gamma (Call/Put
+    Walls, Zero Gamma, Gamma Wall) los saca el propio Desktop del nodo
+    público de Firebase (sin login, ver reference del skill de
+    /briefing); el calendario económico lo pasa el usuario a mano por
+    captura de pantalla -- ninguno de los dos va acá."""
+    symbol = _normalize_symbol(symbol)
+    vix_val = await fetch_vix()
+    vix_status, vix_desc, _ = classify_vix(vix_val)
+    vix_term_structure = await fetch_vix_term_structure()
+
+    feed = feed_registry.get(symbol)
+    if feed is not None and not feed.df.empty and feed.spot_price > 0:
+        exp_keys = [feed.nearest_exp_key] if feed.nearest_exp_key else []
+        metrics = compute_metrics_for_dte(feed.df, exp_keys, feed.spot_price)
+        implied_range = compute_implied_range(feed.spot_price, metrics.get("atm_iv", 0.20), dte_from_exp_key(feed.nearest_exp_key))
+    else:
+        implied_range = None
+
+    lines = [
+        f"VIX: {vix_val:.2f} ({vix_status} -- {vix_desc})",
+        format_vix_term_structure(vix_term_structure),
+        format_implied_range(implied_range, symbol),
+    ]
+    return {
+        "symbol": symbol,
+        "string": "\n".join(lines),
+        "updated_at": datetime.now(ZoneInfo("America/Lima")).strftime("%H:%M"),
+    }
 
 
 @router.get("/compounded-levels")

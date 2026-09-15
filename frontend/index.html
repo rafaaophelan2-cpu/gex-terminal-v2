@@ -433,6 +433,25 @@
                 </div>
               </div>
             </div>
+
+            <div class="utilidad-section">
+              <h3 class="signals-heading"><span class="signals-heading-bar"></span>Briefing</h3>
+              <div class="tv-string-card">
+                <p class="tv-string-desc">Complemento para el prompt de Claude Desktop (ver <code>docs/briefing-*.md</code> del repo): VIX, VIX Term Structure e Implied Range -- los únicos datos que Claude Desktop no puede conseguir solo (requieren login acá). Los niveles de gamma los saca Desktop directo del nodo público de Firebase; el calendario económico se pasa por captura de pantalla.</p>
+                <pre id="briefing-complement-box" class="tv-string-box">Tocá "Generar" para traer los datos de ahora mismo.</pre>
+                <div class="tv-string-footer">
+                  <span id="briefing-complement-updated" class="tv-string-updated"></span>
+                  <button type="button" id="generate-briefing-complement-btn" class="indicator-btn" title="Traer VIX / VIX Term Structure / Implied Range actuales">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+                    Generar
+                  </button>
+                  <button type="button" id="copy-briefing-complement-btn" class="indicator-btn" title="Copiar al portapapeles">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+                    Copiar
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div id="news-view" hidden>
