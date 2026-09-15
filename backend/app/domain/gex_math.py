@@ -145,12 +145,43 @@ def compute_zero_crossing(df_by_strike: pd.DataFrame, value_col: str, spot_ref: 
     cruza cero -- generalización de compute_zero_gamma (antes hardcodeada a
     'net_gex') para reusar la misma lógica con 'net_chex' y sacar el Charm
     Zero de Aleks Rosme (ver domain/heatmap.py::compute_charm_trend_line),
-    sin duplicar el cálculo."""
+    sin duplicar el cálculo.
+
+    Bug real confirmado en vivo (15-sep-2026, reportado por el usuario
+    vía un análisis de Claude Desktop): cuando 'value_col' tiene el MISMO
+    signo en TODO el rango de strikes visible (ej. net_gex negativo desde
+    el strike más bajo hasta el más alto, sin cruzar nunca), la acumulada
+    NUNCA cruza cero de verdad -- pero idxmin(|cumsum|) igual devolvía un
+    strike (el borde del rango, ej. 698) como si fuera un cruce real, solo
+    porque ahí la acumulada recién arranca y está cerca de cero por
+    construcción, no porque haya una transición real ahí. Con datos
+    reales ese día: net_gex negativo de 698 a 715, positivo recién desde
+    716 -- el cumsum devolvía 698 (sin sentido) en vez de 716 (el cruce
+    real, observable directo en los valores crudos por strike). Cuando se
+    detecta este caso (mismo signo en el primer y último punto de la
+    acumulada), se cae a buscar el último cambio de signo en el valor
+    CRUDO por strike (no acumulado) -- un cruce genuino, aunque más local/
+    ruidoso que el ideal teórico (que necesitaría recalcular gamma a
+    múltiples spots hipotéticos, no solo mirar el perfil actual)."""
     if df_by_strike is None or df_by_strike.empty or value_col not in df_by_strike.columns:
         return spot_ref
 
     df_sorted = df_by_strike.sort_values('strike')
     cum_val = df_sorted[value_col].cumsum()
+    if cum_val.empty:
+        return spot_ref
+
+    if cum_val.iloc[0] * cum_val.iloc[-1] > 0:
+        raw = df_sorted[value_col].to_numpy()
+        strikes = df_sorted['strike'].to_numpy()
+        for i in range(1, len(raw)):
+            if (raw[i - 1] < 0 <= raw[i]) or (raw[i - 1] > 0 >= raw[i]):
+                return float(strikes[i])
+        # Ni la acumulada ni el valor crudo cruzan de signo en todo el
+        # rango visible -- no hay ningún cruce real que reportar, mejor
+        # no inventar un número que parezca preciso sin serlo.
+        return spot_ref
+
     idx = cum_val.abs().idxmin()
     return float(df_sorted.loc[idx, 'strike'])
 

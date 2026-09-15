@@ -128,6 +128,45 @@ def test_compute_zero_gamma_empty_uses_spot_fallback():
     assert compute_zero_gamma(pd.DataFrame(), spot_ref=123.45) == 123.45
 
 
+def test_compute_zero_gamma_falls_back_to_raw_sign_change_when_cumsum_never_crosses():
+    # Bug real confirmado en vivo (15-sep-2026) con datos reales de QQQ:
+    # net_gex negativo en TODO el rango visible (698-715) y recien
+    # positivo desde 716 -- la acumulada nunca vuelve a cruzar cero (se
+    # va mas y mas negativa), asi que idxmin(|cumsum|) devolvia el borde
+    # inferior del rango (698) sin que ahi hubiera ningun cruce real.
+    # Simplificado (menos strikes, mismo patron: todo negativo, un salto
+    # grande, y recien positivo al final).
+    df = pd.DataFrame({
+        'strike': [698.0, 699.0, 700.0, 715.0, 716.0, 717.0],
+        'net_gex': [-118_327.0, -178_469.0, -344_857.0, -152_430.0, 2_168.0, 61_500.0],
+    })
+    zg = compute_zero_gamma(df, spot_ref=710.0)
+    assert zg == 716.0  # el cruce real (crudo), no el borde del rango (698)
+
+
+def test_compute_zero_gamma_uses_cumsum_crossing_when_it_actually_crosses():
+    # Caso normal (ya cubierto por test_compute_zero_gamma_crossing de
+    # arriba, repetido acá para dejar explícito el contraste): si la
+    # acumulada SÍ cruza cero dentro del rango, se sigue usando ese
+    # cruce -- el fallback de arriba NO debe activarse acá.
+    df = pd.DataFrame({
+        'strike': [95.0, 100.0, 105.0],
+        'net_gex': [5.0, -3.0, -10.0],
+    })
+    assert compute_zero_gamma(df, spot_ref=100.0) == 100.0
+
+
+def test_compute_zero_gamma_no_crossing_anywhere_uses_spot_fallback():
+    # Ni la acumulada ni el valor crudo cruzan de signo en ningun punto
+    # (todo negativo, sin excepcion) -- no hay ningun cruce real que
+    # reportar, se cae al spot en vez de inventar un numero.
+    df = pd.DataFrame({
+        'strike': [100.0, 105.0, 110.0],
+        'net_gex': [-5.0, -3.0, -1.0],
+    })
+    assert compute_zero_gamma(df, spot_ref=107.0) == 107.0
+
+
 def test_compute_zero_crossing_is_generic_over_value_col():
     # Misma matemática que compute_zero_gamma, pero con una columna
     # distinta (net_chex) -- confirma que la generalización (usada para
