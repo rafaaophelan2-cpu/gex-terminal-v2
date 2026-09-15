@@ -1,39 +1,49 @@
-# Plantilla diaria — Briefing (mandar esto cada día en el Project)
+# Uso diario del Briefing
 
 Esto va DENTRO del Project que ya tiene `briefing-project-instructions.md`
-en sus instrucciones — no hace falta repetir el marco teórico cada vez,
-solo esto.
+en sus instrucciones.
 
-## 1. Niveles de gamma (Claude los busca solo)
+## Si tenés Claude en Chrome activo (recomendado)
 
-Pedile a Claude que traiga esta URL (pública, sin login):
+Simplemente escribí:
+
+```
+Briefing
+```
+
+Claude ya sabe (por las instrucciones del Project) qué fuente usar según
+la hora, qué URLs visitar, y qué formato darte. Para la corrida
+automática de las 8:00 AM ver `briefing-scheduled-task-8am.md` -- eso
+configura una Scheduled Task que hace este mismo paso solo, todos los
+días.
+
+## Fallback manual (sin navegación, o si algo falló)
+
+Si Claude no pudo navegar solo (sin la extensión activa, o algún sitio
+no cargó), completá esto a mano:
+
+**Antes de las 08:30** — abrí vos mismo:
+- `https://www.insiderfinance.io/gamma-exposure/QQQ`
+- `https://www.insiderfinance.io/gamma-exposure/NDX` (opcional, para el cruce)
+
+y pegá acá los valores relevantes (Spot, Net GEX, Call/Put GEX, Call
+Wall, Put Wall, Zero Gamma, ATM IV, Skew) de cada uno.
+
+**Desde las 08:30** — abrí vos mismo:
 ```
 https://gexdash-5b885-default-rtdb.firebaseio.com/live_levels.json
 ```
-Trae spot, conversion_ratio, Call/Put Walls, Zero Gamma y Gamma Wall de
-QQQ en vivo. Si Claude no puede acceder a internet en esta conversación,
-copiá el resultado de esa URL a mano (abrila en el navegador) y pegala
-acá.
-
-## 2. Complemento (VIX / VIX Term Structure / Implied Range)
-
-Andá a la pestaña **Utilidad** de https://gex-terminal-8vb.pages.dev,
-sección "Briefing", tocá **Generar** y después **Copiar**. Pegá acá
-abajo lo que copiaste:
+y pegá el resultado. Además, andá a la pestaña **Utilidad** de
+https://gex-terminal-8vb.pages.dev → sección "Briefing" → **Generar** →
+**Copiar**, y pegá acá abajo lo que copiaste:
 
 ```
 (pegar acá el string del botón "Briefing Complement")
 ```
 
-## 3. Calendario económico
-
-*(Pegá una captura de pantalla de la pestaña News → Calendario económico)*
-
-## 4. NDX (opcional, para el cruce de niveles compuestos)
-
-*(Pegá una captura de pantalla con los niveles de NDX Y su spot visible,
-si la tenés a mano. Si no, saltealo -- no es obligatorio.)*
+**Siempre** — pegá una captura de pantalla del calendario económico
+(pestaña News) si Claude no pudo navegar solo hasta ahí.
 
 ---
 
-Con todo lo de arriba: **Briefing.**
+Con lo que hayas juntado: **Briefing.**

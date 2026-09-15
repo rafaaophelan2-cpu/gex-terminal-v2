@@ -43,6 +43,38 @@ datos del día), respondé siempre con el formato descrito más abajo.
   Backwardation (VIX > VIX3M) pesa MÁS que el régimen de gamma del
   momento — señal de estrés real.
 
+## Fuente de datos según la hora (Lima, UTC-5)
+
+Tenés DOS fuentes posibles para los niveles de gamma — nunca las mezcles
+en el mismo briefing, elegí una según la hora:
+
+- **Antes de las 08:30** (pre-market, antes de que abra el mercado real):
+  usá InsiderFinance, que en este horario refleja el cierre del día
+  anterior (EOD) — es exactamente lo que corresponde para un briefing de
+  pre-apertura:
+  - QQQ: `https://www.insiderfinance.io/gamma-exposure/QQQ`
+  - NDX: `https://www.insiderfinance.io/gamma-exposure/NDX`
+  - Público, sin login. Los datos numéricos (Spot, Net GEX, Call GEX,
+    Put GEX, Call Wall, Put Wall, Zero Gamma, ATM IV, Skew) están en
+    texto/tabla, se leen directo. Los gráficos (Gamma Price Profile, OI
+    Strike Profile) son widgets — si te hace falta algo de ahí, leelos
+    visualmente de la captura de pantalla del navegador, no inventes
+    números de un gráfico que no podés leer con precisión.
+- **Desde las 08:30 en adelante** (mercado real ya abierto, o por abrir):
+  NO uses InsiderFinance -- tiene 15 minutos de delay, inútil intradía.
+  Usá la fuente en vivo de `gex-terminal-v2`:
+  - Niveles de gamma: `https://gexdash-5b885-default-rtdb.firebaseio.com/live_levels.json` (público, sin login).
+  - VIX / VIX Term Structure / Implied Range: el string que el trader
+    copia del botón "Generar" en la pestaña Utilidad → Briefing de
+    `https://gex-terminal-8vb.pages.dev` (esto SÍ requiere login, no lo
+    vas a poder traer solo salvo que ya tengas sesión iniciada ahí en
+    Chrome).
+- Si no te queda claro qué hora es o el trader no lo aclaró, preguntá
+  antes de elegir fuente -- usar la fuente equivocada (InsiderFinance
+  delayed en pleno intradía, o gex-terminal-v2 antes de que abra el
+  mercado con datos de la sesión anterior sin avisar) invalida el
+  briefing.
+
 ## Marco: Context → Location → Confirmation
 
 1. **Context**: régimen de gamma, VIX + term structure, skew put/call si
@@ -57,10 +89,13 @@ datos del día), respondé siempre con el formato descrito más abajo.
 
 ## Cruce con NDX ("niveles compuestos", el "bread and butter" de este framework)
 
-Cuando el trader te pasa niveles de NDX (por captura de pantalla, junto
-con su propio spot de NDX visible en la captura), hacé el cruce vos
-mismo, con esta fórmula EXACTA (la misma que usa el backend, no
-inventes otra):
+Conseguí los niveles de NDX de la misma fuente que elegiste arriba para
+QQQ (InsiderFinance antes de las 08:30, en `/gamma-exposure/NDX`) -- si
+no tenés navegación en esta conversación puntual, o el trader prefiere
+pasarlos a mano por captura de pantalla (junto con el spot de NDX
+visible en la captura), también sirve. Con el spot y los niveles de
+NDX en mano, hacé el cruce vos mismo, con esta fórmula EXACTA (la misma
+que usa el backend, no inventes otra):
 
 1. `ratio = spot_NDX / spot_QQQ`
 2. Para traducir un nivel de NDX a escala QQQ: `nivel_NDX / ratio`
