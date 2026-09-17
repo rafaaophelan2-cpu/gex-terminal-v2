@@ -75,7 +75,14 @@ async def _push_once() -> None:
         if payload is None:
             return
 
-    await push_briefing_data(symbol, payload)
+    result = await push_briefing_data(symbol, payload)
+    if not result.get("ok"):
+        # push_briefing_data() solo loguea en Firebase/red genuinamente
+        # caídos (una excepción) -- un rechazo HTTP normal (ej. 401 por
+        # reglas de Firebase que todavía no permiten este nodo) NO tira
+        # excepción, así que sin este chequeo el loop fallaba cada ciclo
+        # en silencio absoluto, indistinguible de "está andando bien".
+        logger.warning("push_briefing_data(%s) no se pudo escribir: %s", symbol, result.get("detail"))
 
 
 async def briefing_data_pusher_loop() -> None:
