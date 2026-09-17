@@ -2,6 +2,7 @@ import pandas as pd
 
 from app.domain.gex_math import compute_call_put_walls, compute_gamma_wall, compute_zero_gamma
 from app.domain.metrics import get_nearest_dte_subset
+from app.domain.oi_ladder import build_oi_ladder, compute_flip_from_ladder
 
 DEFAULT_CONVERSION_RATIO = 41.125
 
@@ -19,11 +20,12 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
     """Arma el payload exacto que espera GexProfileCloud.cs (indicador
     "Rafoph's Gex Manual 2.0" en Quantower) en el nodo /live_levels de
     Firebase: {qqq_spot, conversion_ratio, cw1..cw3, pw1..pw3, zero_gamma,
-    gamma_wall, levels: [{strike, net_gex}]}. Port de la sección final de
-    export_live_levels_to_quantower en app.py (~línea 1685):
-    SIEMPRE la expiración más cercana (0DTE), nunca el DTE que cualquier
-    conexión WS tenga seleccionado -- el feed de Quantower es compartido
-    y determinístico, no depende de qué esté mirando cada usuario."""
+    gamma_wall, levels: [{strike, net_gex}]} + 'oi_ladder' (campo nuevo,
+    ver abajo). Port de la sección final de export_live_levels_to_quantower
+    en app.py (~línea 1685): SIEMPRE la expiración más cercana (0DTE),
+    nunca el DTE que cualquier conexión WS tenga seleccionado -- el feed
+    de Quantower es compartido y determinístico, no depende de qué esté
+    mirando cada usuario."""
     if df is None or df.empty or spot_price <= 0 or 'net_gex' not in df.columns:
         return None
 
@@ -42,8 +44,20 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
 
     by_strike = df_sel.groupby('strike', as_index=False).agg(agg_cols).sort_values('strike')
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, spot_price)
-    zero_gamma = compute_zero_gamma(by_strike, spot_price)
     gamma_wall = compute_gamma_wall(by_strike, spot_price)
+
+    # zero_gamma: SIEMPRE desde la ladder de ±15 strikes reales alrededor
+    # del ATM (ver domain/oi_ladder.py, mismo criterio que gex_info_payload
+    # en market_feed.py) en vez de 'by_strike' de arriba -- 'df' (el feed
+    # completo) puede tener bastante más o menos que esos ±15 strikes
+    # según el 'strikes_count' con el que se suscribió cada conexión web,
+    # una ventana que no tiene relación con lo que realmente define un
+    # flip real. Campo/consumidor sin cambios (GexProfileCloud.cs sigue
+    # leyendo 'zero_gamma' tal cual), solo el valor es más preciso; si la
+    # ladder sale vacía (df sin las columnas necesarias), cae al cálculo
+    # anterior sobre by_strike.
+    oi_ladder = build_oi_ladder(df, spot_price, expiration='0dte')
+    zero_gamma = compute_flip_from_ladder(oi_ladder, spot_price) if oi_ladder else compute_zero_gamma(by_strike, spot_price)
 
     return {
         "qqq_spot": float(spot_price),
@@ -56,6 +70,11 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
             {"strike": float(r.strike), "net_gex": float(r.net_gex)}
             for r in by_strike.itertuples()
         ],
+        # Campo NUEVO, aditivo -- GexProfileCloud.cs (Quantower) no lo lee
+        # todavía, no rompe nada del lado del indicador; disponible para
+        # quien sí quiera consumir la ladder completa desde este mismo
+        # nodo de Firebase (ver docstring arriba, "faltan estos cambios").
+        "oi_ladder": oi_ladder,
     }
 
 

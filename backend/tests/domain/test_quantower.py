@@ -31,7 +31,7 @@ def test_build_live_levels_payload_matches_quantower_schema():
     assert payload["conversion_ratio"] == 40.0
     assert set(payload.keys()) == {
         "qqq_spot", "conversion_ratio", "cw1", "cw2", "cw3", "pw1", "pw2", "pw3",
-        "zero_gamma", "gamma_wall", "levels",
+        "zero_gamma", "gamma_wall", "levels", "oi_ladder",
     }
     strikes_pushed = {lvl["strike"] for lvl in payload["levels"]}
     assert strikes_pushed == {495.0, 505.0}

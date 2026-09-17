@@ -8,6 +8,7 @@ from app.domain.gamma_price_profile import compute_gamma_price_profile
 from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
 from app.domain.oi_fallback import apply_volume_fallback_if_no_oi, merge_external_oi
+from app.domain.oi_ladder import build_oi_ladder, compute_flip_from_ladder
 from app.domain.signals import compute_signals, compute_squeeze_screener
 from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_option_chain
@@ -264,9 +265,15 @@ class SymbolFeed:
         df_nearest = get_nearest_dte_subset(self.df)
         return sorted(df_nearest['strike'].unique().tolist())
 
-    def gex_info_payload(self, min_strike: float | None = None, max_strike: float | None = None) -> dict:
+    def gex_info_payload(self, min_strike: float | None = None, max_strike: float | None = None, expiration: str = "0dte") -> dict:
         """Slice ya agrupado/filtrado listo para mandar por WS: nearest-DTE
-        por defecto, opcionalmente recortado a [min_strike, max_strike]."""
+        por defecto, opcionalmente recortado a [min_strike, max_strike].
+
+        'expiration' ('0dte'|'next') SOLO decide de qué expiración sale la
+        ladder (ver domain/oi_ladder.py) y por lo tanto el flip_level --
+        el resto del payload (bar chart, walls, price_profile) sigue fijo
+        a la expiración más cercana/0DTE de siempre, sin cambio de
+        comportamiento para quien no use este filtro nuevo."""
         if self.df.empty:
             return {
                 "net_gex_total": 0.0, "call_gex_total": 0.0, "put_gex_total": 0.0,
@@ -278,6 +285,7 @@ class SymbolFeed:
                 "price_profile": {"prices": [], "net_gamma": []},
                 "oi_is_volume_proxy": self.oi_is_volume_proxy,
                 "macro_levels": self.macro_levels,
+                "oi_ladder": [],
             }
 
         df_nearest_full = get_nearest_dte_subset(self.df)
@@ -288,7 +296,18 @@ class SymbolFeed:
         by_strike = df_nearest.groupby('strike', as_index=False)[['call_gex', 'put_gex', 'net_gex']].sum().sort_values('strike')
 
         cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, self.spot_price)
-        zero_gamma = compute_zero_gamma(by_strike, self.spot_price)
+
+        # Flip/Zero Gamma: SIEMPRE desde la ladder de ±15 strikes reales
+        # alrededor del ATM (ver domain/oi_ladder.py), NUNCA desde
+        # 'by_strike' de arriba -- 'by_strike' puede venir recortado al
+        # strike_range que el usuario eligió ver en el gráfico de barras
+        # (min_strike/max_strike), una ventana que varía por conexión y
+        # puede dejar el cruce real de signo FUERA de lo que se está
+        # promediando, dando un flip clipeado al borde de esa ventana en
+        # vez del nivel real (mismo síntoma que el bug real documentado en
+        # compute_zero_crossing, gex_math.py).
+        oi_ladder = build_oi_ladder(self.df, self.spot_price, expiration=expiration)
+        zero_gamma = compute_flip_from_ladder(oi_ladder, self.spot_price) if oi_ladder else compute_zero_gamma(by_strike, self.spot_price)
 
         # Gamma Price Profile: SIEMPRE con la cadena completa (no recortada
         # por strike_range) -- un strike hoy fuera de la ventana visible
@@ -315,6 +334,11 @@ class SymbolFeed:
             # llegar vacío ({}) hasta el primer tick DEEP (máx
             # DEEP_CHAIN_INTERVAL_SECONDS después de conectar).
             "macro_levels": self.macro_levels,
+            # Ladder ±15 strikes con OI/volumen de calls y puts por
+            # separado (ver domain/oi_ladder.py) -- fuente del flip_level
+            # de arriba, y también lista para que el frontend la renderice
+            # como tabla si quiere mostrarla tal cual.
+            "oi_ladder": oi_ladder,
         }
 
     def signals_payload(self) -> dict:

@@ -804,3 +804,82 @@ def test_vol_surface_returns_iv_grid_with_otm_convention(authed_client, monkeypa
     assert body["strikes"] == [95.0, 105.0]
     assert body["values"][body["strikes"].index(95.0)] == pytest.approx([35.0])
     assert body["values"][body["strikes"].index(105.0)] == pytest.approx([28.0])
+
+
+class _FakeZeroDteFeed:
+    def __init__(self):
+        self.spot_price = 500.0
+        self.df = pd.DataFrame([
+            {"strike": 495.0, "exp_key": "e0", "dte": 0, "openInterest_c": 100, "openInterest_p": 40,
+             "volume_c": 10, "volume_p": 5, "call_gex": 50.0, "put_gex": 0.0, "net_gex": 50.0,
+             "mark_c": 1.2, "mark_p": 0.8},
+            {"strike": 505.0, "exp_key": "e0", "dte": 0, "openInterest_c": 20, "openInterest_p": 200,
+             "volume_c": 3, "volume_p": 40, "call_gex": 0.0, "put_gex": -30.0, "net_gex": -30.0,
+             "mark_c": 0.7, "mark_p": 1.5},
+            {"strike": 500.0, "exp_key": "e7", "dte": 7, "openInterest_c": 999, "openInterest_p": 999,
+             "volume_c": 1, "volume_p": 1, "call_gex": 999.0, "put_gex": 0.0, "net_gex": 999.0,
+             "mark_c": 5.0, "mark_p": 5.0},
+        ])
+
+
+def test_zero_dte_snapshot_requires_auth():
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.get("/market/zero-dte-snapshot?symbol=QQQ")
+    assert resp.status_code == 401
+
+
+def test_zero_dte_snapshot_without_active_feed_returns_409(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: None)
+    resp = authed_client.get("/market/zero-dte-snapshot?symbol=QQQ")
+    assert resp.status_code == 409
+
+
+def test_zero_dte_snapshot_returns_volume_vs_oi_straddle_and_gex_change(authed_client, monkeypatch):
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeZeroDteFeed())
+
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        return [{"time": "09:30", "spot": 498.0, "net_gex": 10.0, "strikes": []}]
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+
+    resp = authed_client.get("/market/zero-dte-snapshot?symbol=QQQ")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["expiration"] == "0dte"
+    strikes_in_ladder = {row["strike"] for row in body["volume_vs_oi"]}
+    assert strikes_in_ladder == {495.0, 505.0}  # 0DTE solamente, e7 queda afuera
+
+    assert body["straddle_atm"]["strike"] == 495.0  # más cerca de 500 que 505... empate, gana el primero
+    assert body["straddle_atm"]["straddle_price"] == pytest.approx(2.0)
+
+    assert body["current_net_gex"] == pytest.approx(20.0)  # 50 - 30
+    assert body["opening_net_gex"] == pytest.approx(10.0)
+    assert body["gex_change_since_open"] == pytest.approx(10.0)  # 20 - 10
+
+
+def test_zero_dte_snapshot_next_expiration_has_no_opening_gex_reference(authed_client, monkeypatch):
+    # snapshot_writer.py solo guarda el Net GEX de la expiración 0DTE --
+    # para 'next' no hay ningún Net GEX de apertura real contra el cual
+    # comparar, así que gex_change_since_open debe venir None, nunca un
+    # número comparando dos expiraciones distintas.
+    monkeypatch.setattr(routes_rest.feed_registry, "get", lambda symbol: _FakeZeroDteFeed())
+
+    called = {"history": False}
+
+    async def _fake_history(symbol, start_utc=None, end_utc=None, limit=1000):
+        called["history"] = True
+        return [{"time": "09:30", "spot": 498.0, "net_gex": 10.0, "strikes": []}]
+
+    monkeypatch.setattr(routes_rest, "fetch_gex_history", _fake_history)
+
+    resp = authed_client.get("/market/zero-dte-snapshot?symbol=QQQ&expiration=next")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["expiration"] == "next"
+    assert {row["strike"] for row in body["volume_vs_oi"]} == {500.0}
+    assert body["current_net_gex"] == pytest.approx(999.0)
+    assert body["opening_net_gex"] is None
+    assert body["gex_change_since_open"] is None
+    assert called["history"] is False  # no hace falta pedir el historial para 'next'

@@ -27,6 +27,7 @@ from app.domain.heatmap import (
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.news_filter import filter_relevant_news
+from app.domain.oi_ladder import build_oi_ladder, compute_atm_straddle, compute_net_gex_for_expiration
 from app.domain.quantower import build_eod_levels_from_snapshot
 from app.domain.vol_surface import compute_vol_surface
 from app.integrations.finnhub_client import fetch_market_news
@@ -547,3 +548,51 @@ async def get_vol_surface(symbol: str = "QQQ", exp_keys: str = "", _username: st
         selected = [e["exp_key"] for e in all_exps[:DEFAULT_SURFACE_EXPIRATION_COUNT]]
 
     return compute_vol_surface(feed.deep_df, selected, feed.spot_price)
+
+
+@router.get("/zero-dte-snapshot")
+async def get_zero_dte_snapshot(symbol: str = "QQQ", expiration: str = "0dte", _username: str = Depends(require_auth)):
+    """Pedido explícito: volumen vs Open Interest por strike (misma ladder
+    de ±15 strikes que gex_info_payload usa para el flip, ver
+    domain/oi_ladder.py), straddle ATM (call+put mark reales de Schwab en
+    el strike más cercano al spot) y cambio de Net GEX desde la apertura
+    -- todo en un solo request, para no tener que pegarle a Schwab de
+    vuelta desde el frontend por cada pieza.
+
+    'expiration' ('0dte'|'next') decide de qué expiración salen la ladder
+    y el straddle. 'gex_change_since_open' SOLO se calcula para '0dte':
+    snapshot_writer.py (ver services/snapshot_writer.py) siempre guarda el
+    Net GEX de la expiración más cercana, nunca el de la 'próxima' -- para
+    'next' no hay ningún Net GEX de apertura real contra el cual comparar,
+    así que viene None en vez de comparar dos expiraciones distintas como
+    si fueran la misma serie."""
+    symbol = _normalize_symbol(symbol)
+    feed = feed_registry.get(symbol)
+    if feed is None or feed.df.empty or feed.spot_price <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No hay datos en vivo para {symbol} todavía -- abre GEX INFO en ese símbolo primero.",
+        )
+
+    volume_vs_oi = build_oi_ladder(feed.df, feed.spot_price, expiration=expiration)
+    straddle_atm = compute_atm_straddle(feed.df, feed.spot_price, expiration=expiration)
+    current_net_gex = compute_net_gex_for_expiration(feed.df, expiration=expiration)
+
+    opening_net_gex = None
+    gex_change_since_open = None
+    if expiration == "0dte":
+        day_snapshots = await _fetch_day_snapshots(symbol, None)
+        if day_snapshots:
+            opening_net_gex = float(day_snapshots[0].get("net_gex", 0.0) or 0.0)
+            gex_change_since_open = current_net_gex - opening_net_gex
+
+    return {
+        "symbol": symbol,
+        "expiration": expiration,
+        "spot": feed.spot_price,
+        "volume_vs_oi": volume_vs_oi,
+        "straddle_atm": straddle_atm,
+        "current_net_gex": current_net_gex,
+        "opening_net_gex": opening_net_gex,
+        "gex_change_since_open": gex_change_since_open,
+    }

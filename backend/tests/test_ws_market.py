@@ -1,7 +1,9 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.api.ws_market import ConnectionState
+from app.api.ws_market import ConnectionState, _handle_client_message
 from app.core.security import create_access_token
 from app.main import app
 
@@ -74,6 +76,30 @@ def test_strike_window_falls_back_to_dollar_range_when_no_strikes_yet():
     min_s, max_s = state.strike_window()
     assert min_s == 490.0
     assert max_s == 510.0
+
+
+def test_connection_state_defaults_to_0dte_expiration():
+    state = ConnectionState()
+    assert state.expiration == "0dte"
+
+
+def test_change_expiration_message_updates_state():
+    state = ConnectionState()
+    state._last_sent_update = 123.0
+    asyncio.run(_handle_client_message(None, state, {"type": "change_expiration", "expiration": "next"}))
+    assert state.expiration == "next"
+    # Se resetea para forzar un chain_full inmediato con el flip/ladder
+    # recalculados, en vez de esperar hasta el próximo tick real de Schwab.
+    assert state._last_sent_update == 0.0
+
+
+def test_change_expiration_message_rejects_unknown_values():
+    # Un valor que no sea '0dte'/'next' (típico de un cliente viejo/con un
+    # typo) no debe dejar la conexión pidiendo una expiración sin sentido
+    # -- cae al mismo comportamiento de siempre en vez de romper el tick.
+    state = ConnectionState()
+    asyncio.run(_handle_client_message(None, state, {"type": "change_expiration", "expiration": "monthly"}))
+    assert state.expiration == "0dte"
 
 
 def test_ws_market_rejects_connection_without_token():

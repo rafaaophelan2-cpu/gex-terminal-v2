@@ -1,0 +1,82 @@
+import pandas as pd
+
+from app.services.market_feed import SymbolFeed
+
+
+def _feed_with(df: pd.DataFrame, spot: float) -> SymbolFeed:
+    feed = SymbolFeed("QQQ", strikes_count=25)
+    feed.df = df
+    feed.spot_price = spot
+    return feed
+
+
+def _chain_with_flip_at(flip_strike: float, lo: int, hi: int) -> pd.DataFrame:
+    rows = []
+    for strike in range(lo, hi + 1):
+        net_gex = 50.0 if strike <= flip_strike else -30.0
+        rows.append({
+            "strike": float(strike), "exp_key": "e0", "dte": 0,
+            "net_gex": net_gex,
+            "call_gex": net_gex if net_gex > 0 else 0.0,
+            "put_gex": net_gex if net_gex < 0 else 0.0,
+            # compute_gamma_price_profile (vía recalculate_gex_for_spot)
+            # necesita estas dos columnas en CUALQUIER df que le llegue,
+            # igual que un feed real (parse_schwab_chain siempre las trae).
+            "openInterest_c": 10, "openInterest_p": 10,
+        })
+    return pd.DataFrame(rows)
+
+
+def test_gex_info_payload_flip_uses_ladder_not_the_on_screen_clipped_strike_range():
+    # Bug real que esto corrige: antes, flip_level salía de 'by_strike',
+    # recortado al [min_strike, max_strike] que el usuario eligió ver en
+    # pantalla (strike_range del sidebar) -- acá el cruce real de signo
+    # (entre 715 y 716) queda FUERA de la ventana visible 710-714. Con la
+    # ladder (±15 strikes reales, nunca recortada por lo que alguien esté
+    # mirando en pantalla) el flip real sigue apareciendo.
+    df = _chain_with_flip_at(flip_strike=715, lo=700, hi=730)
+    feed = _feed_with(df, spot=712.0)
+
+    payload = feed.gex_info_payload(min_strike=710.0, max_strike=714.0)
+
+    assert payload["flip_level"] == 716.0
+    assert payload["flip_level"] not in (710.0, 714.0)
+    # El bar chart (by_strike) sigue recortado a la ventana on-screen -- el
+    # fix es solo para el flip, no cambia el resto del panel.
+    assert {r["strike"] for r in payload["by_strike"]} == {710.0, 711.0, 712.0, 713.0, 714.0}
+
+
+def test_gex_info_payload_includes_oi_ladder_and_defaults_to_0dte():
+    df = _chain_with_flip_at(flip_strike=505, lo=490, hi=510)
+    feed = _feed_with(df, spot=500.0)
+
+    payload = feed.gex_info_payload()
+
+    assert payload["oi_ladder"]
+    assert {row["strike"] for row in payload["oi_ladder"]} == set(float(s) for s in range(490, 511))
+
+
+def test_gex_info_payload_expiration_filter_selects_next_expiration_ladder():
+    df = pd.concat([
+        _chain_with_flip_at(flip_strike=505, lo=490, hi=510),
+        pd.DataFrame([
+            {"strike": 500.0, "exp_key": "e7", "dte": 7, "net_gex": 1.0, "call_gex": 1.0, "put_gex": 0.0,
+             "openInterest_c": 10, "openInterest_p": 10},
+        ]),
+    ], ignore_index=True)
+    feed = _feed_with(df, spot=500.0)
+
+    payload = feed.gex_info_payload(expiration="next")
+
+    assert {row["strike"] for row in payload["oi_ladder"]} == {500.0}
+    # El resto del panel (bar chart de siempre) sigue fijo a 0DTE, sin
+    # cambio de comportamiento por el filtro nuevo.
+    assert 500.0 in {r["strike"] for r in payload["by_strike"]}
+    assert len(payload["by_strike"]) == 21  # 490..510, la expiración 0DTE de siempre
+
+
+def test_gex_info_payload_empty_feed_returns_empty_ladder():
+    feed = SymbolFeed("QQQ", strikes_count=25)
+    payload = feed.gex_info_payload()
+    assert payload["oi_ladder"] == []
+    assert payload["flip_level"] == feed.spot_price

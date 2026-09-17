@@ -63,6 +63,12 @@ class ConnectionState:
     def __init__(self):
         self.symbol: str = DEFAULT_SYMBOL
         self.strike_range: int = DEFAULT_STRIKE_RANGE
+        # Filtro de expiración de la ladder/flip (ver domain/oi_ladder.py)
+        # -- '0dte' (default, mismo comportamiento de siempre) o 'next'.
+        # Solo afecta oi_ladder/flip_level dentro de gex_info_payload, no
+        # el resto del panel GEX INFO (bar chart, walls, price_profile),
+        # que sigue fijo a la expiración más cercana como siempre.
+        self.expiration: str = "0dte"
         self.feed: SymbolFeed | None = None
         self._last_sent_update: float = 0.0
 
@@ -167,6 +173,17 @@ async def _handle_client_message(websocket: WebSocket, state: ConnectionState, m
         strike_range = int(msg.get("strike_range", state.strike_range))
         await state.subscribe(state.symbol, strike_range)
 
+    elif msg_type == "change_expiration":
+        # No hace falta un state.subscribe() nuevo (no cambia el feed
+        # compartido, solo qué expiración de la ladder pide ESTA conexión
+        # en su próximo tick) -- ver ConnectionState.expiration arriba.
+        # Se resetea _last_sent_update para que _tick_sender mande un
+        # payload nuevo YA, con el flip/ladder recalculados, en vez de
+        # esperar hasta el próximo tick real de Schwab (hasta 2s después).
+        expiration = str(msg.get("expiration", state.expiration) or state.expiration)
+        state.expiration = expiration if expiration in ("0dte", "next") else "0dte"
+        state._last_sent_update = 0.0
+
 
 async def _tick_sender(websocket: WebSocket, state: ConnectionState) -> None:
     """Manda 'chain_full' la primera vez (o tras un cambio de símbolo/
@@ -195,7 +212,7 @@ async def _tick_sender(websocket: WebSocket, state: ConnectionState) -> None:
                     "ts": feed.last_update,
                     "spot": feed.spot_price,
                     "schwab_online": feed.schwab_online,
-                    "gex_info": feed.gex_info_payload(min_strike, max_strike),
+                    "gex_info": feed.gex_info_payload(min_strike, max_strike, expiration=state.expiration),
                     "greeks": feed.greeks_payload(min_strike, max_strike),
                     "signals": feed.signals_payload(),
                 })
