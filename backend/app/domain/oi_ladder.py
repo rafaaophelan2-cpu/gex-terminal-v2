@@ -6,7 +6,10 @@ from app.domain.gex_math import compute_zero_gamma
 # defensivo que metrics.py/quantower.py: un DataFrame viejo o de un feed
 # sin alguna de estas columnas (ej. sin volume_c/volume_p) no debe romper
 # la ladder, solo faltar esa parte del payload.
-LADDER_AGG_COLS = ['openInterest_c', 'openInterest_p', 'volume_c', 'volume_p', 'call_gex', 'put_gex', 'net_gex']
+LADDER_AGG_COLS = [
+    'openInterest_c', 'openInterest_p', 'volume_c', 'volume_p',
+    'call_gex', 'put_gex', 'net_gex', 'net_vanna', 'net_chex',
+]
 
 DEFAULT_LADDER_STRIKES = 15
 
@@ -77,6 +80,12 @@ def build_oi_ladder(df: pd.DataFrame, spot_price: float, expiration: str = '0dte
             "call_gex": float(r.call_gex) if 'call_gex' in agg_map else 0.0,
             "put_gex": float(r.put_gex) if 'put_gex' in agg_map else 0.0,
             "net_gex": float(r.net_gex) if 'net_gex' in agg_map else 0.0,
+            # Vanna/Charm por strike -- opcionales (solo presentes cuando
+            # 'df' ya trae compute_greeks_exposures corrido, ver
+            # gex_math.py), pedidos por domain/briefing_data.py para la
+            # ladder que expone /briefing_data en Firebase.
+            "net_vanna": float(r.net_vanna) if 'net_vanna' in agg_map else 0.0,
+            "net_chex": float(r.net_chex) if 'net_chex' in agg_map else 0.0,
         }
         for r in window.itertuples()
     ]

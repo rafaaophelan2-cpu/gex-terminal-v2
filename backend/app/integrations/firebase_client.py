@@ -34,6 +34,30 @@ async def push_live_levels(payload: dict) -> dict:
         return {"ok": False, "code": None, "detail": str(e)[:200]}
 
 
+async def push_briefing_data(symbol: str, payload: dict) -> dict:
+    """PUT al nodo /briefing_data/{symbol} de Firebase -- NODO NUEVO,
+    separado de /live_levels (ver push_live_levels arriba): pensado para
+    que Claude (chat/Desktop) lea todo lo necesario para un briefing sin
+    login, con más detalle (Griegas completas, ladder de OI, flip por
+    expiración) del que necesita GexProfileCloud.cs. Mismo patrón de PUT
+    simple sin auth -- las reglas de Firebase deben permitir lectura
+    pública en este nodo igual que en /live_levels (se configura del lado
+    de Firebase, no acá)."""
+    if not settings.firebase_db_url:
+        return {"ok": False, "code": None, "detail": "Falta FIREBASE_DB_URL."}
+
+    url = f"{settings.firebase_db_url.rstrip('/')}/briefing_data/{symbol}.json"
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.put(url, json=payload)
+        if resp.status_code == 200:
+            return {"ok": True, "code": resp.status_code, "detail": "OK"}
+        return {"ok": False, "code": resp.status_code, "detail": resp.text[:200]}
+    except Exception as e:
+        logger.exception("push_briefing_data(%s) falló.", symbol)
+        return {"ok": False, "code": None, "detail": str(e)[:200]}
+
+
 async def fetch_session_profile(session_key: str) -> dict | None:
     """GET de /session_profiles/{session_key}.json -- perfiles de Volume/
     Delta/TPO (Overnight 17:00-08:29 y Cash 08:30-15:00, hora Lima/UTC-5,
