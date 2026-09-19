@@ -125,6 +125,20 @@ def test_compute_squeeze_screener_bias_requires_both_fuel_and_alignment():
     assert result["bias"] == "NEUTRAL"
 
 
+def test_gamma_regime_score_not_saturated_at_realistic_post_fix_scale():
+    # Bug real: GAMMA_REGIME_REF estaba calibrado a la escala VIEJA de
+    # net_gex (antes de agregar el *100 de multiplicador de contrato en
+    # gex_math.py -- ver gex_terminal_v2_lessons). Con la escala real
+    # corregida (net_gex ~100x más grande), un caso de combustible
+    # MODERADO (no extremo) saturaba el factor a 25/25 en vez de dar un
+    # puntaje parcial que refleje la magnitud real.
+    negative_df = BY_STRIKE.copy()
+    negative_df['net_gex'] = -negative_df['net_gex'] * 100 * 0.3  # escala post-fix, combustible moderado
+    result = compute_squeeze_screener(negative_df, SPOT, WALLS, net_dex_total=0.0)
+    regime_factor = next(f for f in result["factors"] if f["label"] == "Gamma Regime")
+    assert 0 < regime_factor["score"] < 25
+
+
 def test_compute_squeeze_screener_gamma_regime_zero_when_positive():
     positive_df = BY_STRIKE.copy()  # ya es net positivo en conjunto
     result = compute_squeeze_screener(positive_df, SPOT, WALLS, net_dex_total=0.0)

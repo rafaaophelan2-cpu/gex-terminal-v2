@@ -33,6 +33,22 @@ def test_recalculate_gex_gamma_peaks_atm():
     assert gamma_by_strike[100.0] > gamma_by_strike[105.0]
 
 
+def test_recalculate_gex_call_gex_includes_contract_multiplier():
+    # Bug real (ver gex_terminal_v2_lessons): call_gex/put_gex/net_gex usaban
+    # gamma * OI * spot^2 * 0.01, sin el multiplicador de contrato (100) que
+    # SI usan net_dex/net_tex/net_vex/net_chex/net_vanna en
+    # compute_greeks_exposures (mismo archivo) -- inconsistente con la
+    # convencion estandar de "Gamma Exposure" (gamma * OI * 100 * spot^2 *
+    # 0.01, el $ que cambia el hedge de dealers por cada 1% de movimiento).
+    df = recalculate_gex_for_spot(_sample_df(), spot_t=100.0, t_exp=7 / 365, iv=0.20)
+    row100 = df[df['strike'] == 100.0].iloc[0]
+    gamma = row100['gamma']
+    expected_call_gex = gamma * 500 * 100 * (100.0 ** 2) * 0.01
+    expected_put_gex = gamma * 300 * 100 * (100.0 ** 2) * (-0.01)
+    assert abs(row100['call_gex'] - expected_call_gex) < 1e-6
+    assert abs(row100['put_gex'] - expected_put_gex) < 1e-6
+
+
 def test_recalculate_gex_call_positive_put_negative():
     df = recalculate_gex_for_spot(_sample_df(), spot_t=100.0, t_exp=7 / 365, iv=0.20)
     assert (df['call_gex'] >= 0).all()

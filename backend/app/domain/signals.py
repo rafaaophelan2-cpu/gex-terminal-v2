@@ -9,7 +9,13 @@ NEAR_SPOT_PCT = 0.03
 # de QQQ/SPY que ya se ve en el resto de la app (paneles GEX INFO/GRID).
 # Se documentan acá para poder ajustarlos si un símbolo con otra escala
 # (ej. índices grandes) satura siempre el factor.
-GAMMA_REGIME_REF = 20_000_000.0
+#
+# GAMMA_REGIME_REF x100 (18-sep-2026): recalibrado junto con el fix del
+# multiplicador de contrato faltante en gex_math.py::recalculate_gex_for_spot
+# (net_gex ahora sale ~100x más grande, ver gex_terminal_v2_lessons) -- sin
+# este ajuste, cualquier régimen de gamma negativo moderado saturaba el
+# factor Gamma Regime a 25/25 en vez de dar un puntaje parcial real.
+GAMMA_REGIME_REF = 2_000_000_000.0
 DEX_REF = 500_000.0
 CALL_WALL_PROXIMITY_PCT_REF = 5.0
 VOLUME_OI_RATIO_REF = 0.5

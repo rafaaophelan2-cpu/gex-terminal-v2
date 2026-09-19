@@ -26,8 +26,12 @@ def recalculate_gex_for_spot(df_input: pd.DataFrame, spot_t: float, t_exp: float
     gamma = np.where(strikes > 0, gamma, 0.0)
 
     df_out['gamma'] = gamma
-    df_out['call_gex'] = df_out['gamma'] * df_out['openInterest_c'] * (spot_t ** 2) * 0.01
-    df_out['put_gex'] = df_out['gamma'] * df_out['openInterest_p'] * (spot_t ** 2) * (-0.01)
+    # *100: multiplicador de contrato (1 contrato = 100 acciones/unidades),
+    # el mismo que YA usan net_dex/net_tex/net_vex/net_chex/net_vanna en
+    # compute_greeks_exposures (abajo) -- faltaba acá, ver
+    # gex_terminal_v2_lessons para el bug real y su blast radius.
+    df_out['call_gex'] = df_out['gamma'] * df_out['openInterest_c'] * 100 * (spot_t ** 2) * 0.01
+    df_out['put_gex'] = df_out['gamma'] * df_out['openInterest_p'] * 100 * (spot_t ** 2) * (-0.01)
     df_out['net_gex'] = df_out['call_gex'] + df_out['put_gex']
     return df_out
 

@@ -56,7 +56,7 @@ def filter_calendar_today(calendar: list[dict] | None, today_str: str) -> list[d
 # recalculate_gex_for_spot), para que Claude no tenga que adivinar ni
 # asumir una convención distinta a la que este backend realmente usa.
 UNITS = {
-    "net_gex": "USD de gamma exposure por cada 1% de movimiento del subyacente (gamma * OI * spot^2 * 0.01)",
+    "net_gex": "USD de gamma exposure por cada 1% de movimiento del subyacente (gamma * OI * 100 * spot^2 * 0.01)",
     "dex": "millones de USD de exposición direccional equivalente (delta * OI * 100 * spot / 1e6)",
     "tex": "USD de decaimiento de prima por día (theta * OI * 100)",
     "vex": "USD de cambio de prima por cada 1 punto de IV (vega * OI * 100)",
