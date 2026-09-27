@@ -10,6 +10,13 @@ from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_option_chain
 from app.services.market_feed import DEFAULT_IV, DEFAULT_T_EXP
 
+
+def _level_cols(df) -> list[str]:
+    """Columnas para agrupar por strike: gamma y, si está, el open
+    interest -- con él, compute_zero_gamma usa el flip por perfil de
+    precio, el mismo que se usa para QQQ en la web."""
+    return ["call_gex", "put_gex", "net_gex"] + [c for c in ("openInterest_c", "openInterest_p") if c in df.columns]
+
 logger = logging.getLogger(__name__)
 
 # Símbolos "primarios" para los que tiene sentido cruzar contra el libro
@@ -46,7 +53,7 @@ async def fetch_ndx_compounded_levels(primary_symbol: str, primary_spot: float, 
 
         df = recalculate_gex_for_spot(df, spot_t=ndx_spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
         df_nearest = get_nearest_dte_subset(df)
-        by_strike = df_nearest.groupby("strike", as_index=False)[["call_gex", "put_gex", "net_gex"]].sum().sort_values("strike")
+        by_strike = df_nearest.groupby("strike", as_index=False)[_level_cols(df_nearest)].sum().sort_values("strike")
         if by_strike.empty:
             return None
 
@@ -98,7 +105,7 @@ async def fetch_vix_gamma_levels(primary_symbol: str) -> dict | None:
 
         df = recalculate_gex_for_spot(df, spot_t=vix_spot, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)
         df_nearest = get_nearest_dte_subset(df)
-        by_strike = df_nearest.groupby("strike", as_index=False)[["call_gex", "put_gex", "net_gex"]].sum().sort_values("strike")
+        by_strike = df_nearest.groupby("strike", as_index=False)[_level_cols(df_nearest)].sum().sort_values("strike")
         if by_strike.empty:
             return None
 

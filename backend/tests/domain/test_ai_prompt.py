@@ -465,3 +465,12 @@ def test_build_system_prompt_mode_gating_shrinks_the_static_baseline():
     daily_len = len(build_system_prompt(**kwargs, response_mode="daily_briefing"))
     full_len = len(build_system_prompt(**kwargs, response_mode="full"))
     assert daily_len < full_len
+
+
+def test_build_system_prompt_survives_missing_levels():
+    metrics = {**METRICS, "cw3": None, "pw3": None, "zero_gamma": None}
+    prompt = build_system_prompt(
+        ticker="QQQ", spot=481.23, metrics=metrics, vix_val=18.5,
+        intraday_context="contexto de prueba",
+    )
+    assert "sin nivel real" in prompt

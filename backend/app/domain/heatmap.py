@@ -3,7 +3,7 @@ import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 
 from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
-from app.domain.gex_math import compute_call_put_walls, compute_zero_crossing
+from app.domain.gex_math import compute_call_put_walls, compute_zero_crossing, compute_zero_gamma
 
 # Cada nivel se dibuja como una banda angosta y FIJA de ±BAND_HALF_WIDTH
 # puntos de precio alrededor del strike real -- no como una fila que
@@ -121,11 +121,20 @@ def _strike_frame(snap: dict, value_key: str) -> pd.DataFrame:
     misma forma que espera compute_call_put_walls/compute_zero_crossing
     (una fila por strike), armado en memoria sin tocar la red ni
     Black-Scholes: cada snapshot ya trae el valor real por strike."""
+    items = snap.get("strikes", [])
+    # Open interest solo si el snapshot lo trae (los guardados desde el
+    # 26-sep-2026): con él, compute_zero_gamma usa el mismo flip por perfil
+    # de precio que se ve en vivo; sin él, el cruce de la suma acumulada.
+    with_oi = bool(items) and all("openInterest_c" in i and "openInterest_p" in i for i in items)
+    columns = ["strike", value_key] + (["openInterest_c", "openInterest_p"] if with_oi else [])
     rows = [
-        {"strike": float(item["strike"]), value_key: float(item.get(value_key, 0.0) or 0.0)}
-        for item in snap.get("strikes", [])
+        {
+            "strike": float(item["strike"]), value_key: float(item.get(value_key, 0.0) or 0.0),
+            **({"openInterest_c": float(item["openInterest_c"]), "openInterest_p": float(item["openInterest_p"])} if with_oi else {}),
+        }
+        for item in items
     ]
-    return pd.DataFrame(rows, columns=["strike", value_key])
+    return pd.DataFrame(rows, columns=columns)
 
 
 def compute_gamma_trend_lines(
@@ -149,15 +158,17 @@ def compute_gamma_trend_lines(
         return {"times": [], "gamma_peak": [], "gamma_trough": [], "gamma_zero": []}
 
     times: list[str] = []
-    gamma_peak: list[float] = []
-    gamma_trough: list[float] = []
-    gamma_zero: list[float] = []
+    # None en un instante sin ese nivel real (Plotly lo dibuja como un hueco
+    # en la línea, en vez de un valor inventado).
+    gamma_peak: list[float | None] = []
+    gamma_trough: list[float | None] = []
+    gamma_zero: list[float | None] = []
 
     for snap in filtered:
         spot = float(snap.get('spot', 0.0))
         df = _strike_frame(snap, 'net_gex')
         cw1, _, _, pw1, _, _ = compute_call_put_walls(df, spot)
-        zero_gamma = compute_zero_crossing(df, 'net_gex', spot)
+        zero_gamma = compute_zero_gamma(df, spot)
 
         times.append(snap.get('time', ''))
         gamma_peak.append(cw1)
@@ -181,7 +192,7 @@ def compute_charm_trend_line(
         return {"times": [], "charm_zero": []}
 
     times: list[str] = []
-    charm_zero: list[float] = []
+    charm_zero: list[float | None] = []
 
     for snap in filtered:
         spot = float(snap.get('spot', 0.0))

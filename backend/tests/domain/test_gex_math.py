@@ -2,7 +2,10 @@ import pandas as pd
 import pytest
 
 from app.domain.gex_math import (
+    DEFAULT_IV,
+    DEFAULT_T_EXP,
     compute_call_put_walls,
+    compute_gamma_flip,
     compute_gamma_wall,
     compute_greeks_exposures,
     compute_zero_crossing,
@@ -85,26 +88,19 @@ def test_compute_call_put_walls_ranks_by_magnitude():
     assert pw2 == 105.0
 
 
-def test_compute_call_put_walls_empty_uses_fallback():
-    cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(pd.DataFrame(), spot_ref=100.0)
-    assert cw1 > 100.0
-    assert pw1 < 100.0
+def test_compute_call_put_walls_empty_returns_none():
+    # Antes: spot + 5 / spot - 5, walls inventados sin open interest detrás
+    # que llegaban a la web y a Quantower como si fueran reales.
+    assert compute_call_put_walls(pd.DataFrame(), spot_ref=100.0) == (None,) * 6
 
 
-def test_compute_call_put_walls_partial_fallback_uses_same_spacing_as_empty_fallback():
-    # Bug real: con un solo strike real de cada lado, cw2/cw3 y pw2/pw3
-    # sintéticos usaban un espaciado (+gap fijo encadenado) DISTINTO al
-    # del fallback "sin ningún dato" (gap*2.5 por nivel desde spot_ref) --
-    # dos convenciones distintas para la misma situación de fondo (no hay
-    # wall real). Ahora ambos casos usan gap*2.5 por nivel, consistente.
+def test_compute_call_put_walls_partial_returns_none_for_missing_levels():
+    # Un solo strike real de cada lado: CW1/PW1 reales, el resto no existe.
+    # Antes se rellenaban con CW1 + 5, CW1 + 10, etc.
     df_grouped = pd.DataFrame({'strike': [95.0, 105.0], 'net_gex': [8.0, -9.0]})
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(df_grouped, spot_ref=100.0, gap=2.0)
-    assert cw1 == 95.0  # real
-    assert cw2 == pytest.approx(95.0 + 2.0 * 2.5)
-    assert cw3 == pytest.approx(95.0 + 2.0 * 5.0)
-    assert pw1 == 105.0  # real
-    assert pw2 == pytest.approx(105.0 - 2.0 * 2.5)
-    assert pw3 == pytest.approx(105.0 - 2.0 * 5.0)
+    assert (cw1, cw2, cw3) == (95.0, None, None)
+    assert (pw1, pw2, pw3) == (105.0, None, None)
 
 
 def test_compute_gamma_wall_uses_absolute_exposure_not_net():
@@ -121,27 +117,29 @@ def test_compute_gamma_wall_uses_absolute_exposure_not_net():
     assert compute_gamma_wall(df_grouped, spot_ref=100.0) == 100.0
 
 
-def test_compute_gamma_wall_empty_uses_spot_fallback():
-    assert compute_gamma_wall(pd.DataFrame(), spot_ref=123.45) == 123.45
+def test_compute_gamma_wall_empty_is_none():
+    assert compute_gamma_wall(pd.DataFrame(), spot_ref=123.45) is None
 
 
-def test_compute_gamma_wall_without_call_put_columns_uses_spot_fallback():
+def test_compute_gamma_wall_without_call_put_columns_is_none():
     df_grouped = pd.DataFrame({'strike': [95.0, 105.0], 'net_gex': [8.0, -9.0]})
-    assert compute_gamma_wall(df_grouped, spot_ref=100.0) == 100.0
+    assert compute_gamma_wall(df_grouped, spot_ref=100.0) is None
 
 
-def test_compute_zero_gamma_crossing():
+# --- Zero Gamma / Gamma Flip ---------------------------------------------
+
+def test_compute_zero_gamma_without_oi_uses_interpolated_cumsum_crossing():
     df = pd.DataFrame({
         'strike': [95.0, 100.0, 105.0],
         'net_gex': [5.0, -3.0, -10.0],
     })
-    # cumsum por strike: 5, 2, -8 -> el mínimo absoluto está en strike 100
-    zg = compute_zero_gamma(df, spot_ref=100.0)
-    assert zg == 100.0
+    # Acumulada por strike: 5, 2, -8 -> cruza entre 100 (2) y 105 (-8),
+    # en 100 + 5 * 2/10 = 101. Antes idxmin(|acumulada|) daba 100.
+    assert compute_zero_gamma(df, spot_ref=100.0) == pytest.approx(101.0)
 
 
-def test_compute_zero_gamma_empty_uses_spot_fallback():
-    assert compute_zero_gamma(pd.DataFrame(), spot_ref=123.45) == 123.45
+def test_compute_zero_gamma_empty_is_none():
+    assert compute_zero_gamma(pd.DataFrame(), spot_ref=123.45) is None
 
 
 def test_compute_zero_gamma_falls_back_to_raw_sign_change_when_cumsum_never_crosses():
@@ -160,41 +158,90 @@ def test_compute_zero_gamma_falls_back_to_raw_sign_change_when_cumsum_never_cros
     assert zg == 716.0  # el cruce real (crudo), no el borde del rango (698)
 
 
-def test_compute_zero_gamma_uses_cumsum_crossing_when_it_actually_crosses():
-    # Caso normal (ya cubierto por test_compute_zero_gamma_crossing de
-    # arriba, repetido acá para dejar explícito el contraste): si la
-    # acumulada SÍ cruza cero dentro del rango, se sigue usando ese
-    # cruce -- el fallback de arriba NO debe activarse acá.
+def test_compute_zero_gamma_cumsum_that_dips_near_zero_without_crossing_is_not_the_flip():
+    # Bug real (26-sep-2026), con los net_gex reales de /live_levels ese día
+    # (en millones): la acumulada cruza de verdad entre 741 (-32.05) y 742
+    # (+11.81), después baja a +1.13 en 744 SIN cruzar y vuelve a subir.
+    # idxmin(|acumulada|) devolvía 744 (el ATM); el cruce real es 741.73.
     df = pd.DataFrame({
-        'strike': [95.0, 100.0, 105.0],
-        'net_gex': [5.0, -3.0, -10.0],
+        'strike': [738.0, 739.0, 740.0, 741.0, 742.0, 743.0, 744.0, 745.0],
+        'net_gex': [-91.61, -6.28, 56.22, 9.62, 43.86, 14.88, -25.56, 38.91],
     })
-    assert compute_zero_gamma(df, spot_ref=100.0) == 100.0
+    zg = compute_zero_gamma(df, spot_ref=744.5)
+    assert 741.0 < zg < 742.0
+    assert zg != 744.0
 
 
-def test_compute_zero_gamma_no_crossing_anywhere_uses_spot_fallback():
+def test_compute_zero_gamma_no_crossing_anywhere_is_none():
     # Ni la acumulada ni el valor crudo cruzan de signo en ningun punto
-    # (todo negativo, sin excepcion) -- no hay ningun cruce real que
-    # reportar, se cae al spot en vez de inventar un numero.
+    # (todo negativo). Antes devolvía el spot, que se mostraba como flip.
     df = pd.DataFrame({
         'strike': [100.0, 105.0, 110.0],
         'net_gex': [-5.0, -3.0, -1.0],
     })
-    assert compute_zero_gamma(df, spot_ref=107.0) == 107.0
+    assert compute_zero_gamma(df, spot_ref=107.0) is None
 
 
 def test_compute_zero_crossing_is_generic_over_value_col():
-    # Misma matemática que compute_zero_gamma, pero con una columna
-    # distinta (net_chex) -- confirma que la generalización (usada para
-    # el Charm Zero de la línea de tendencia) da el mismo resultado que
-    # daría compute_zero_gamma con esos mismos números.
+    # Misma matemática con otra columna (net_chex, Charm Zero).
     df = pd.DataFrame({
         'strike': [95.0, 100.0, 105.0],
         'net_chex': [5.0, -3.0, -10.0],
     })
-    assert compute_zero_crossing(df, 'net_chex', spot_ref=100.0) == 100.0
+    assert compute_zero_crossing(df, 'net_chex', spot_ref=100.0) == pytest.approx(101.0)
 
 
-def test_compute_zero_crossing_missing_column_uses_spot_fallback():
+def test_compute_zero_crossing_missing_column_is_none():
     df = pd.DataFrame({'strike': [95.0, 100.0], 'net_gex': [1.0, -1.0]})
-    assert compute_zero_crossing(df, 'net_chex', spot_ref=42.0) == 42.0
+    assert compute_zero_crossing(df, 'net_chex', spot_ref=42.0) is None
+
+
+# Open interest real de /live_levels (QQQ, spot 744.50, 26-sep-2026):
+# strike, call OI, put OI.
+_LIVE_OI_2026_09_26 = [
+    (733, 209, 1864), (734, 260, 1343), (735, 1386, 4758), (736, 1053, 1576),
+    (737, 1233, 719), (738, 1104, 2189), (739, 981, 1269), (740, 4642, 2275),
+    (741, 1620, 1242), (742, 2118, 481), (743, 908, 372), (744, 710, 1614),
+    (745, 2870, 1497), (746, 1236, 442), (747, 779, 553), (748, 1917, 339),
+    (749, 4819, 147), (750, 3357, 258), (751, 605, 77), (752, 480, 89),
+    (753, 635, 33), (754, 1575, 16), (755, 8476, 24), (756, 760, 3), (757, 2310, 2),
+]
+
+
+def _live_oi_df() -> pd.DataFrame:
+    return pd.DataFrame(_LIVE_OI_2026_09_26, columns=['strike', 'openInterest_c', 'openInterest_p']).astype(float)
+
+
+def test_compute_zero_gamma_with_oi_is_the_price_profile_crossing_on_real_data():
+    # Con open interest, el flip es donde cruza cero el gamma total al
+    # mover el precio (definición estándar). Ese día la app mostraba 744.00;
+    # el cruce real del perfil está en ~735.6 (~345 pts de MNQ más abajo).
+    flip = compute_zero_gamma(_live_oi_df(), spot_ref=744.5)
+    assert flip == pytest.approx(735.59, abs=0.05)
+
+
+def test_compute_gamma_flip_matches_the_gamma_price_profile_chart():
+    # El flip tiene que caer donde cruza cero la curva del gráfico "Gamma
+    # Price Profile" (mismo supuesto de IV/T, misma fórmula).
+    df = _live_oi_df()
+    flip = compute_gamma_flip(df, spot_ref=744.5)
+    for price, sign in ((flip - 0.5, -1), (flip + 0.5, 1)):
+        total = recalculate_gex_for_spot(df, spot_t=price, t_exp=DEFAULT_T_EXP, iv=DEFAULT_IV)['net_gex'].sum()
+        assert (total > 0) == (sign > 0)
+
+
+def test_compute_gamma_flip_none_when_gamma_never_changes_sign():
+    df = pd.DataFrame({'strike': [95.0, 100.0, 105.0], 'openInterest_c': [100, 100, 100], 'openInterest_p': [10, 10, 10]})
+    assert compute_gamma_flip(df, spot_ref=100.0) is None
+
+
+def test_compute_gamma_flip_picks_the_crossing_nearest_to_spot():
+    # Dos cruces: uno cerca de 90 y otro cerca de 110. Con spot en 108 debe
+    # ganar el de 110; con spot en 92, el de 90.
+    df = pd.DataFrame({
+        'strike': [85.0, 95.0, 105.0, 115.0],
+        'openInterest_c': [0, 100, 100, 0],
+        'openInterest_p': [100, 0, 0, 100],
+    })
+    assert compute_gamma_flip(df, spot_ref=108.0) == pytest.approx(110.0, abs=0.5)
+    assert compute_gamma_flip(df, spot_ref=92.0) == pytest.approx(90.0, abs=0.5)

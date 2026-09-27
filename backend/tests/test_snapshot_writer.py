@@ -111,3 +111,29 @@ def test_write_snapshot_omits_volume_and_mark_when_absent(monkeypatch):
     assert "volume_c" not in strike
     assert "mark_c" not in strike
 
+
+
+class _FakeFeedWithOi(_FakeFeed):
+    def __init__(self):
+        super().__init__()
+        self.df = pd.DataFrame([
+            {
+                "strike": 500.0, "exp_key": "2026-09-14:0", "dte": 0,
+                "call_gex": 1.0, "put_gex": -1.0, "net_gex": 0.0,
+                "openInterest_c": 3200, "openInterest_p": 1800,
+            },
+        ])
+
+
+def test_write_snapshot_includes_open_interest_when_present(monkeypatch):
+    # Con el OI guardado, el flip reconstruido desde Supabase (briefing
+    # pre-market, líneas de LIVE GAMMA) es el mismo cruce del perfil de
+    # precio que se ve en vivo, no el de la suma acumulada.
+    _install_fixed_now(monkeypatch, datetime(2026, 9, 11, 12, 30, tzinfo=snapshot_writer.STORAGE_TZ))
+    inserted = _install_fake_insert(monkeypatch)
+
+    asyncio.run(snapshot_writer._write_snapshot_for_feed(_FakeFeedWithOi()))
+
+    strike = inserted[0]["strikes"][0]
+    assert strike["openInterest_c"] == 3200
+    assert strike["openInterest_p"] == 1800

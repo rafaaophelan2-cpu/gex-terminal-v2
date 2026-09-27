@@ -89,13 +89,17 @@ def test_build_oi_ladder_next_falls_back_to_0dte_when_only_one_expiration():
 
 def test_compute_flip_from_ladder_reuses_zero_gamma_logic():
     ladder = build_oi_ladder(MULTI_EXP_DF, spot_price=500.0, expiration="0dte")
-    # Mismo cruce que ya se prueba a fondo para compute_zero_gamma en
-    # test_gex_math.py -- acá solo se confirma el wiring de la ladder.
-    assert compute_flip_from_ladder(ladder, 500.0) in (495.0, 505.0)
+    # Flip por perfil de precio con el OI de la ladder (495: +60 neto de
+    # calls, 505: -180 neto de puts) -- cruza entre los dos strikes, más
+    # cerca de 495 porque del lado de 505 pesa el triple. Lo fino se prueba
+    # en test_gex_math.py; acá solo el wiring (call_oi/put_oi -> OI).
+    flip = compute_flip_from_ladder(ladder, 500.0)
+    assert 495.0 < flip < 500.0
 
 
-def test_compute_flip_from_ladder_falls_back_to_spot_when_empty():
-    assert compute_flip_from_ladder([], 500.0) == 500.0
+def test_compute_flip_from_ladder_is_none_when_empty():
+    # Antes caía al spot, que se mostraba como si fuera un flip real.
+    assert compute_flip_from_ladder([], 500.0) is None
 
 
 def test_compute_net_gex_for_expiration_sums_only_that_expiration():

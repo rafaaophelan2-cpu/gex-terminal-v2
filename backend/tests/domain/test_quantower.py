@@ -85,16 +85,17 @@ def test_build_eod_levels_from_snapshot_none_when_strikes_missing_gex_columns():
     assert build_eod_levels_from_snapshot(snapshot) is None
 
 
-def test_build_live_levels_payload_gamma_wall_falls_back_to_spot_without_call_put_columns():
+def test_build_live_levels_payload_gamma_wall_is_zero_without_call_put_columns():
     # DataFrames viejos (o de un feed sin call_gex/put_gex por alguna
-    # razon) no deben romper el payload -- gamma_wall cae al spot, mismo
-    # criterio de fallback que compute_call_put_walls/compute_zero_gamma.
+    # razon) no deben romper el payload. Sin esas columnas no hay Gamma
+    # Wall real: va 0.0, que GexProfileCloud.cs no dibuja (antes iba el
+    # spot, que Quantower pintaba como si fuera un Gamma Wall).
     df = pd.DataFrame([
         {"strike": 495.0, "net_gex": 50.0, "exp_key": "e0", "dte": 0},
         {"strike": 505.0, "net_gex": -30.0, "exp_key": "e0", "dte": 0},
     ])
     payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
-    assert payload["gamma_wall"] == 500.0
+    assert payload["gamma_wall"] == 0.0
 
 
 def test_build_live_levels_payload_zero_gamma_is_the_flip_strike():
@@ -108,3 +109,33 @@ def test_build_live_levels_payload_zero_gamma_is_the_flip_strike():
     ])
     payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
     assert payload["zero_gamma"] in (495.0, 505.0)
+
+
+def test_build_live_levels_payload_sends_zero_for_levels_that_do_not_exist():
+    # Solo strikes con net_gex positivo: no hay Put Walls reales. Antes
+    # salían como spot - 5/10/15 y Quantower los dibujaba como walls; ahora
+    # van en 0.0, que GexProfileCloud.cs no dibuja.
+    df = pd.DataFrame([
+        {"strike": 495.0, "net_gex": 50.0, "call_gex": 50.0, "put_gex": 0.0, "exp_key": "e0", "dte": 0},
+        {"strike": 505.0, "net_gex": 30.0, "call_gex": 30.0, "put_gex": 0.0, "exp_key": "e0", "dte": 0},
+    ])
+    payload = build_live_levels_payload(df, spot_price=500.0, conversion_ratio=40.0)
+    assert (payload["cw1"], payload["cw2"], payload["cw3"]) == (495.0, 505.0, 0.0)
+    assert (payload["pw1"], payload["pw2"], payload["pw3"]) == (0.0, 0.0, 0.0)
+    assert payload["zero_gamma"] == 0.0  # sin cruce de signo en ningún lado
+    assert all(isinstance(payload[k], float) for k in ("cw1", "cw3", "pw1", "zero_gamma", "gamma_wall"))
+
+
+def test_build_eod_levels_from_snapshot_uses_price_profile_flip_when_snapshot_has_oi():
+    # Snapshots guardados desde el 26-sep-2026 traen el OI por strike: el
+    # flip reconstruido es el del perfil de precio (el mismo que en vivo).
+    snapshot = {
+        "spot": 500.0, "time": "15:59",
+        "strikes": [
+            {"strike": 495.0, "net_gex": 5.0, "call_gex": 5.0, "put_gex": 0.0, "openInterest_c": 100, "openInterest_p": 40},
+            {"strike": 505.0, "net_gex": -9.0, "call_gex": 0.0, "put_gex": -9.0, "openInterest_c": 20, "openInterest_p": 200},
+        ],
+    }
+    levels = build_eod_levels_from_snapshot(snapshot)
+    assert 495.0 < levels["zero_gamma"] < 500.0
+    assert levels["pw2"] is None  # un solo strike negativo: no hay PW2 real

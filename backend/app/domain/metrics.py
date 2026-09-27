@@ -46,10 +46,12 @@ def find_exp_keys_by_date(df_source: pd.DataFrame, target_date_str: str) -> list
 
 
 def _metrics_fallback(spot_ref: float) -> dict:
+    # Sin datos no hay walls ni flip reales: None, no spot ± 5/10/15 (que
+    # llegaba a la IA y a la web como si fueran niveles de verdad).
     return {
-        "cw1": spot_ref + 5, "cw2": spot_ref + 10, "cw3": spot_ref + 15,
-        "pw1": spot_ref - 5, "pw2": spot_ref - 10, "pw3": spot_ref - 15,
-        "zero_gamma": spot_ref, "dominant_wall": None, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
+        "cw1": None, "cw2": None, "cw3": None,
+        "pw1": None, "pw2": None, "pw3": None,
+        "zero_gamma": None, "dominant_wall": None, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
         "net_dex_val": 0.0, "net_tex_val": 0.0, "net_vex_val": 0.0, "net_chex_val": 0.0, "net_vanna_val": 0.0,
         "atm_iv": 0.20, "atm_iv_call": None, "atm_iv_put": None, "skew": None,
         "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
@@ -75,7 +77,7 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
     df_agg = df_sel.groupby('strike', as_index=False).agg(agg_map).sort_values('strike').reset_index(drop=True)
 
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(df_agg, spot_ref)
-    zero_gamma = compute_zero_gamma(df_agg, spot_ref) if 'net_gex' in df_agg.columns else spot_ref
+    zero_gamma = compute_zero_gamma(df_agg, spot_ref) if 'net_gex' in df_agg.columns else None
     dominant_wall = compute_dominant_gamma_wall(df_agg)
 
     net_gex_total = float(df_agg['net_gex'].sum()) if 'net_gex' in df_agg.columns else 0.0

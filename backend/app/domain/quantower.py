@@ -2,9 +2,17 @@ import pandas as pd
 
 from app.domain.gex_math import compute_call_put_walls, compute_gamma_wall, compute_zero_gamma
 from app.domain.metrics import get_nearest_dte_subset
-from app.domain.oi_ladder import build_oi_ladder, compute_flip_from_ladder
+from app.domain.oi_ladder import build_oi_ladder, compute_flip_for_expiration
 
 DEFAULT_CONVERSION_RATIO = 41.125
+
+
+def _level_or_zero(value: float | None) -> float:
+    return float(value) if value is not None else 0.0
+
+
+def _level_or_none(value: float | None) -> float | None:
+    return float(value) if value is not None else None
 
 
 def compute_conversion_ratio(nq_price: float, spot_price: float) -> float:
@@ -46,26 +54,25 @@ def build_live_levels_payload(df: pd.DataFrame, spot_price: float, conversion_ra
     cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, spot_price)
     gamma_wall = compute_gamma_wall(by_strike, spot_price)
 
-    # zero_gamma: SIEMPRE desde la ladder de ±15 strikes reales alrededor
-    # del ATM (ver domain/oi_ladder.py, mismo criterio que gex_info_payload
-    # en market_feed.py) en vez de 'by_strike' de arriba -- 'df' (el feed
-    # completo) puede tener bastante más o menos que esos ±15 strikes
-    # según el 'strikes_count' con el que se suscribió cada conexión web,
-    # una ventana que no tiene relación con lo que realmente define un
-    # flip real. Campo/consumidor sin cambios (GexProfileCloud.cs sigue
-    # leyendo 'zero_gamma' tal cual), solo el valor es más preciso; si la
-    # ladder sale vacía (df sin las columnas necesarias), cae al cálculo
-    # anterior sobre by_strike.
+    # zero_gamma: mismo flip que la web (compute_flip_for_expiration, ver
+    # gex_info_payload en market_feed.py): cruce del perfil de precio de la
+    # expiración más cercana, con toda su cadena. Si no hay open interest
+    # (df sin esas columnas), cae al cruce de la acumulada sobre by_strike.
     oi_ladder = build_oi_ladder(df, spot_price, expiration='0dte')
-    zero_gamma = compute_flip_from_ladder(oi_ladder, spot_price) if oi_ladder else compute_zero_gamma(by_strike, spot_price)
+    zero_gamma = compute_flip_for_expiration(df, spot_price, expiration='0dte')
+    if zero_gamma is None and not {'openInterest_c', 'openInterest_p'}.issubset(df.columns):
+        zero_gamma = compute_zero_gamma(by_strike, spot_price)
 
     return {
         "qqq_spot": float(spot_price),
         "conversion_ratio": float(conversion_ratio),
-        "cw1": float(cw1), "cw2": float(cw2), "cw3": float(cw3),
-        "pw1": float(pw1), "pw2": float(pw2), "pw3": float(pw3),
-        "zero_gamma": float(zero_gamma),
-        "gamma_wall": float(gamma_wall),
+        # Un nivel que no existe va como 0.0, nunca como un número
+        # inventado: GexProfileCloud.cs no dibuja niveles <= 0 (y un null
+        # lo borraría Firebase igual, dejando el campo en 0 del lado C#).
+        "cw1": _level_or_zero(cw1), "cw2": _level_or_zero(cw2), "cw3": _level_or_zero(cw3),
+        "pw1": _level_or_zero(pw1), "pw2": _level_or_zero(pw2), "pw3": _level_or_zero(pw3),
+        "zero_gamma": _level_or_zero(zero_gamma),
+        "gamma_wall": _level_or_zero(gamma_wall),
         "levels": [
             {"strike": float(r.strike), "net_gex": float(r.net_gex)}
             for r in by_strike.itertuples()
@@ -103,10 +110,10 @@ def build_eod_levels_from_snapshot(snapshot: dict | None) -> dict | None:
 
     return {
         "spot": spot_price,
-        "cw1": float(cw1), "cw2": float(cw2), "cw3": float(cw3),
-        "pw1": float(pw1), "pw2": float(pw2), "pw3": float(pw3),
-        "zero_gamma": float(zero_gamma),
-        "gamma_wall": float(gamma_wall),
+        "cw1": _level_or_none(cw1), "cw2": _level_or_none(cw2), "cw3": _level_or_none(cw3),
+        "pw1": _level_or_none(pw1), "pw2": _level_or_none(pw2), "pw3": _level_or_none(pw3),
+        "zero_gamma": _level_or_none(zero_gamma),
+        "gamma_wall": _level_or_none(gamma_wall),
         "atm_iv": float(snapshot.get('atm_iv', 0.0) or 0.0),
         "as_of_time": snapshot.get('time'),
     }

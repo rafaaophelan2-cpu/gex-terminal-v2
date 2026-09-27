@@ -132,5 +132,7 @@ def test_compute_charm_trend_line_uses_net_chex_not_net_gex():
     ]
     result = compute_charm_trend_line(snapshots)
     assert result["times"] == ["09:30"]
-    # cumsum por strike de net_chex: 5, 2, -8 -> mínimo absoluto en 100
-    assert result["charm_zero"] == [100.0]
+    # cumsum por strike de net_chex: 5, 2, -8 -> cruza entre 100 (2) y
+    # 105 (-8), interpolado en 100 + 5 * 2/10 = 101 (antes idxmin daba 100,
+    # que no es donde cruza).
+    assert result["charm_zero"] == [101.0]

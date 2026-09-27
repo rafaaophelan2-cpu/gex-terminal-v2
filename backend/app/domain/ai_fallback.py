@@ -1,4 +1,5 @@
 from app.domain.ai_prompt import classify_vix
+from app.domain.level_format import fmt_level
 
 
 def generate_local_diagnosis(ticker: str, spot: float, metrics: dict, vix_val: float, conversion_ratio: float = 41.125) -> str:
@@ -27,33 +28,40 @@ def generate_local_diagnosis(ticker: str, spot: float, metrics: dict, vix_val: f
     # el precio ya rompió un wall (spot > cw1, o spot < pw1 -- nada raro
     # intradía), la distancia al wall roto se vuelve negativa y "gana"
     # la comparación aunque el otro wall esté realmente mucho más cerca.
-    dist_cw1 = abs(metrics['cw1'] - spot)
-    dist_pw1 = abs(spot - metrics['pw1'])
-    nivel_cercano = "Call Wall 1" if dist_cw1 <= dist_pw1 else "Put Wall 1"
+    # Un wall puede no existir (None, ver compute_call_put_walls): cuenta
+    # como infinitamente lejos, y si faltan los dos no hay "más cercano".
+    dist_cw1 = abs(metrics['cw1'] - spot) if metrics['cw1'] is not None else float('inf')
+    dist_pw1 = abs(spot - metrics['pw1']) if metrics['pw1'] is not None else float('inf')
+    if dist_cw1 == dist_pw1 == float('inf'):
+        nivel_cercano = "ninguno (no hay Call/Put Wall real)"
+    else:
+        nivel_cercano = "Call Wall 1" if dist_cw1 <= dist_pw1 else "Put Wall 1"
+    zg, cw1, cw2 = fmt_level(metrics['zero_gamma']), fmt_level(metrics['cw1']), fmt_level(metrics['cw2'])
+    pw1, pw2 = fmt_level(metrics['pw1']), fmt_level(metrics['pw2'])
 
     return f"""**1. Estado Actual y Contexto Intradía**
 Régimen de gamma: {metrics['regime_str']} ({metrics['condition_str']}). VIX en {vix_val:.2f} ({vix_status} - {vix_desc}). IV ATM {metrics['iv_str']} (percentil {metrics['iv_rank_str']}). {comportamiento}
 
 **2. Niveles Operativos Relevantes para Scalping**
-- Zero Gamma (flip): {metrics['zero_gamma']:.2f} USD
-- Call Wall 1 (resistencia más cercana): {metrics['cw1']:.2f} USD
-- Put Wall 1 (soporte más cercano): {metrics['pw1']:.2f} USD
+- Zero Gamma (flip): {zg} USD
+- Call Wall 1 (resistencia más cercana): {cw1} USD
+- Put Wall 1 (soporte más cercano): {pw1} USD
 - Nivel más cercano al spot actual ({spot:.2f}): {nivel_cercano}
 
 **3. Qué Vigilar en Order Flow**
 Confirma cualquier escenario con absorción real en footprint/cumulative delta antes de entrar: una mecha de rechazo sin volumen de agresión en contra no es suficiente para operar un nivel de gamma.
 
 **4. Escenarios Operativos (5-30 min)**
-* **Rebote en Put Wall 1 → LONG**: entrada cerca de {metrics['pw1']:.2f}, TP hacia {metrics['zero_gamma']:.2f}, invalidación por debajo de {metrics['pw2']:.2f}.
-* **Rebote en Call Wall 1 → SHORT**: entrada cerca de {metrics['cw1']:.2f}, TP hacia {metrics['zero_gamma']:.2f}, invalidación por encima de {metrics['cw2']:.2f}.
-* **Ruptura y Retesteo de Zero Gamma**: si el precio sostiene por encima de {metrics['zero_gamma']:.2f}, continuación LONG hacia {metrics['cw1']:.2f} en el retest; si sostiene por debajo, continuación SHORT hacia {metrics['pw1']:.2f} en el retest.
+* **Rebote en Put Wall 1 → LONG**: entrada cerca de {pw1}, TP hacia {zg}, invalidación por debajo de {pw2}.
+* **Rebote en Call Wall 1 → SHORT**: entrada cerca de {cw1}, TP hacia {zg}, invalidación por encima de {cw2}.
+* **Ruptura y Retesteo de Zero Gamma**: si el precio sostiene por encima de {zg}, continuación LONG hacia {cw1} en el retest; si sostiene por debajo, continuación SHORT hacia {pw1} en el retest.
 
 **5. Resumen Rápido para el Trader**
 
 | Setup | Dirección | Entrada | TP | Invalidación | Comentario OF |
 |---|---|---|---|---|---|
-| Rebote PW1 | LONG | {metrics['pw1']:.2f} | {metrics['zero_gamma']:.2f} | {metrics['pw2']:.2f} | Buscar absorción compradora en el soporte (delta grid/cumulative delta) |
-| Rebote CW1 | SHORT | {metrics['cw1']:.2f} | {metrics['zero_gamma']:.2f} | {metrics['cw2']:.2f} | Buscar absorción vendedora en la resistencia (delta grid/cumulative delta) |
-| Ruptura y Retesteo ZG | Según ruptura | {metrics['zero_gamma']:.2f} | {metrics['cw1']:.2f} / {metrics['pw1']:.2f} | Reingreso al rango | Confirmar con delta acumulado sostenido en el retest |
+| Rebote PW1 | LONG | {pw1} | {zg} | {pw2} | Buscar absorción compradora en el soporte (delta grid/cumulative delta) |
+| Rebote CW1 | SHORT | {cw1} | {zg} | {cw2} | Buscar absorción vendedora en la resistencia (delta grid/cumulative delta) |
+| Ruptura y Retesteo ZG | Según ruptura | {zg} | {cw1} / {pw1} | Reingreso al rango | Confirmar con delta acumulado sostenido en el retest |
 
 _Diagnóstico generado localmente (sin IA) -- conecta GROQ_API_KEY para un análisis narrativo completo._"""

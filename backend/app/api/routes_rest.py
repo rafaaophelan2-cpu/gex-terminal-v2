@@ -25,6 +25,7 @@ from app.domain.heatmap import (
     compute_heatmap_matrix,
 )
 from app.domain.implied_range import compute_implied_range
+from app.domain.level_format import fmt_level
 from app.domain.metrics import compute_metrics_for_dte
 from app.domain.news_filter import filter_relevant_news
 from app.domain.oi_ladder import build_oi_ladder, compute_atm_straddle, compute_net_gex_for_expiration
@@ -329,9 +330,9 @@ async def get_premarket_briefing(symbol: str = "QQQ"):
     if eod:
         gamma_line = (
             f"Niveles de gamma de {symbol} (último cierre conocido, {eod['as_of_time'] or '?'} hora NY): "
-            f"Spot={eod['spot']:.2f}, CW1={eod['cw1']:.2f}, CW2={eod['cw2']:.2f}, CW3={eod['cw3']:.2f}, "
-            f"PW1={eod['pw1']:.2f}, PW2={eod['pw2']:.2f}, PW3={eod['pw3']:.2f}, "
-            f"Zero Gamma={eod['zero_gamma']:.2f}, Gamma Wall={eod['gamma_wall']:.2f}, "
+            f"Spot={eod['spot']:.2f}, CW1={fmt_level(eod['cw1'])}, CW2={fmt_level(eod['cw2'])}, CW3={fmt_level(eod['cw3'])}, "
+            f"PW1={fmt_level(eod['pw1'])}, PW2={fmt_level(eod['pw2'])}, PW3={fmt_level(eod['pw3'])}, "
+            f"Zero Gamma={fmt_level(eod['zero_gamma'])}, Gamma Wall={fmt_level(eod['gamma_wall'])}, "
             f"ATM IV={eod['atm_iv'] * 100:.1f}%"
         )
     else:

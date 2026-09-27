@@ -5,7 +5,7 @@ import pandas as pd
 from app.domain.gex_math import compute_zero_gamma
 from app.domain.implied_range import compute_implied_range
 from app.domain.metrics import compute_metrics_for_dte
-from app.domain.oi_ladder import build_oi_ladder, compute_atm_straddle, compute_flip_from_ladder, resolve_expiration_key
+from app.domain.oi_ladder import build_oi_ladder, compute_atm_straddle, compute_flip_for_expiration, resolve_expiration_key
 from app.domain.quantower import build_eod_levels_from_snapshot
 
 # 09:30-16:00 NY (mismo criterio que DEFAULT_SESSION_START/END en
@@ -66,6 +66,11 @@ UNITS = {
     "volume": "contratos operados en el día",
     "straddle": "USD de prima real de mercado (mark = aproximación al precio medio bid/ask de Schwab), no por contrato x100",
     "expected_move": "USD de movimiento esperado (1 desviación estándar) hasta el cierre de la expiración 0DTE",
+    "flip": (
+        "precio del subyacente (USD) donde el gamma total de los dealers cruzaría cero si el precio llegara ahí, "
+        "con el open interest de hoy (cruce del perfil de precio, no de la suma acumulada por strike); "
+        "la clave falta si no hay cruce dentro de ±10% del spot"
+    ),
 }
 
 
@@ -162,8 +167,11 @@ def build_briefing_payload_live(
     ladder_0dte = build_oi_ladder(df, spot_price, expiration="0dte")
     ladder_next = build_oi_ladder(df, spot_price, expiration="next") if has_next else []
 
-    flip_0dte = compute_flip_from_ladder(ladder_0dte, spot_price)
-    flip_next = compute_flip_from_ladder(ladder_next, spot_price) if has_next else None
+    # Mismo flip que la web y Quantower (perfil de precio de toda la cadena
+    # de esa expiración). None si no hay cruce real -- Firebase borra las
+    # claves null, así que quien lee /briefing_data ve la clave ausente.
+    flip_0dte = compute_flip_for_expiration(df, spot_price, expiration="0dte")
+    flip_next = compute_flip_for_expiration(df, spot_price, expiration="next") if has_next else None
 
     straddle_atm_0dte = compute_atm_straddle(df, spot_price, expiration="0dte")
     implied_range = compute_implied_range(spot_price, atm_iv, dte_0dte)

@@ -19,10 +19,12 @@ def _chain_with_flip_at(flip_strike: float, lo: int, hi: int) -> pd.DataFrame:
             "net_gex": net_gex,
             "call_gex": net_gex if net_gex > 0 else 0.0,
             "put_gex": net_gex if net_gex < 0 else 0.0,
-            # compute_gamma_price_profile (vía recalculate_gex_for_spot)
-            # necesita estas dos columnas en CUALQUIER df que le llegue,
-            # igual que un feed real (parse_schwab_chain siempre las trae).
-            "openInterest_c": 10, "openInterest_p": 10,
+            # El flip sale del open interest (perfil de precio): más calls
+            # que puts hasta flip_strike y al revés por encima, con el
+            # mismo neto a cada lado -> el gamma total cruza cero a mitad
+            # de camino entre flip_strike y el strike siguiente.
+            "openInterest_c": 30 if strike <= flip_strike else 10,
+            "openInterest_p": 10 if strike <= flip_strike else 30,
         })
     return pd.DataFrame(rows)
 
@@ -39,8 +41,8 @@ def test_gex_info_payload_flip_uses_ladder_not_the_on_screen_clipped_strike_rang
 
     payload = feed.gex_info_payload(min_strike=710.0, max_strike=714.0)
 
-    assert payload["flip_level"] == 716.0
-    assert payload["flip_level"] not in (710.0, 714.0)
+    assert abs(payload["flip_level"] - 715.5) < 0.25  # cruce real, casi a mitad de 715 y 716
+    assert payload["flip_level"] > 714.0  # fuera de la ventana visible, no pegado a su borde
     # El bar chart (by_strike) sigue recortado a la ventana on-screen -- el
     # fix es solo para el flip, no cambia el resto del panel.
     assert {r["strike"] for r in payload["by_strike"]} == {710.0, 711.0, 712.0, 713.0, 714.0}
@@ -79,4 +81,7 @@ def test_gex_info_payload_empty_feed_returns_empty_ladder():
     feed = SymbolFeed("QQQ", strikes_count=25)
     payload = feed.gex_info_payload()
     assert payload["oi_ladder"] == []
-    assert payload["flip_level"] == feed.spot_price
+    # Sin cadena no hay flip ni walls reales: None (la web muestra '--'),
+    # no el spot.
+    assert payload["flip_level"] is None
+    assert set(payload["walls"].values()) == {None}

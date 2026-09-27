@@ -5,22 +5,22 @@ import time
 import pandas as pd
 
 from app.domain.gamma_price_profile import compute_gamma_price_profile
-from app.domain.gex_math import compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot
+from app.domain.gex_math import (
+    DEFAULT_IV, DEFAULT_T_EXP, compute_call_put_walls, compute_greeks_exposures, compute_zero_gamma, recalculate_gex_for_spot,
+)
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
 from app.domain.oi_fallback import apply_volume_fallback_if_no_oi, merge_external_oi
-from app.domain.oi_ladder import build_oi_ladder, compute_flip_from_ladder
+from app.domain.oi_ladder import build_oi_ladder, compute_flip_for_expiration
 from app.domain.signals import compute_signals, compute_squeeze_screener
 from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_option_chain
 from app.domain.parsing import parse_schwab_chain
 
 TICK_INTERVAL_SECONDS = 2
-# Fase 1 (MVP GEX INFO): IV/T_exp simplificados a un valor fijo razonable.
-# El cálculo real de atm_iv (mediana de IV cerca del spot) y T_exp (días a
-# la expiración 0DTE real) se porta en Fase 2 junto con el resto de
-# Griegas/paneles -- no bloquea tener GEX INFO funcionando en vivo.
-DEFAULT_IV = 0.20
-DEFAULT_T_EXP = 1 / 365
+# Fase 1 (MVP GEX INFO): IV/T_exp simplificados a un valor fijo razonable
+# (DEFAULT_IV/DEFAULT_T_EXP, definidos en domain/gex_math.py y reexportados
+# acá para quien ya los importaba de este módulo). El cálculo real con la
+# IV y el DTE de cada contrato sigue pendiente.
 
 # GRID/Gamma Heatmap/3D SURFACE/3D VOL SURFACE agregan MUCHAS expiraciones
 # a la vez (hasta 90 días out) -- el 'strikes_count' que llega de la UI
@@ -277,9 +277,10 @@ class SymbolFeed:
         if self.df.empty:
             return {
                 "net_gex_total": 0.0, "call_gex_total": 0.0, "put_gex_total": 0.0,
-                "flip_level": self.spot_price,
-                "walls": {"cw1": self.spot_price, "cw2": self.spot_price, "cw3": self.spot_price,
-                          "pw1": self.spot_price, "pw2": self.spot_price, "pw3": self.spot_price},
+                # None, no el spot: sin cadena no hay ningún nivel real que
+                # mostrar, y la web ya pinta '--' para un nivel ausente.
+                "flip_level": None,
+                "walls": {"cw1": None, "cw2": None, "cw3": None, "pw1": None, "pw2": None, "pw3": None},
                 "iv_str": "--", "iv_rank_str": "N/A",
                 "by_strike": [],
                 "price_profile": {"prices": [], "net_gamma": []},
@@ -297,17 +298,17 @@ class SymbolFeed:
 
         cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, self.spot_price)
 
-        # Flip/Zero Gamma: SIEMPRE desde la ladder de ±15 strikes reales
-        # alrededor del ATM (ver domain/oi_ladder.py), NUNCA desde
-        # 'by_strike' de arriba -- 'by_strike' puede venir recortado al
-        # strike_range que el usuario eligió ver en el gráfico de barras
-        # (min_strike/max_strike), una ventana que varía por conexión y
-        # puede dejar el cruce real de signo FUERA de lo que se está
-        # promediando, dando un flip clipeado al borde de esa ventana en
-        # vez del nivel real (mismo síntoma que el bug real documentado en
-        # compute_zero_crossing, gex_math.py).
+        # Flip/Zero Gamma: SIEMPRE desde la cadena completa de la
+        # expiración elegida (ver compute_flip_for_expiration en
+        # domain/oi_ladder.py), NUNCA desde 'by_strike' de arriba --
+        # 'by_strike' puede venir recortado al strike_range que el usuario
+        # eligió ver en el gráfico de barras (min_strike/max_strike), una
+        # ventana que varía por conexión y puede dejar el cruce real FUERA
+        # de lo que se está mirando. Desde el 26-sep-2026 es el cruce del
+        # perfil de precio (el mismo del gráfico Gamma Price Profile), no
+        # el de la suma acumulada por strike.
         oi_ladder = build_oi_ladder(self.df, self.spot_price, expiration=expiration)
-        zero_gamma = compute_flip_from_ladder(oi_ladder, self.spot_price) if oi_ladder else compute_zero_gamma(by_strike, self.spot_price)
+        zero_gamma = compute_flip_for_expiration(self.df, self.spot_price, expiration=expiration)
 
         # Gamma Price Profile: SIEMPRE con la cadena completa (no recortada
         # por strike_range) -- un strike hoy fuera de la ventana visible

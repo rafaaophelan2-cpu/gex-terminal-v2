@@ -95,11 +95,14 @@ def test_compute_metrics_for_dte_skew_none_when_no_near_atm_data():
 def test_compute_metrics_for_dte_fallback_on_empty_selection():
     df = _multi_exp_df()
     metrics = compute_metrics_for_dte(df, ['no-existe:99'], spot_ref=200.0)
-    assert metrics['zero_gamma'] == 200.0
+    # Sin datos no hay flip real: None, no el spot (se mostraba como nivel).
+    assert metrics['zero_gamma'] is None
     assert metrics['net_gex_total'] == 0.0
 
 
 def test_compute_metrics_for_dte_fallback_on_empty_df():
     metrics = compute_metrics_for_dte(pd.DataFrame(), [], spot_ref=50.0)
-    assert metrics['cw1'] == 55.0
+    # Antes CW1 = spot + 5, un wall inventado sin open interest detrás.
+    assert metrics['cw1'] is None
+    assert metrics['pw1'] is None
     assert metrics['regime_str'] == 'neutral regime'

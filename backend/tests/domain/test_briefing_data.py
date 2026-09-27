@@ -56,11 +56,15 @@ def _live_df() -> pd.DataFrame:
               "net_dex": 1.0, "call_dex": 0.6, "put_dex": 0.4, "net_tex": -2.0, "net_vex": 3.0,
               "net_chex": 0.5, "net_vanna": 0.2, "iv_c": 0.20, "iv_p": 0.22,
               "mark_c": 1.1, "mark_p": 0.9}
+    # El flip sale del open interest (perfil de precio): en 495 dominan
+    # las calls y en 505 las puts, con el mismo neto (20) a cada lado, así
+    # que el gamma total cruza cero justo en el medio, en 500.
     rows = [
         {"strike": 495.0, "exp_key": "e0", "exp_date": "2026-09-17", "dte": 0,
          "net_gex": 50.0, "call_gex": 50.0, "put_gex": 0.0, **common},
         {"strike": 505.0, "exp_key": "e0", "exp_date": "2026-09-17", "dte": 0,
-         "net_gex": -30.0, "call_gex": 0.0, "put_gex": -30.0, **common},
+         "net_gex": -30.0, "call_gex": 0.0, "put_gex": -30.0, **common,
+         "openInterest_c": 80, "openInterest_p": 100},
         {"strike": 500.0, "exp_key": "e7", "exp_date": "2026-09-24", "dte": 7,
          "net_gex": 999.0, "call_gex": 999.0, "put_gex": 0.0, **common},
     ]
@@ -103,8 +107,12 @@ def test_build_briefing_payload_live_matches_shape_and_reuses_metrics():
     assert row_495["vanna"] == 0.2
     assert row_495["charm"] == 0.5
 
-    assert payload["flip_0dte"] == 505.0  # net_gex cruza de + a - entre 495 y 505
-    assert payload["flip_next"] == 500.0  # ladder_next de un solo strike -> cae al spot (sin cruce real)
+    # Cruce del perfil de precio: casi en el medio de 495 y 505 (no exacto,
+    # la gamma de Black-Scholes no es simétrica en precio).
+    assert abs(payload["flip_0dte"] - 500.0) < 0.25
+    # Un solo strike con más calls que puts: el gamma total nunca cambia de
+    # signo. Antes caía al spot (500) y se mostraba como si fuera un flip.
+    assert payload["flip_next"] is None
 
     assert payload["straddle_atm_0dte"]["straddle_price"] == 2.0  # 1.1 + 0.9
     assert payload["net_gex_change_since_open"] == 10.0  # 20 - 10
@@ -163,7 +171,10 @@ def test_build_briefing_payload_from_snapshot_reconstructs_partial_data():
     assert payload["straddle_atm_0dte"] is None
     assert payload["implied_range"] is None
 
-    assert payload["flip_0dte"] == 495.0  # cumsum cruza de signo entre 495(-8) y 505(+33) -> idxmin(|cumsum|) da 495
+    # Snapshot sin open interest: flip por la suma acumulada, que pasa de -8
+    # (495) a +25 (505); el cruce interpolado cae en 495 + 10 * 8/33.
+    # Antes idxmin(|acumulada|) devolvía 495, que no es donde cruza.
+    assert abs(payload["flip_0dte"] - (495.0 + 10.0 * 8.0 / 33.0)) < 1e-9
     assert payload["net_gex_change_since_open"] == 5.0  # 25 - 20
 
 

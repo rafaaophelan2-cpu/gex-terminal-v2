@@ -160,7 +160,9 @@ def test_heatmap_charm_includes_charm_zero_line(authed_client, monkeypatch):
     resp = authed_client.get("/market/heatmap-charm?symbol=QQQ")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["charm_zero"] == [100.0]
+    # Un solo strike: el charm acumulado nunca cruza cero. Antes se
+    # rellenaba con el spot (100); ahora el instante queda sin valor.
+    assert body["charm_zero"] == [None]
 
 
 def test_economic_calendar_requires_auth():

@@ -46,7 +46,10 @@ def _build_string_for_feed(feed) -> str | None:
         return None
 
     df_nearest = get_nearest_dte_subset(feed.df)
-    by_strike = df_nearest.groupby('strike', as_index=False)[['call_gex', 'put_gex', 'net_gex']].sum().sort_values('strike')
+    # Con el open interest incluido, compute_zero_gamma da el mismo flip
+    # (perfil de precio) que la web y Quantower.
+    cols = ['call_gex', 'put_gex', 'net_gex'] + [c for c in ('openInterest_c', 'openInterest_p') if c in df_nearest.columns]
+    by_strike = df_nearest.groupby('strike', as_index=False)[cols].sum().sort_values('strike')
     if by_strike.empty:
         return None
 

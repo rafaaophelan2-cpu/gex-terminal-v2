@@ -3,6 +3,7 @@ from datetime import date as date_cls
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from app.domain.level_format import MISSING_LEVEL, fmt_level
 from app.domain.session_profile import format_session_profile
 
 logger = logging.getLogger(__name__)
@@ -279,7 +280,9 @@ def build_system_prompt(
     # aritméticamente incorrectos (ej. 708 * 41.105 respondido como 29115
     # en vez de 29102.34) -- un LLM no ejecuta la multiplicación, la
     # aproxima por patrón de texto.
-    def _wall_in_points(usd_value: float) -> str:
+    def _wall_in_points(usd_value: float | None) -> str:
+        if usd_value is None:
+            return MISSING_LEVEL
         return f"{usd_value:.2f} USD ({usd_value * conversion_ratio:,.2f} pts NQ/MNQ)"
 
     dominant_wall = metrics.get("dominant_wall")
@@ -339,7 +342,7 @@ def build_system_prompt(
         vix_gamma_levels_line = (
             f"- Niveles de Gamma de VIX (correlación NEGATIVA con {ticker} -- úsalo como señal INVERSA, nunca "
             f"directa): VIX Call Wall={vgl['cw1']:.2f}, VIX Put Wall={vgl['pw1']:.2f}, VIX Zero Gamma="
-            f"{vgl['zero_gamma']:.2f}. Si VIX está rebotando/pineado en uno de estos niveles, esperá el movimiento "
+            f"{fmt_level(vgl.get('zero_gamma'))}. Si VIX está rebotando/pineado en uno de estos niveles, esperá el movimiento "
             f"CONTRARIO en {ticker} aunque no haya catalizador visible todavía en el precio de {ticker}."
         )
 
@@ -561,9 +564,9 @@ def build_system_prompt(
     - Índice VIX: {vix_val:.2f} ({vix_status} - {vix_desc})
     - Régimen de Gamma: {metrics['regime_str']} ({metrics['condition_str']})
     - Net GEX Total: {metrics['net_gex_total']:,.0f} USD (Call GEX: {metrics['call_gex_sum']:,.0f} USD, Put GEX: {metrics['put_gex_sum']:,.0f} USD)
-    - Call Walls (Resistencias): CW1={metrics['cw1']:.0f} USD, CW2={metrics['cw2']:.0f} USD, CW3={metrics['cw3']:.0f} USD
-    - Put Walls (Soportes): PW1={metrics['pw1']:.0f} USD, PW2={metrics['pw2']:.0f} USD, PW3={metrics['pw3']:.0f} USD
-    - Zero Gamma Level (Flip): {metrics['zero_gamma']:.2f} USD
+    - Call Walls (Resistencias): CW1={fmt_level(metrics['cw1'], '.0f')} USD, CW2={fmt_level(metrics['cw2'], '.0f')} USD, CW3={fmt_level(metrics['cw3'], '.0f')} USD
+    - Put Walls (Soportes): PW1={fmt_level(metrics['pw1'], '.0f')} USD, PW2={fmt_level(metrics['pw2'], '.0f')} USD, PW3={fmt_level(metrics['pw3'], '.0f')} USD
+    - Zero Gamma Level (Flip): {fmt_level(metrics['zero_gamma'])} USD
     {gamma_levels_in_points}
     {macro_levels_line}
     {vix_gamma_levels_line}

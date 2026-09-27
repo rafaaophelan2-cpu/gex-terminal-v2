@@ -91,17 +91,40 @@ def build_oi_ladder(df: pd.DataFrame, spot_price: float, expiration: str = '0dte
     ]
 
 
-def compute_flip_from_ladder(ladder: list[dict], spot_price: float) -> float:
+def compute_flip_for_expiration(df: pd.DataFrame, spot_price: float, expiration: str = '0dte') -> float | None:
+    """Zero Gamma/flip de UNA expiración ('0dte'|'next', ver
+    resolve_expiration_key), con TODOS los strikes que trae el feed para
+    esa expiración -- nunca con el 'by_strike' recortado al strike_range
+    que cada usuario eligió ver en pantalla (el bug que motivó la ladder
+    fija, ver build_oi_ladder).
+
+    Desde el 26-sep-2026 el flip sale del perfil de precio
+    (gex_math.compute_gamma_flip), que necesita el open interest de toda la
+    cadena y no solo los ±15 strikes de la ladder: un strike fuera de la
+    ladder sigue pesando en el gamma total cuando el precio se acerca a
+    él. None si no hay datos o no hay cruce real."""
+    if df is None or df.empty or spot_price <= 0:
+        return None
+    if 'exp_key' not in df.columns:
+        # Sin columna de expiración (un df ya filtrado a una sola): se usa tal cual.
+        return compute_zero_gamma(df, spot_price)
+    exp_key = resolve_expiration_key(df, expiration)
+    if exp_key is None:
+        return None
+    return compute_zero_gamma(df[df['exp_key'] == exp_key], spot_price)
+
+
+def compute_flip_from_ladder(ladder: list[dict], spot_price: float) -> float | None:
     """Zero Gamma/flip calculado SOLO con los strikes de la ladder (ver
-    build_oi_ladder), reusando compute_zero_gamma tal cual -- reemplaza
-    el cálculo anterior, que corría sobre 'by_strike' potencialmente
-    recortado al strike_range visible en pantalla (ventana variable por
-    conexión, nunca pensada como fuente de un nivel real). Con la ladder
-    vacía (sin feed todavía, o expiración sin datos) cae al spot, mismo
-    fallback que compute_zero_gamma."""
+    build_oi_ladder). Los consumidores principales usan ya
+    compute_flip_for_expiration (cadena completa de la expiración); esto
+    queda para quien solo tenga la ladder a mano. Usa el mismo flip por
+    perfil de precio, con el OI de la ladder. None con la ladder vacía o
+    sin cruce real (antes caía al spot, que se mostraba como un nivel)."""
     if not ladder:
-        return spot_price
-    return compute_zero_gamma(pd.DataFrame(ladder), spot_price)
+        return None
+    df = pd.DataFrame(ladder).rename(columns={'call_oi': 'openInterest_c', 'put_oi': 'openInterest_p'})
+    return compute_zero_gamma(df, spot_price)
 
 
 def compute_net_gex_for_expiration(df: pd.DataFrame, expiration: str = '0dte') -> float:

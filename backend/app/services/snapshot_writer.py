@@ -73,6 +73,11 @@ async def _write_snapshot_for_feed(feed) -> None:
     # campos siguen funcionando igual que antes).
     has_volume = 'volume_c' in df_nearest.columns and 'volume_p' in df_nearest.columns
     has_mark = 'mark_c' in df_nearest.columns and 'mark_p' in df_nearest.columns
+    # Open interest por strike (26-sep-2026): sin él, un snapshot solo
+    # permite el flip por suma acumulada; con él, el flip reconstruido desde
+    # Supabase (briefing pre-market, líneas de LIVE GAMMA) es el mismo cruce
+    # del perfil de precio que se ve en vivo (gex_math.compute_gamma_flip).
+    has_oi = 'openInterest_c' in df_nearest.columns and 'openInterest_p' in df_nearest.columns
     agg_cols = ['call_gex', 'put_gex', 'net_gex'] + charm_col
     agg_spec: dict[str, str] = {col: 'sum' for col in agg_cols}
     if has_volume:
@@ -84,6 +89,9 @@ async def _write_snapshot_for_feed(feed) -> None:
         # mismo, pero evita sumar precios si alguna vez hay más de una fila.
         agg_spec['mark_c'] = 'max'
         agg_spec['mark_p'] = 'max'
+    if has_oi:
+        agg_spec['openInterest_c'] = 'sum'
+        agg_spec['openInterest_p'] = 'sum'
 
     by_strike = df_nearest.groupby('strike', as_index=False).agg(agg_spec)
 
@@ -96,6 +104,7 @@ async def _write_snapshot_for_feed(feed) -> None:
             **({"net_chex": float(row.net_chex)} if charm_col else {}),
             **({"volume_c": int(row.volume_c), "volume_p": int(row.volume_p)} if has_volume else {}),
             **({"mark_c": float(row.mark_c), "mark_p": float(row.mark_p)} if has_mark else {}),
+            **({"openInterest_c": int(row.openInterest_c), "openInterest_p": int(row.openInterest_p)} if has_oi else {}),
         }
         for row in by_strike.itertuples()
     ]
