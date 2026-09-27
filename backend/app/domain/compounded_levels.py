@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 
-# 0.3% del spot primario -- suficientemente ajustado para no dar falsos
-# positivos entre dos libros de opciones distintos, suficientemente ancho
-# para tolerar el redondeo propio de traducir un nivel de un subyacente
-# a otro por ratio de spot.
-COMPOUND_TOLERANCE_PCT = 0.003
+# Medio strike del primario (QQQ/SPY: strikes de 1 USD cerca del spot). Antes
+# era el 0.3% del spot: con QQQ en ~740 eso daba ±2.2 USD (~90 puntos de MNQ,
+# más de 4 strikes de ancho) y el 26-sep-2026 los 8 niveles de NDX
+# "coincidían" con el mismo nivel de QQQ -- un compuesto que siempre aparece
+# no aporta convicción. Con medio strike, coincidir es caer en el MISMO strike
+# de QQQ una vez traducido, que es lo que el framework entiende por "dos
+# libros con gamma grande en el mismo precio".
+COMPOUND_TOLERANCE_USD = 0.5
 
 
 @dataclass
@@ -31,6 +34,7 @@ def find_compounded_levels(
     secondary_levels: dict[str, float | None],
     ratio: float,
     primary_spot: float,
+    tolerance: float | None = None,
 ) -> list[CompoundedLevel]:
     """Niveles "compuestos": cuando dos pools de open interest
     independientes sobre el MISMO mercado subyacente (ej. QQQ y NDX,
@@ -40,12 +44,13 @@ def find_compounded_levels(
     cruzar SIEMPRE ambos mapas antes de darle prioridad a un nivel.
 
     primary_levels/secondary_levels: dict[nombre legible -> valor o
-    None]. Un mismo nivel primario puede coincidir con más de un nivel
+    None]. 'tolerance' en USD del primario (default: medio strike, ver
+    COMPOUND_TOLERANCE_USD). Un mismo nivel primario puede coincidir con más de un nivel
     secundario (poco común, pero no se descarta)."""
     if ratio <= 0 or primary_spot <= 0:
         return []
 
-    tolerance = primary_spot * COMPOUND_TOLERANCE_PCT
+    tolerance = COMPOUND_TOLERANCE_USD if tolerance is None else tolerance
 
     # Dos niveles primarios distintos (ej. Zero Gamma y Gamma Wall) a
     # veces caen en el MISMO precio -- sin agrupar acá, el cruce de abajo

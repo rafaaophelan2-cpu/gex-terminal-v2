@@ -1,5 +1,8 @@
 MIN_HISTORY_DAYS = 10
 
+# Lo que se muestra mientras no hay percentil real (web, prompt de la IA).
+IV_RANK_UNAVAILABLE = "N/A (sin historial suficiente)"
+
 
 def compute_iv_percentile(current_atm_iv: float, historical_daily_iv: list[float]) -> str | None:
     """Percentil real de IV ATM contra un historial diario acumulado (un
@@ -18,4 +21,5 @@ def compute_iv_percentile(current_atm_iv: float, historical_daily_iv: list[float
 
     count_at_or_below = sum(1 for iv in historical_daily_iv if iv <= current_atm_iv)
     pct = round(count_at_or_below / len(historical_daily_iv) * 100)
-    return f"{pct}th percentile (histórico real, {len(historical_daily_iv)}d)"
+    # "P33", no "33th": el sufijo en inglés salía mal ("33th", "1th", "2th").
+    return f"P{pct} (histórico real, {len(historical_daily_iv)}d)"

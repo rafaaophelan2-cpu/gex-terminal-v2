@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from app.domain.gex_math import compute_call_put_walls, compute_zero_gamma
+from app.domain.iv_percentile import IV_RANK_UNAVAILABLE
 from app.domain.tradingview_string import compute_dominant_gamma_wall
 
 AGG_SUM_COLS = [
@@ -54,7 +55,7 @@ def _metrics_fallback(spot_ref: float) -> dict:
         "zero_gamma": None, "dominant_wall": None, "net_gex_total": 0.0, "call_gex_sum": 0.0, "put_gex_sum": 0.0,
         "net_dex_val": 0.0, "net_tex_val": 0.0, "net_vex_val": 0.0, "net_chex_val": 0.0, "net_vanna_val": 0.0,
         "atm_iv": 0.20, "atm_iv_call": None, "atm_iv_put": None, "skew": None,
-        "iv_str": "20.00%", "iv_rank_str": "N/A", "regime_str": "neutral regime",
+        "iv_str": "20.00%", "iv_rank_str": IV_RANK_UNAVAILABLE, "regime_str": "neutral regime",
         "condition_str": "Neutral",
     }
 
@@ -131,6 +132,12 @@ def compute_metrics_for_dte(df_source: pd.DataFrame, exp_keys: list[str], spot_r
         "atm_iv": atm_iv,
         "atm_iv_call": atm_iv_call, "atm_iv_put": atm_iv_put, "skew": skew,
         "iv_str": f"{atm_iv * 100:.2f}%",
-        "iv_rank_str": f"{int(min(max((atm_iv / 0.35) * 100, 15), 85))}th percentile (estimado)",
+        # Sin historial no hay percentil: antes salía atm_iv / 0.35 con
+        # clamp 15-85 rotulado "(estimado)", un número que no leía ningún
+        # historial y llegaba a la web y al prompt de la IA con aspecto de
+        # dato real ("33th percentile"). Mismo criterio que con los niveles:
+        # lo que no existe no se rellena con un número. El percentil real lo
+        # pone services/iv_percentile_updater.py cuando hay >= 10 días.
+        "iv_rank_str": IV_RANK_UNAVAILABLE,
         "regime_str": regime_str, "condition_str": condition_str,
     }

@@ -10,7 +10,7 @@ from app.domain.gex_math import (
 )
 from app.domain.metrics import compute_metrics_for_dte, get_nearest_dte_subset
 from app.domain.oi_fallback import apply_volume_fallback_if_no_oi, merge_external_oi
-from app.domain.oi_ladder import build_oi_ladder, compute_flip_for_expiration
+from app.domain.oi_ladder import DEFAULT_LADDER_STRIKES, build_oi_ladder, compute_flip_for_expiration
 from app.domain.signals import compute_signals, compute_squeeze_screener
 from app.integrations.marketdata_client import fetch_oi_map
 from app.integrations.schwab_client import fetch_option_chain
@@ -37,6 +37,12 @@ TICK_INTERVAL_SECONDS = 2
 # vCPU del free tier -- ver domain/gex_math.py).
 DEEP_CHAIN_STRIKES_COUNT = 100
 DEEP_CHAIN_INTERVAL_SECONDS = 45
+
+# Schwab devuelve 'strike_count' strikes EN TOTAL alrededor del ATM, no N a
+# cada lado: con el Strike Range por defecto (25) la ladder "fija ±15" de
+# domain/oi_ladder.py salía con ±12 (auditoría 26-sep-2026, #7), y con ella
+# /briefing_data y /live_levels. El fetch rápido pide al menos 2*15+1.
+MIN_CHAIN_STRIKES_COUNT = 2 * DEFAULT_LADDER_STRIKES + 1
 
 # Símbolos que Schwab expone como índice cash-settled -- su endpoint de
 # option chain solo los reconoce con "$" adelante ("$NDX", no "NDX"),
@@ -116,6 +122,12 @@ class SymbolFeed:
 
         self._task: asyncio.Task | None = None
         self._subscriber_count = 0
+
+    @property
+    def fetch_strikes_count(self) -> int:
+        """Strikes a pedirle a Schwab en el tick rápido: lo que pidió el
+        suscriptor más ancho, nunca menos de lo que necesita la ladder."""
+        return max(self.strikes_count, MIN_CHAIN_STRIKES_COUNT)
 
     def add_subscriber(self) -> None:
         self._subscriber_count += 1
@@ -205,7 +217,7 @@ class SymbolFeed:
         }
 
     async def _tick_once(self) -> None:
-        chain = await fetch_option_chain(_schwab_query_symbol(self.symbol), self.strikes_count)
+        chain = await fetch_option_chain(_schwab_query_symbol(self.symbol), self.fetch_strikes_count)
         df, exp0 = parse_schwab_chain(chain)
 
         spot = float(chain.get('underlyingPrice') or 0.0) if isinstance(chain, dict) else 0.0
@@ -290,13 +302,20 @@ class SymbolFeed:
             }
 
         df_nearest_full = get_nearest_dte_subset(self.df)
-        df_nearest = df_nearest_full
+        gex_cols = ['call_gex', 'put_gex', 'net_gex']
+        by_strike_full = df_nearest_full.groupby('strike', as_index=False)[gex_cols].sum().sort_values('strike')
+        # 'by_strike' (recortado al strike_range de ESTA conexión) es SOLO
+        # para el gráfico de barras. Walls y totales salen de la cadena
+        # completa de la expiración: son niveles/cifras del mercado, no del
+        # zoom que cada usuario eligió. Mismo tipo de bug que tenía el flip
+        # (auditoría 26-sep-2026): con un Strike Range angosto el CW1 real
+        # podía quedar fuera de la ventana y el panel mostraba el mayor
+        # strike positivo DE LA VENTANA como si fuera el wall.
+        by_strike = by_strike_full
         if min_strike is not None and max_strike is not None:
-            df_nearest = df_nearest[(df_nearest['strike'] >= min_strike) & (df_nearest['strike'] <= max_strike)]
+            by_strike = by_strike_full[(by_strike_full['strike'] >= min_strike) & (by_strike_full['strike'] <= max_strike)]
 
-        by_strike = df_nearest.groupby('strike', as_index=False)[['call_gex', 'put_gex', 'net_gex']].sum().sort_values('strike')
-
-        cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike, self.spot_price)
+        cw1, cw2, cw3, pw1, pw2, pw3 = compute_call_put_walls(by_strike_full, self.spot_price)
 
         # Flip/Zero Gamma: SIEMPRE desde la cadena completa de la
         # expiración elegida (ver compute_flip_for_expiration en
@@ -317,9 +336,9 @@ class SymbolFeed:
         price_profile = compute_gamma_price_profile(df_nearest_full, self.spot_price, DEFAULT_T_EXP, DEFAULT_IV)
 
         return {
-            "net_gex_total": float(by_strike['net_gex'].sum()),
-            "call_gex_total": float(by_strike['call_gex'].sum()),
-            "put_gex_total": float(by_strike['put_gex'].sum()),
+            "net_gex_total": float(by_strike_full['net_gex'].sum()),
+            "call_gex_total": float(by_strike_full['call_gex'].sum()),
+            "put_gex_total": float(by_strike_full['put_gex'].sum()),
             "flip_level": zero_gamma,
             "walls": {"cw1": cw1, "cw2": cw2, "cw3": cw3, "pw1": pw1, "pw2": pw2, "pw3": pw3},
             "iv_str": self.iv_str, "iv_rank_str": self.iv_rank_str,
@@ -382,20 +401,24 @@ class SymbolFeed:
             return empty
 
         df_nearest = get_nearest_dte_subset(self.df)
-        if min_strike is not None and max_strike is not None:
-            df_nearest = df_nearest[(df_nearest['strike'] >= min_strike) & (df_nearest['strike'] <= max_strike)]
         if df_nearest.empty:
             return empty
 
-        by_strike = df_nearest.groupby('strike', as_index=False)[greek_cols].sum().sort_values('strike')
+        by_strike_full = df_nearest.groupby('strike', as_index=False)[greek_cols].sum().sort_values('strike')
+        # Totales de la cadena completa (mismo criterio que gex_info_payload
+        # y que /briefing_data); el recorte por strike_range es solo para
+        # el perfil por strike del gráfico.
+        by_strike = by_strike_full
+        if min_strike is not None and max_strike is not None:
+            by_strike = by_strike_full[(by_strike_full['strike'] >= min_strike) & (by_strike_full['strike'] <= max_strike)]
 
         return {
             "totals": {
-                "dex": float(by_strike['net_dex'].sum()),
-                "tex": float(by_strike['net_tex'].sum()),
-                "vex": float(by_strike['net_vex'].sum()),
-                "chex": float(by_strike['net_chex'].sum()),
-                "vanna": float(by_strike['net_vanna'].sum()),
+                "dex": float(by_strike_full['net_dex'].sum()),
+                "tex": float(by_strike_full['net_tex'].sum()),
+                "vex": float(by_strike_full['net_vex'].sum()),
+                "chex": float(by_strike_full['net_chex'].sum()),
+                "vanna": float(by_strike_full['net_vanna'].sum()),
             },
             "by_strike": [
                 {

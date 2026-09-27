@@ -237,12 +237,13 @@ export function renderLiveGammaChart(el, heatmap, walls, candles, dateStr, metri
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
     xaxis: {
-      title: 'Hora', gridcolor: 'rgba(255,255,255,0.05)',
+      title: 'Hora', automargin: true, gridcolor: 'rgba(255,255,255,0.05)',
       type: 'date', tickformat: '%H:%M', rangeslider: { visible: false },
       ...(prevXRange ? { range: prevXRange, autorange: false } : {}),
     },
     yaxis: {
-      title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right',
+      // standoff + automargin: el título se montaba sobre las etiquetas.
+      title: { text: 'Strike ($)', standoff: 14 }, automargin: true, gridcolor: 'rgba(255,255,255,0.05)', side: 'right',
       // Los strikes reales pueden venir cada $1, pero el eje Y en
       // realidad son los puntos de borde de cada banda (heatmap.py:
       // BAND_HALF_WIDTH ±0.1 alrededor de cada strike) -- sin fijar el
@@ -333,12 +334,13 @@ export function renderAllDayGammaChart(el, heatmap, candles, dateStr) {
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
     xaxis: {
-      title: 'Hora', gridcolor: 'rgba(255,255,255,0.05)',
+      title: 'Hora', automargin: true, gridcolor: 'rgba(255,255,255,0.05)',
       type: 'date', tickformat: '%H:%M', rangeslider: { visible: false },
       ...(prevXRange ? { range: prevXRange, autorange: false } : {}),
     },
     yaxis: {
-      title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', side: 'right', dtick: 1,
+      // standoff + automargin: el título se montaba sobre las etiquetas.
+      title: { text: 'Strike ($)', standoff: 14 }, automargin: true, gridcolor: 'rgba(255,255,255,0.05)', side: 'right', dtick: 1,
       ...(prevYRange ? { range: prevYRange, autorange: false } : {}),
     },
     hoverlabel: {

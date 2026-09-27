@@ -47,3 +47,27 @@ def test_profile_is_monotonic_ish_and_crosses_expected_sign_region():
     result = compute_gamma_price_profile(_sample_chain(), 715.0, 1 / 365, 0.20, pct_range=0.05, num_points=11)
     assert result["net_gamma"][0] < 0
     assert result["net_gamma"][-1] > 0
+
+
+def test_default_range_follows_the_chain_instead_of_a_fixed_18_percent():
+    # Auditoría 26-sep-2026: con ±18% fijo la curva de QQQ ocupaba ~15% del
+    # ancho. Cadena 700-730 con spot 715: strikes a ±2.1%, más 3 desvíos de
+    # 1 día al 20% (~3.1%) -> ~±5.2%, no ±18%.
+    result = compute_gamma_price_profile(_sample_chain(), 715.0, 1 / 365, 0.20)
+    lo, hi = result["prices"][0], result["prices"][-1]
+    assert 715.0 * 0.93 < lo < 715.0 * 0.96
+    assert 715.0 * 1.04 < hi < 715.0 * 1.07
+    # En los bordes el gamma ya se apagó: la curva no queda cortada.
+    peak = max(abs(v) for v in result["net_gamma"])
+    assert abs(result["net_gamma"][0]) < 0.05 * peak
+    assert abs(result["net_gamma"][-1]) < 0.05 * peak
+
+
+def test_default_range_is_capped_for_very_wide_chains():
+    vix = pd.DataFrame([
+        {"strike": k, "openInterest_c": 100.0, "openInterest_p": 100.0}
+        for k in (10.0, 12.0, 14.0, 16.0, 20.0, 25.0, 30.0)
+    ])
+    result = compute_gamma_price_profile(vix, 16.0, 1 / 365, 0.80)
+    assert result["prices"][0] == round(16.0 * 0.82, 2)
+    assert result["prices"][-1] == round(16.0 * 1.18, 2)

@@ -119,9 +119,12 @@ def test_fetch_available_dates_excludes_weekend_rows(monkeypatch):
     # última sesión real. 2026-09-13 es domingo, 2026-09-11 es viernes.
     from zoneinfo import ZoneInfo
 
-    fake_client = _FakeClient(existing_rows=[
-        {"created_at": "2026-09-13T16:30:00+00:00", "time": "12:30"},  # domingo, en horario
-        {"created_at": "2026-09-11T17:30:00+00:00", "time": "13:30"},  # viernes, en horario
+    from tests.fake_postgrest import FakePostgrestClient
+
+    supabase_client._available_dates_cache.clear()
+    fake_client = FakePostgrestClient([
+        {"symbol": "QQQ", "created_at": "2026-09-13T16:30:00+00:00", "time": "12:30"},  # domingo, en horario
+        {"symbol": "QQQ", "created_at": "2026-09-11T17:30:00+00:00", "time": "13:30"},  # viernes, en horario
     ])
     monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: fake_client)
 

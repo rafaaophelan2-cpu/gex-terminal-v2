@@ -32,6 +32,10 @@ export function renderGammaVolumeProfile(el, grid) {
   const strikes = rows.map((r) => String(r.strike))
   const totals = rows.map((r) => r.total)
   const colors = totals.map((v) => (v >= 0 ? COLOR_POSITIVE : COLOR_NEGATIVE))
+  const maxAbs = Math.max(...totals.map((v) => Math.abs(v)), 1)
+  const pad = maxAbs * 0.45
+  const xRange = [Math.min(0, ...totals) - (totals.some((v) => v < 0) ? pad : 0),
+    Math.max(0, ...totals) + (totals.some((v) => v > 0) ? pad : 0)]
 
   const trace = {
     type: 'bar',
@@ -42,6 +46,10 @@ export function renderGammaVolumeProfile(el, grid) {
     text: totals.map((v) => fmtMoney(v)),
     textposition: 'outside',
     textfont: { size: 9 },
+    // La etiqueta de la barra más larga se cortaba en '+$': Plotly recorta
+    // el texto 'outside' al área del gráfico. Sin recorte y con aire en el
+    // eje X (abajo) entra entera.
+    cliponaxis: false,
     hovertemplate: 'Strike: $%{y}<br>Net GEX total: %{x:,.0f}<extra></extra>',
   }
 
@@ -50,7 +58,7 @@ export function renderGammaVolumeProfile(el, grid) {
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 10 },
     title: { text: 'Gamma Volume Profile', font: { color: '#F0F6FC', size: 12 } },
-    xaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' },
+    xaxis: { range: xRange, gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' },
     yaxis: { type: 'category', gridcolor: 'rgba(255,255,255,0.03)', automargin: true },
     margin: { l: 50, r: 55, t: 36, b: 26 },
     showlegend: false,

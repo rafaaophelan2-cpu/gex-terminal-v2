@@ -69,8 +69,9 @@ export function renderGammaPriceProfileChart(el, priceProfile) {
     plot_bgcolor: COLOR_BG,
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
-    xaxis: { title: 'Precio ($)', gridcolor: 'rgba(255,255,255,0.05)', zeroline: false },
+    xaxis: { title: 'Precio ($)', automargin: true, gridcolor: 'rgba(255,255,255,0.05)', zeroline: false },
     yaxis: {
+      automargin: true,
       title: 'Net Gamma ($)', gridcolor: 'rgba(255,255,255,0.05)',
       zeroline: true, zerolinecolor: 'rgba(255,255,255,0.2)', zerolinewidth: 1,
     },

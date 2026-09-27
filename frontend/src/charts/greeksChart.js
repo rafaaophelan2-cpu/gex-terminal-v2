@@ -26,8 +26,8 @@ function baseLayout(title) {
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
     title: { text: title, font: { color: '#F0F6FC', size: 15 } },
-    xaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)' },
-    yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' },
+    xaxis: { title: { text: 'Strike ($)', standoff: 8 }, automargin: true, gridcolor: 'rgba(255,255,255,0.05)' },
+    yaxis: { automargin: true, gridcolor: 'rgba(255,255,255,0.05)', zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)' },
     hoverlabel: {
       font: { family: 'JetBrains Mono, monospace', size: 12, color: '#F0F6FC' },
       bgcolor: '#0E131F',

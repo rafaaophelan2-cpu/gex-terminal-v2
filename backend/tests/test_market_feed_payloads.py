@@ -85,3 +85,59 @@ def test_gex_info_payload_empty_feed_returns_empty_ladder():
     # no el spot.
     assert payload["flip_level"] is None
     assert set(payload["walls"].values()) == {None}
+
+
+def test_walls_and_totals_come_from_the_full_chain_not_the_on_screen_window():
+    # Auditoría 26-sep-2026: los walls salían del by_strike recortado al
+    # Strike Range de la conexión (mismo bug que tenía el flip). Con una
+    # ventana 710-714, el CW1 real (720, el mayor net_gex positivo) quedaba
+    # fuera y el panel mostraba el mayor positivo DE LA VENTANA.
+    rows = []
+    for strike in range(700, 731):
+        net = 5.0
+        if strike == 720:
+            net = 900.0
+        if strike == 712:
+            net = 50.0
+        if strike == 703:
+            net = -700.0
+        rows.append({
+            "strike": float(strike), "exp_key": "e0", "dte": 0, "net_gex": net,
+            "call_gex": max(net, 0.0), "put_gex": min(net, 0.0),
+            "openInterest_c": 10, "openInterest_p": 10,
+        })
+    feed = _feed_with(pd.DataFrame(rows), spot=712.0)
+
+    windowed = feed.gex_info_payload(min_strike=710.0, max_strike=714.0)
+    full = feed.gex_info_payload()
+
+    assert windowed["walls"]["cw1"] == 720.0
+    assert windowed["walls"]["pw1"] == 703.0
+    assert windowed["walls"] == full["walls"]
+    # Los totales tampoco dependen del zoom.
+    assert windowed["net_gex_total"] == full["net_gex_total"]
+    # El gráfico de barras sí sigue recortado.
+    assert {r["strike"] for r in windowed["by_strike"]} == {710.0, 711.0, 712.0, 713.0, 714.0}
+
+
+def test_fast_chain_fetch_asks_for_enough_strikes_for_the_15_strike_ladder():
+    # Auditoría #7: con Strike Range 25 Schwab devolvía 25 strikes en total
+    # y la ladder "±15" salía con ±12.
+    assert SymbolFeed("QQQ", strikes_count=25).fetch_strikes_count == 31
+    assert SymbolFeed("QQQ", strikes_count=60).fetch_strikes_count == 60
+
+
+def test_greeks_totals_do_not_depend_on_the_on_screen_window():
+    rows = []
+    for strike in range(700, 721):
+        rows.append({
+            "strike": float(strike), "exp_key": "e0", "dte": 0,
+            "net_dex": 1.0, "net_tex": 1.0, "net_vex": 1.0, "net_chex": 1.0, "net_vanna": 1.0,
+            "call_dex": 1.0, "put_dex": 0.0,
+        })
+    feed = _feed_with(pd.DataFrame(rows), spot=710.0)
+
+    windowed = feed.greeks_payload(min_strike=708.0, max_strike=712.0)
+
+    assert windowed["totals"]["dex"] == 21.0
+    assert len(windowed["by_strike"]) == 5

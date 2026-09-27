@@ -16,7 +16,7 @@ import { renderNetDriftChart } from './charts/netDriftChart.js'
 import { renderNewsCalendar, renderNewsFeed } from './charts/newsPanel.js'
 import { renderSignalsPanel } from './charts/signalsPanel.js'
 import { renderVolSurfaceChart } from './charts/volSurfaceChart.js'
-import { fmtMoney } from './utils/format.js'
+import { fmtMoney, fmtMoneyM } from './utils/format.js'
 
 const loginView = document.getElementById('login-view')
 const dashboardView = document.getElementById('dashboard-view')
@@ -742,11 +742,29 @@ function todayInLima() {
 let driftOtmOnly = false
 let driftMode = 'gex' // 'gex' | 'volume_premium'
 
+// Live Gamma / Net Drift / Backgamma tardan 3-8 s en la primera carga (y
+// al cambiar de símbolo o de día) y mientras tanto el recuadro quedaba en
+// negro sin decir nada. Solo se marca si el gráfico está VACÍO: en los
+// refrescos periódicos no hay parpadeo.
+function hasRenderedChart(el) {
+  return !!el && !!el.querySelector('.main-svg, canvas')
+}
+
+async function withChartLoading(els, work) {
+  const pending = els.filter((el) => el && !hasRenderedChart(el))
+  pending.forEach((el) => el.classList.add('chart-loading'))
+  try {
+    return await work()
+  } finally {
+    pending.forEach((el) => el.classList.remove('chart-loading'))
+  }
+}
+
 async function loadNetDrift() {
   try {
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
     const date = driftDateInput.value || todayInLima()
-    const series = await fetchDrift(symbol, date, driftOtmOnly, driftMode)
+    const series = await withChartLoading([netDriftChartEl], () => fetchDrift(symbol, date, driftOtmOnly, driftMode))
     if (!isStillCurrentSymbol(symbol)) return
     renderNetDriftChart(netDriftChartEl, series, date)
   } catch (err) {
@@ -799,12 +817,15 @@ async function loadLiveGamma() {
     // viene ordenado por más reciente, solo fechas con datos reales:
     // cubre tanto "todavía no abrió hoy" como "ya cerró hoy" sin
     // depender de qué fecha haya elegido el usuario en otra pestaña).
-    const dates = await fetchAvailableDates(symbol)
-    const date = dates[0] || todayInLima()
-    const [heatmap, candles] = await Promise.all([
-      fetchHeatmap(symbol, date),
-      fetchCandles(symbol, date).catch(() => []),
-    ])
+    const [heatmap, candles, date] = await withChartLoading([liveGammaChartEl, allDayGammaChartEl], async () => {
+      const dates = await fetchAvailableDates(symbol)
+      const day = dates[0] || todayInLima()
+      const [h, c] = await Promise.all([
+        fetchHeatmap(symbol, day),
+        fetchCandles(symbol, day).catch(() => []),
+      ])
+      return [h, c, day]
+    })
     if (!isStillCurrentSymbol(symbol)) return
     renderLiveGammaChart(liveGammaChartEl, heatmap, latestWalls, candles, date)
     // ALL-DAY GAMMA: mismo heatmap/candles/date que arriba, ningún fetch
@@ -1254,7 +1275,7 @@ async function loadBackgammaDay(date) {
   try {
     stopBackgammaPlay()
     const symbol = symbolInput.value.trim().toUpperCase() || 'QQQ'
-    const heatmap = await fetchHeatmap(symbol, date)
+    const heatmap = await withChartLoading([backgammaSpotChartEl, backgammaStrikeChartEl], () => fetchHeatmap(symbol, date))
     if (!isStillCurrentSymbol(symbol)) return
     backgammaHeatmap = heatmap
     const lastIndex = Math.max(backgammaHeatmap.times.length - 1, 0)
@@ -1370,16 +1391,60 @@ function setMetric(el, text, valueClass) {
   el.className = valueClass ? `metric-value ${valueClass}` : 'metric-value'
 }
 
-function setWsStatus(status) {
-  const labels = {
+// El badge decía "en vivo" con solo tener el WebSocket conectado, aunque
+// fuera domingo y el dato fuera el cierre del viernes (auditoría #9).
+// Ahora combina tres cosas: la conexión, el estado de mercado que manda el
+// backend en cada tick (market_status) y si siguen llegando datos.
+let wsConnState = 'connecting'
+let lastMarketStatus = null
+let lastSchwabOnline = true
+let lastTickAt = 0
+const STALE_TICK_MS = 20000
+
+function renderWsStatus() {
+  const connLabels = {
     connecting: 'conectando…',
-    connected: 'en vivo',
     reconnecting: 'reconectando…',
     disconnected: 'desconectado',
   }
-  wsStatusEl.textContent = labels[status] || status
-  wsStatusEl.className = `status-pill status-${status}`
+  let label
+  let cls
+  if (wsConnState !== 'connected') {
+    label = connLabels[wsConnState] || wsConnState
+    cls = wsConnState
+  } else if (!lastTickAt) {
+    label = 'conectado · esperando datos'
+    cls = 'connecting'
+  } else if (!lastSchwabOnline) {
+    label = 'conectado · sin datos de Schwab'
+    cls = 'reconnecting'
+  } else if (Date.now() - lastTickAt > STALE_TICK_MS) {
+    label = 'conectado · sin datos nuevos'
+    cls = 'reconnecting'
+  } else if (lastMarketStatus === 'open') {
+    label = 'en vivo'
+    cls = 'connected'
+  } else if (lastMarketStatus === 'premarket') {
+    label = 'pre-market · cadena del cierre'
+    cls = 'idle'
+  } else if (lastMarketStatus === 'closed') {
+    label = 'mercado cerrado · último cierre'
+    cls = 'idle'
+  } else {
+    label = 'conectado'
+    cls = 'connected'
+  }
+  wsStatusEl.textContent = label
+  wsStatusEl.className = `status-pill status-${cls}`
 }
+
+function setWsStatus(status) {
+  wsConnState = status
+  if (status !== 'connected') lastTickAt = 0
+  renderWsStatus()
+}
+
+setInterval(renderWsStatus, 5000)
 
 function updateDataSummary() {
   if (!latestGexInfo) return
@@ -1397,11 +1462,11 @@ function updateDataSummary() {
 
   if (latestGreeksPayload) {
     const t = latestGreeksPayload.totals
-    setMetric(dataMetricEls.dex, `${t.dex.toFixed(2)}M`, signClass(t.dex))
+    setMetric(dataMetricEls.dex, fmtMoneyM(t.dex), signClass(t.dex))
     setMetric(dataMetricEls.tex, fmtMoney(t.tex), signClass(t.tex))
     setMetric(dataMetricEls.vex, fmtMoney(t.vex), signClass(t.vex))
-    setMetric(dataMetricEls.chex, `${t.chex.toFixed(2)}M`, signClass(t.chex))
-    setMetric(dataMetricEls.vanna, `${t.vanna.toFixed(2)}M`, signClass(t.vanna))
+    setMetric(dataMetricEls.chex, fmtMoneyM(t.chex), signClass(t.chex))
+    setMetric(dataMetricEls.vanna, fmtMoneyM(t.vanna), signClass(t.vanna))
   }
 }
 
@@ -1409,6 +1474,10 @@ function handleMarketMessage(data) {
   if (data.type === 'pong') return
 
   if (data.type === 'chain_full' || data.type === 'tick') {
+    lastTickAt = Date.now()
+    lastMarketStatus = data.market_status ?? null
+    lastSchwabOnline = data.schwab_online !== false
+    renderWsStatus()
     setMetric(metricEls.spot, data.spot ? `$${data.spot.toFixed(2)}` : '--', 'val-spot')
     const info = data.gex_info
     latestGexInfo = info
@@ -1447,11 +1516,11 @@ function handleMarketMessage(data) {
       latestGreeksPayload = data.greeks
       const t = data.greeks.totals
       const signClass = (v) => (v >= 0 ? 'val-positive' : 'val-negative')
-      setMetric(greeksMetricEls.dex, `${t.dex.toFixed(2)}M`, signClass(t.dex))
+      setMetric(greeksMetricEls.dex, fmtMoneyM(t.dex), signClass(t.dex))
       setMetric(greeksMetricEls.tex, fmtMoney(t.tex), signClass(t.tex))
       setMetric(greeksMetricEls.vex, fmtMoney(t.vex), signClass(t.vex))
-      setMetric(greeksMetricEls.chex, `${t.chex.toFixed(2)}M`, signClass(t.chex))
-      setMetric(greeksMetricEls.vanna, `${t.vanna.toFixed(2)}M`, signClass(t.vanna))
+      setMetric(greeksMetricEls.chex, fmtMoneyM(t.chex), signClass(t.chex))
+      setMetric(greeksMetricEls.vanna, fmtMoneyM(t.vanna), signClass(t.vanna))
 
       if (isGreeksTabActive()) {
         renderGreeksChart(greeksChartEl, activeGreek, data.greeks, data.type === 'chain_full')

@@ -61,3 +61,21 @@ def test_find_compounded_levels_merges_primary_levels_sharing_the_same_value():
 def test_find_compounded_levels_invalid_ratio_or_spot():
     assert find_compounded_levels({"cw1": 700.0}, {"cw1_ndx": 700.0}, ratio=0.0, primary_spot=700.0) == []
     assert find_compounded_levels({"cw1": 700.0}, {"cw1_ndx": 700.0}, ratio=41.0, primary_spot=0.0) == []
+
+
+def test_tolerance_is_half_a_strike_not_a_percent_of_spot():
+    # Auditoría #8: con 0.3% del spot (±2.2 USD con QQQ en 740) todos los
+    # niveles de NDX "coincidían" con el mismo nivel de QQQ.
+    primary_spot = 740.0
+    ratio = 30000.0 / primary_spot
+    primary = {"Call Wall 1": 745.0}
+    near = {"Call Wall 1 NDX": 745.4 * ratio}     # mismo strike: sí
+    far = {"Call Wall 2 NDX": 746.8 * ratio}      # 1.8 USD: antes sí, ahora no
+
+    assert len(find_compounded_levels(primary, near, ratio, primary_spot)) == 1
+    assert find_compounded_levels(primary, far, ratio, primary_spot) == []
+
+
+def test_tolerance_can_be_overridden():
+    ratio = 30000.0 / 740.0
+    assert len(find_compounded_levels({"a": 745.0}, {"b": 746.8 * ratio}, ratio, 740.0, tolerance=2.0)) == 1

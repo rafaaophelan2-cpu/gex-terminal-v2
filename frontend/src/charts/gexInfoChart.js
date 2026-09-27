@@ -47,8 +47,11 @@ function baseLayout(spot, viewMode) {
     paper_bgcolor: COLOR_BG,
     font: { color: '#D1D5DB', family: 'JetBrains Mono, monospace', size: 11 },
     title: { text: titleForMode(viewMode), font: { color: '#F0F6FC', size: 15 } },
-    xaxis: { title: 'Strike ($)', gridcolor: 'rgba(255,255,255,0.05)', zeroline: false },
+    // automargin: con muchos strikes Plotly rota las etiquetas y el título
+    // 'Strike ($)' quedaba cortado bajo el margen fijo.
+    xaxis: { title: { text: 'Strike ($)', standoff: 8 }, automargin: true, gridcolor: 'rgba(255,255,255,0.05)', zeroline: false },
     yaxis: {
+      automargin: true,
       title: yAxisTitleForMode(viewMode), gridcolor: 'rgba(255,255,255,0.05)',
       zeroline: true, zerolinecolor: 'rgba(255,255,255,0.15)',
     },

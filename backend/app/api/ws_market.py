@@ -1,11 +1,16 @@
 import asyncio
 import logging
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.core.security import decode_access_token
+from app.domain.briefing_data import compute_market_status
 from app.services.market_feed import SymbolFeed, feed_registry
+
+NY_TZ = ZoneInfo("America/New_York")
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -212,6 +217,11 @@ async def _tick_sender(websocket: WebSocket, state: ConnectionState) -> None:
                     "ts": feed.last_update,
                     "spot": feed.spot_price,
                     "schwab_online": feed.schwab_online,
+                    # El badge de la web decía "EN VIVO" con solo tener el
+                    # WebSocket conectado, aunque fuera domingo y el dato
+                    # fuera el cierre del viernes (auditoría #9). Con esto
+                    # distingue mercado abierto, pre-market y cerrado.
+                    "market_status": compute_market_status(datetime.now(NY_TZ)),
                     "gex_info": feed.gex_info_payload(min_strike, max_strike, expiration=state.expiration),
                     "greeks": feed.greeks_payload(min_strike, max_strike),
                     "signals": feed.signals_payload(),

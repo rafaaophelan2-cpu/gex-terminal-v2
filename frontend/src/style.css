@@ -502,6 +502,14 @@ main {
   color: #10b981;
 }
 
+/* Conectado pero sin mercado abierto: ni verde ("en vivo") ni ámbar
+   (problema de conexión) -- es el estado normal fuera de horario. */
+.status-idle {
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #94a3b8;
+}
+
 .status-connecting,
 .status-reconnecting {
   background: rgba(245, 158, 11, 0.12);
@@ -2654,4 +2662,38 @@ main {
   font-family: var(--mono);
   font-size: 0.7rem;
   color: #6e7681;
+}
+
+
+/* Gráfico vacío mientras llega su primera carga (ver withChartLoading en
+   main.js). */
+.chart-loading {
+  position: relative;
+  min-height: 220px;
+}
+
+.chart-loading::after {
+  content: 'Cargando…';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7686;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  animation: chart-loading-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes chart-loading-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* El botón flotante del chat (52 px + 20 px de margen) tapaba el final de
+   la columna derecha: se deja ese espacio libre al fondo del contenido. */
+#dashboard-view main {
+  padding-bottom: 88px;
 }

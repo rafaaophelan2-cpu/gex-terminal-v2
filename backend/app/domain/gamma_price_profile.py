@@ -1,10 +1,28 @@
 from app.domain.gex_math import recalculate_gex_for_spot
 
-# Rango alrededor del spot actual que cubre la curva -- lo bastante ancho
-# para mostrar ambas colas aplanándose (como en la referencia del
-# usuario), sin diluir la resolución cerca del spot con un rango excesivo.
+import math
+
+# Tope del rango alrededor del spot que cubre la curva. Antes era el rango
+# FIJO: con QQQ (cadena de ±15 strikes de 1 USD, ~±2%) la curva ocupaba
+# ~15% del ancho del gráfico y el resto eran colas planas en cero
+# (auditoría 26-sep-2026). Ahora el rango sale de la propia cadena: los
+# strikes extremos más 3 desvíos del movimiento esperado (ahí el gamma ya
+# se apagó), con este valor como tope -- que sigue haciendo falta para VIX,
+# cuyos strikes de 0.5-1 sobre ~16 cubren un porcentaje enorme.
 DEFAULT_PCT_RANGE = 0.18
+MIN_PCT_RANGE = 0.02
 DEFAULT_NUM_POINTS = 80
+
+
+def auto_pct_range(strikes, spot_ref: float, t_exp: float, iv: float) -> float:
+    """Ancho (fracción del spot a cada lado) que cubre todos los strikes
+    de la cadena más 3 desvíos del subyacente, entre MIN y DEFAULT."""
+    if spot_ref <= 0 or len(strikes) == 0:
+        return DEFAULT_PCT_RANGE
+    lo, hi = float(min(strikes)), float(max(strikes))
+    reach = max(abs(lo / spot_ref - 1), abs(hi / spot_ref - 1))
+    sigma = iv * math.sqrt(max(t_exp, 0.0))
+    return min(max(reach + 3 * sigma, MIN_PCT_RANGE), DEFAULT_PCT_RANGE)
 
 
 def compute_gamma_price_profile(
@@ -12,7 +30,7 @@ def compute_gamma_price_profile(
     spot_ref: float,
     t_exp: float,
     iv: float,
-    pct_range: float = DEFAULT_PCT_RANGE,
+    pct_range: float | None = None,
     num_points: int = DEFAULT_NUM_POINTS,
 ) -> dict:
     """"Gamma Price Profile": Net GEX total proyectado si el spot estuviera
@@ -29,6 +47,8 @@ def compute_gamma_price_profile(
     if df_nearest is None or df_nearest.empty or spot_ref <= 0 or num_points < 2:
         return empty
 
+    if pct_range is None:
+        pct_range = auto_pct_range(df_nearest['strike'].unique(), spot_ref, t_exp, iv)
     lo = spot_ref * (1 - pct_range)
     hi = spot_ref * (1 + pct_range)
     step = (hi - lo) / (num_points - 1)

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, time as dtime, timedelta, timezone
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
@@ -108,113 +108,150 @@ async def fetch_latest_snapshot(symbol: str) -> dict | None:
     return await asyncio.to_thread(_query)
 
 
-async def fetch_available_dates(symbol: str, tz) -> list[str]:
+# PostgREST corta cualquier SELECT en su "Max rows" (1,000 en Supabase) SIN
+# devolver error: un .limit(5000) devuelve 1,000 filas y nadie se entera.
+# Con un snapshot por minuto eso son ~2.5 sesiones de historial, así que las
+# dos funciones de abajo (que antes traían "las últimas 5,000 filas" y
+# agrupaban por día en Python) veían solo los 2-3 días más recientes: el
+# selector de fechas de BACKGAMMA/LIVE GAMMA quedaba corto y el percentil
+# real de IV nunca juntaba los 10 días mínimos, así que la web seguía con
+# la fórmula estimada (auditoría 26-sep-2026, #9).
+#
+# En vez de traer filas, se CAMINA hacia atrás de a un día: "la última fila
+# antes de X" (limit 1, nunca choca con el tope), se anota su día y X pasa a
+# ser el inicio de ese día. Una consulta por día con datos. Los días ya
+# cerrados no cambian, así que se guardan en memoria y la caminata se corta
+# al llegar a uno conocido: en régimen son 2 consultas por llamada.
+
+
+def _parse_ts(value: str) -> datetime:
+    """created_at de PostgREST a datetime con zona. Tolera 'Z' y fracciones
+    de segundo de largo variable (Python 3.10 solo acepta 3 o 6 dígitos)."""
+    import re
+
+    v = value.replace("Z", "+00:00")
+    m = re.match(r"^(.*T\d{2}:\d{2}:\d{2})(\.\d+)?(.*)$", v)
+    if m:
+        frac = (m.group(2) or ".0")[1:]
+        v = f"{m.group(1)}.{(frac + '000000')[:6]}{m.group(3)}"
+    dt = datetime.fromisoformat(v)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _walk_days_back(latest_before, tz, known: dict, max_days: int) -> tuple[dict, bool]:
+    """Recorre días hacia atrás llamando latest_before(cursor_iso|None) ->
+    fila|None. Devuelve ({día: fila} de los días nuevos, completo). Se
+    detiene al quedarse sin filas, al llegar a un día ya conocido que no
+    sea hoy, o tras max_days días. 'completo' es False si hubo un error a
+    mitad de camino: en ese caso no hay que cachear, porque quedaría un
+    hueco entre lo nuevo y lo viejo que ninguna caminata futura rellenaría."""
+    today = datetime.now(tz).date().isoformat()
+    found: dict[str, dict] = {}
+    cursor: str | None = None
+    try:
+        while len(found) < max_days:
+            row = latest_before(cursor)
+            if not row:
+                break
+            day = _parse_ts(row["created_at"]).astimezone(tz).date()
+            key = day.isoformat()
+            if key != today and key in known:
+                break
+            if key in found:
+                # Sin avance (el cursor no filtró): cortar en vez de girar
+                # para siempre contra un backend que ignora el filtro.
+                break
+            found[key] = row
+            cursor = datetime.combine(day, dtime.min, tzinfo=tz).astimezone(timezone.utc).isoformat()
+    except Exception:
+        logger.exception("Caminata diaria sobre gex_intraday cortada por un error -- se usa lo que había.")
+        return found, False
+    return found, True
+
+
+# {(símbolo, zona): {día: True}} y {símbolo: {día: iv}} -- solo días ya
+# cerrados; se pierden en cada redeploy y se rearman con una caminata.
+_available_dates_cache: dict[tuple[str, str], dict[str, bool]] = {}
+_daily_iv_cache: dict[str, dict[str, float]] = {}
+
+
+async def fetch_available_dates(symbol: str, tz, max_days: int = 400) -> list[str]:
     """Fechas calendario (YYYY-MM-DD, en la zona horaria 'tz') que tienen
     al menos un snapshot DENTRO del horario de mercado (09:30-16:00 NY)
     para 'symbol', más recientes primero -- usado tanto por el selector
     de BACKGAMMA como por LIVE GAMMA para resolver "la última sesión"
-    (dates[0] en el frontend). Trae created_at + time (liviano) y filtra
-    en Python; con el volumen actual de datos esto alcanza sin paginar.
+    (dates[0] en el frontend).
 
     El filtro de horario importa incluso con snapshot_writer ya
     gateado a horas de mercado (ver snapshot_writer.py): filas viejas de
     ANTES de ese fix, o cualquier fila fuera de horario insertada por
     otra vía, no deben hacer que este símbolo apunte a un día sin
     ninguna fila útil para el heatmap/drift -- eso dejaba LIVE GAMMA en
-    blanco hasta que abriera el mercado real."""
+    blanco hasta que abriera el mercado real. Los fines de semana se
+    descartan: Schwab sirve la última chain conocida 24/7 y se llegaron a
+    colar snapshots de sábado/domingo (no cubre feriados de mercado)."""
     client = get_supabase_client()
     if client is None:
         return []
-
-    def _query():
-        res = (
-            client.table("gex_intraday")
-            .select("created_at, time")
-            .eq("symbol", symbol)
-            .order("created_at", desc=True)
-            .limit(5000)
-            .execute()
-        )
-        return res.data or []
-
-    rows = await asyncio.to_thread(_query)
-
-    from datetime import datetime
 
     from app.domain.drift import DEFAULT_SESSION_END, DEFAULT_SESSION_START
 
-    dates: list[str] = []
-    seen = set()
-    for row in rows:
-        time_str = row.get("time", "")
-        if not (DEFAULT_SESSION_START <= time_str <= DEFAULT_SESSION_END):
-            continue
-        dt = datetime.fromisoformat(row["created_at"]).astimezone(tz)
-        # Mismo filtro defensivo que el de horario, por DÍA -- confirmado
-        # en vivo un domingo: Schwab sirve la última chain conocida
-        # (viernes) 24/7, y el chequeo de horario de snapshot_writer no
-        # sabía qué día era, así que se colaron snapshots de fin de
-        # semana que "ganaban" como fecha más reciente acá. weekday()
-        # 5=sábado, 6=domingo -- no cubre feriados de mercado, pero
-        # soluciona el caso real visto.
-        if dt.weekday() >= 5:
-            continue
-        date_str = dt.strftime("%Y-%m-%d")
-        if date_str not in seen:
-            seen.add(date_str)
-            dates.append(date_str)
-    return dates
+    def _latest_before(cursor_iso):
+        q = (
+            client.table("gex_intraday")
+            .select("created_at, time")
+            .eq("symbol", symbol)
+            .gte("time", DEFAULT_SESSION_START)
+            .lte("time", DEFAULT_SESSION_END)
+        )
+        if cursor_iso:
+            q = q.lt("created_at", cursor_iso)
+        res = q.order("created_at", desc=True).limit(1).execute()
+        return (res.data or [None])[0]
+
+    cache = _available_dates_cache.setdefault((symbol, str(tz)), {})
+    found, complete = await asyncio.to_thread(_walk_days_back, _latest_before, tz, cache, max_days)
+    today = datetime.now(tz).date().isoformat()
+    if complete:
+        cache.update({d: True for d in found if d != today})
+
+    days = set(cache) | set(found)
+    weekdays = [d for d in days if datetime.fromisoformat(d).weekday() < 5]
+    return sorted(weekdays, reverse=True)[:max_days]
 
 
 async def fetch_daily_atm_iv_history(symbol: str, max_days: int = 400) -> list[float]:
-    """Un valor de IV ATM por día calendario (el más reciente de ese día,
-    ~el cierre) para 'symbol' -- historial real para el percentil de IV de
-    domain/iv_percentile.py. Requiere la columna 'atm_iv' en gex_intraday
-    (ver scripts/add_atm_iv_column.sql); si todavía no existe, PostgREST
-    devuelve un error de columna desconocida, que acá se trata como 'sin
-    historial todavía' en vez de propagar la excepción -- así el resto de
-    la app sigue funcionando aunque la migración no se haya corrido."""
+    """Un valor de IV ATM por día de mercado de NY (la última lectura de ese
+    día, ~el cierre) para 'symbol', más reciente primero -- historial real
+    para el percentil de IV de domain/iv_percentile.py. Requiere la columna
+    'atm_iv' en gex_intraday (ver scripts/add_atm_iv_column.sql); si todavía
+    no existe, PostgREST devuelve un error de columna desconocida, que acá
+    se trata como 'sin historial todavía' (loggeado) en vez de propagarlo."""
     client = get_supabase_client()
     if client is None:
         return []
 
-    def _query():
-        res = (
+    def _latest_before(cursor_iso):
+        q = (
             client.table("gex_intraday")
             .select("created_at, atm_iv")
             .eq("symbol", symbol)
             .not_.is_("atm_iv", "null")
-            .order("created_at", desc=True)
-            .limit(5000)
-            .execute()
         )
-        return res.data or []
+        if cursor_iso:
+            q = q.lt("created_at", cursor_iso)
+        res = q.order("created_at", desc=True).limit(1).execute()
+        return (res.data or [None])[0]
 
-    try:
-        rows = await asyncio.to_thread(_query)
-    except Exception:
-        # Este except cubre tanto el caso ANTICIPADO (columna 'atm_iv'
-        # todavía no existe, ver docstring) como cualquier OTRO fallo real
-        # (auth, red, un problema de schema distinto) -- antes ninguno de
-        # los dos dejaba rastro, así que un fallo real (no solo la
-        # migración pendiente) era indistinguible de "sin historial
-        # todavía" y el percentil real de IV podía quedar sin activarse
-        # para siempre sin ninguna forma de diagnosticar por qué.
-        logger.exception("fetch_daily_atm_iv_history(%s) falló -- puede ser la migración de 'atm_iv' pendiente, o un fallo real.", symbol)
-        return []
+    cache = _daily_iv_cache.setdefault(symbol, {})
+    found, complete = await asyncio.to_thread(_walk_days_back, _latest_before, _NY_TZ, cache, max_days)
+    fresh = {d: float(r["atm_iv"]) for d, r in found.items()}
+    today = datetime.now(_NY_TZ).date().isoformat()
+    if complete:
+        cache.update({d: v for d, v in fresh.items() if d != today})
 
-    # Filas ya vienen de más reciente a más vieja -- la primera vez que se
-    # ve cada día calendario es su lectura más tardía (el cierre de ese
-    # día), que es justo el criterio estándar para una serie diaria de IV.
-    daily: dict[str, float] = {}
-    for row in rows:
-        day = (row.get("created_at") or "")[:10]
-        if not day or day in daily:
-            continue
-        daily[day] = row["atm_iv"]
-        if len(daily) >= max_days:
-            break
-    return list(daily.values())
+    daily = {**cache, **fresh}
+    return [daily[d] for d in sorted(daily, reverse=True)[:max_days]]
 
 
 async def insert_gex_snapshot(snapshot: dict) -> None:
